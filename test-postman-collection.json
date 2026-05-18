@@ -1,0 +1,2097 @@
+{
+  "info": {
+    "_postman_id": "9a4e25bb-7f45-4f4e-9a94-1d3b2044676b",
+    "name": "Lucy API Regression",
+    "description": "Import this collection into Postman and run it against the local FastAPI service. The collection creates a fresh test case, saves intake, generates checklist state, exercises upload, QA, readiness, I-485 ingestion, supplemental form ingestion, filing validation preflights, content endpoints, and a 404 guard. It is an API regression suite for local development only and does not provide legal advice.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "api_base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "sample_upload_file",
+      "value": "docs/postman/fixtures/sample-upload.pdf",
+      "type": "string"
+    },
+    {
+      "key": "case_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "form_i130_item_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "i130_upload_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "i485_upload_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "missing_case_id",
+      "value": "00000000-0000-0000-0000-000000000404",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{api_base_url}}/health",
+          "host": [
+            "{{api_base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "curl {{api_base_url}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('health returns 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('health payload is ok', function () { pm.expect(json.status).to.eql('ok'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Content",
+      "item": [
+        {
+          "name": "Get USCIS Requirements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/uscis-requirements",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "uscis-requirements"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/uscis-requirements"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('USCIS requirements returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('USCIS requirements are source dated', function () { pm.expect(json.verified_on).to.match(/^\\d{4}-\\d{2}-\\d{2}$/); });",
+                  "pm.test('core forms are present', function () {",
+                  "  const codes = json.forms.map(function (form) { return form.code; });",
+                  "  pm.expect(codes).to.include.members(['form_i130', 'form_i485', 'form_i864']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Colombia Guidance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/countries/CO",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "countries",
+                "CO"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/countries/CO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('country guidance returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Colombia guidance is returned', function () { pm.expect(json.country_code).to.eql('CO'); });",
+                  "pm.test('guidance includes civil documents', function () { pm.expect(json.documents.length).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Explanation Content",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/explanations",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "explanations"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/explanations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('explanations returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('legal boundary disclaimers are present', function () { pm.expect(json.disclaimers.length).to.be.above(0); });",
+                  "pm.test('severity help includes blocking', function () { pm.expect(json.issue_severity_help).to.have.property('blocking'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get I-485 Questionnaire",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/i485-questionnaire",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "i485-questionnaire"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/i485-questionnaire"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 questionnaire returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const questions = json.pages.flatMap(function (page) { return page.questions; });",
+                  "function questionById(id) { return questions.find(function (question) { return question.id === id; }); }",
+                  "pm.test('I-485 questionnaire is source dated', function () { pm.expect(json.verified_on).to.match(/^\\d{4}-\\d{2}-\\d{2}$/); });",
+                  "pm.test('I-485 questionnaire has 14 pages', function () { pm.expect(json.pages.length).to.eql(14); });",
+                  "pm.test('employment history is a structured repeatable section with Part 14 overflow metadata', function () {",
+                  "  const question = questionById('beneficiary_employment_history');",
+                  "  pm.expect(question.answer_type).to.eql('employment_history_list');",
+                  "  pm.expect(question.entry_fields.map(function (field) { return field.key; })).to.include.members(['activity_type', 'name', 'occupation', 'from', 'to', 'financial_support']);",
+                  "  pm.expect(question.form_entry_limit).to.eql(1);",
+                  "  pm.expect(question.overflow_pdf_ref).to.eql('Part 14, Additional Information');",
+                  "});",
+                  "pm.test('recent foreign address is structured instead of loose text', function () {",
+                  "  const question = questionById('beneficiary_recent_foreign_address');",
+                  "  pm.expect(question.answer_type).to.eql('address');",
+                  "  pm.expect(question.entry_fields.map(function (field) { return field.key; })).to.include.members(['line1', 'city', 'country', 'from', 'to']);",
+                  "});",
+                  "pm.test('eye and hair color use single checkbox-style options', function () {",
+                  "  const eye = questionById('beneficiary_eye_color');",
+                  "  const hair = questionById('beneficiary_hair_color');",
+                  "  pm.expect(eye.answer_type).to.eql('single_check');",
+                  "  pm.expect(hair.answer_type).to.eql('single_check');",
+                  "  pm.expect(eye.options.map(function (option) { return option.value; })).to.include.members(['black', 'blue', 'brown', 'gray', 'green', 'hazel']);",
+                  "  pm.expect(hair.options.map(function (option) { return option.value; })).to.include.members(['bald', 'black', 'blond', 'brown', 'gray', 'red', 'sandy', 'white']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Case Workflow",
+      "item": [
+        {
+          "name": "Create Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"case_name\": \"Postman Regression {{$timestamp}}\",\n  \"petitioner_email\": \"petitioner.postman@example.com\",\n  \"beneficiary_email\": \"beneficiary.postman@example.com\",\n  \"country_of_focus\": \"Colombia\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('case is created', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('case id is returned', function () { pm.expect(json.id).to.match(/^[0-9a-f-]{36}$/); });",
+                  "pm.test('country is normalized', function () { pm.expect(json.country_of_focus).to.eql('CO'); });",
+                  "pm.collectionVariables.set('case_id', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Created Case",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created case can be fetched', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('fetched case matches collection case id', function () { pm.expect(json.id).to.eql(pm.collectionVariables.get('case_id')); });",
+                  "pm.test('case count object is present', function () { pm.expect(json.counts).to.have.property('checklist_items'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Cases",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('case list returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('created case appears in list', function () {",
+                  "  const ids = json.map(function (entry) { return entry.id; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('case_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Case Metadata",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"case_name\": \"Postman Regression Updated\",\n  \"country_of_focus\": \"co\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}"
+              ]
+            },
+            "description": "curl -X PATCH {{api_base_url}}/api/v1/cases/{{case_id}} -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('case metadata updates', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('case name updated', function () { pm.expect(json.case_name).to.eql('Postman Regression Updated'); });",
+                  "pm.test('country stays normalized', function () { pm.expect(json.country_of_focus).to.eql('CO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invite Collaborator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"collaborator.postman@example.com\",\n  \"role\": \"beneficiary\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/invite",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "invite"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/invite -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invitation is created', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('invitation is pending', function () { pm.expect(json.status).to.eql('pending'); });",
+                  "pm.test('invitation email matches', function () { pm.expect(json.email).to.eql('collaborator.postman@example.com'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Intake And Checklist",
+      "item": [
+        {
+          "name": "Save Baseline Intake Step",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"step_key\": \"postman_baseline\",\n  \"payload\": {\n    \"petitioner_first_name\": \"Jordan\",\n    \"petitioner_last_name\": \"Petitioner\",\n    \"petitioner_email\": \"petitioner.postman@example.com\",\n    \"petitioner_citizenship_status\": \"us_citizen\",\n    \"beneficiary_first_name\": \"Avery\",\n    \"beneficiary_last_name\": \"Garcia\",\n    \"beneficiary_email\": \"beneficiary.postman@example.com\",\n    \"beneficiary_country_of_birth\": \"Colombia\",\n    \"beneficiary_country_of_citizenship\": \"Colombia\",\n    \"beneficiary_location\": \"usa\",\n    \"beneficiary_entered_us_legally\": true,\n    \"beneficiary_current_immigration_status\": \"B2\",\n    \"marriage_date\": \"2025-07-20\",\n    \"first_marriage_for_both\": true,\n    \"household_size\": 2,\n    \"annual_income\": 72000,\n    \"employment_status\": \"employed\",\n    \"wants_i765\": true,\n    \"wants_i131\": false,\n    \"needs_translation\": true,\n    \"reviewed_current_fees\": true,\n    \"reviewed_current_form_editions\": true,\n    \"has_joint_lease\": true,\n    \"has_relationship_photos\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/intake/step",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "intake",
+                "step"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/intake/step -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('intake step saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('intake has no required missing fields', function () { pm.expect(json.missing_fields).to.eql([]); });",
+                  "pm.test('country of birth is normalized in merged intake', function () { pm.expect(json.merged.beneficiary_country_of_birth).to.eql('CO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Intake State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/intake",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "intake"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/intake"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('intake state returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('baseline intake step is present', function () {",
+                  "  const keys = json.steps.map(function (step) { return step.step_key; });",
+                  "  pm.expect(keys).to.include('postman_baseline');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Intake",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/intake/submit",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "intake",
+                "submit"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/intake/submit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('intake submits', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('submit generated checklist items', function () { pm.expect(json.generated_items).to.be.above(0); });",
+                  "pm.test('standard case is concurrent filing eligible', function () { pm.expect(json.facts.concurrent_filing_eligible).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Checklist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/checklist",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "checklist"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/checklist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('checklist returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const formI130 = json.items.find(function (item) { return item.code === 'form_i130'; });",
+                  "pm.test('core checklist item form_i130 exists', function () { pm.expect(formI130).to.exist; });",
+                  "pm.test('checklist includes required Form I-485', function () {",
+                  "  const formI485 = json.items.find(function (item) { return item.code === 'form_i485'; });",
+                  "  pm.expect(formI485.applicability).to.eql('required');",
+                  "});",
+                  "pm.collectionVariables.set('form_i130_item_id', formI130.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Checklist Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"completion_status\": \"in_progress\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/checklist-items/{{form_i130_item_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "checklist-items",
+                "{{form_i130_item_id}}"
+              ]
+            },
+            "description": "curl -X PATCH {{api_base_url}}/api/v1/checklist-items/{{form_i130_item_id}} -H 'Content-Type: application/json' -d '{\"completion_status\":\"in_progress\"}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('checklist item updates', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('checklist status is in_progress', function () { pm.expect(json.completion_status).to.eql('in_progress'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Regenerate Checklist",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/checklist/generate",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "checklist",
+                "generate"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/checklist/generate"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('checklist regenerates', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('facts still show translation need', function () { pm.expect(json.facts.needs_translation).to.eql(true); });",
+                  "pm.test('manual checklist status is preserved', function () {",
+                  "  const formI130 = json.items.find(function (item) { return item.code === 'form_i130'; });",
+                  "  pm.expect(formI130.completion_status).to.eql('in_progress');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Uploads QA And Readiness",
+      "item": [
+        {
+          "name": "Request I-130 Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checklist_item_code\": \"form_i130\",\n  \"original_filename\": \"postman-i130.pdf\",\n  \"mime_type\": \"application/pdf\",\n  \"document_language\": \"english\",\n  \"has_translation\": false,\n  \"extracted_fields\": {\n    \"satisfies_checklist_codes\": [\"form_i130\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/uploads/request",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "uploads",
+                "request"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/uploads/request -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-130 upload is requested', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('upload id is returned', function () { pm.expect(json.upload_id).to.match(/^[0-9a-f-]{36}$/); });",
+                  "pm.test('upload URL targets binary endpoint', function () { pm.expect(json.upload_url).to.include('/uploads/' + json.upload_id + '/binary'); });",
+                  "pm.collectionVariables.set('i130_upload_id', json.upload_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload I-130 Binary",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{sample_upload_file}}",
+                  "contentType": "application/pdf"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i130_upload_id}}/binary",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i130_upload_id}}",
+                "binary"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/uploads/{{i130_upload_id}}/binary -F 'file=@{{sample_upload_file}};type=application/pdf'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-130 binary uploads', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('upload status is uploaded', function () { pm.expect(json.upload_status).to.eql('uploaded'); });",
+                  "pm.test('file size is recorded', function () { pm.expect(json.file_size).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm I-130 Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_type\": \"form_i130\",\n  \"document_language\": \"english\",\n  \"has_translation\": false,\n  \"extraction_confidence\": 0.92,\n  \"extracted_fields\": {\n    \"petitioner_first_name\": \"Jordan\",\n    \"petitioner_last_name\": \"Petitioner\",\n    \"beneficiary_first_name\": \"Avery\",\n    \"beneficiary_last_name\": \"Garcia\",\n    \"marriage_date\": \"2025-07-20\",\n    \"satisfies_checklist_codes\": [\"form_i130\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i130_upload_id}}/confirm",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i130_upload_id}}",
+                "confirm"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/uploads/{{i130_upload_id}}/confirm -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-130 upload confirms', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('upload status is confirmed', function () { pm.expect(json.upload_status).to.eql('confirmed'); });",
+                  "pm.test('document type is saved', function () { pm.expect(json.document_type).to.eql('form_i130'); });",
+                  "pm.test('extracted fields merged', function () { pm.expect(json.extracted_fields.beneficiary_last_name).to.eql('Garcia'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Uploads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/uploads",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "uploads"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/uploads"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('uploads list returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('confirmed I-130 upload appears', function () {",
+                  "  const ids = json.map(function (upload) { return upload.id; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('i130_upload_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run QA",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/qa/run",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "qa",
+                "run"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/qa/run"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QA run returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('QA summary shape is present', function () {",
+                  "  pm.expect(json.summary).to.have.property('score');",
+                  "  pm.expect(json.summary).to.have.property('label');",
+                  "});",
+                  "pm.test('I-130 is not reported missing after confirmed upload', function () {",
+                  "  const codes = json.issues.map(function (issue) { return issue.code; });",
+                  "  pm.expect(codes).to.not.include('missing_form_i130');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get QA Results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/qa",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "qa"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/qa"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QA results return 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('QA result case id matches', function () { pm.expect(json.case_id).to.eql(pm.collectionVariables.get('case_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/readiness",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "readiness"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/readiness"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('readiness returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('readiness score is bounded', function () {",
+                  "  pm.expect(json.score).to.be.at.least(0);",
+                  "  pm.expect(json.score).to.be.at.most(100);",
+                  "});",
+                  "pm.test('readiness includes required completion percentage', function () { pm.expect(json.required_completion_pct).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 I-485 Ingestion",
+      "item": [
+        {
+          "name": "Save I-485 Page Answers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"page_08_marriage_spouse\",\n  \"answers\": {\n    \"petitioner_first_name\": \"Jordan\",\n    \"petitioner_last_name\": \"Petitioner\",\n    \"petitioner_citizenship_status\": \"us_citizen\",\n    \"beneficiary_marriage_count\": 1,\n    \"beneficiary_current_marital_status\": \"married\",\n    \"marriage_date\": \"2025-07-20\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 page saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('saved page is tracked', function () { pm.expect(json.saved_pages).to.include('page_08_marriage_spouse'); });",
+                  "pm.test('answer source is user', function () { pm.expect(json.answer_sources.petitioner_first_name.source_type).to.eql('user'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save I-485 Structured Address Page",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"page_04_addresses_ssn\",\n  \"answers\": {\n    \"beneficiary_current_address_line1\": \"123 Sample Street\",\n    \"beneficiary_current_address_line2\": \"Apt 4B\",\n    \"beneficiary_current_city\": \"Oakland\",\n    \"beneficiary_current_state\": \"CA\",\n    \"beneficiary_current_zip\": \"94612\",\n    \"beneficiary_address_since\": \"2025-04-15\",\n    \"beneficiary_current_address_five_years\": false,\n    \"beneficiary_prior_address_history\": [\n      {\n        \"line1\": \"456 Prior Avenue\",\n        \"line2\": \"Apt 2\",\n        \"city\": \"Sunnyvale\",\n        \"state\": \"CA\",\n        \"zip\": \"94086\",\n        \"country\": \"United States\",\n        \"from\": \"2023-01-01\",\n        \"to\": \"2025-04-14\"\n      },\n      {\n        \"line1\": \"789 Earlier Road\",\n        \"city\": \"Bogota\",\n        \"country\": \"Colombia\",\n        \"from\": \"2021-01-01\",\n        \"to\": \"2022-12-31\"\n      }\n    ],\n    \"beneficiary_recent_foreign_address\": {\n      \"line1\": \"789 Calle Falsa\",\n      \"city\": \"Bogota\",\n      \"country\": \"Colombia\",\n      \"from\": \"2020-01-01\",\n      \"to\": \"2022-12-31\"\n    },\n    \"beneficiary_has_ssn\": false,\n    \"beneficiary_wants_ssn\": true,\n    \"beneficiary_ssn_disclosure_consent\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 structured address page saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('address page is tracked', function () { pm.expect(json.saved_pages).to.include('page_04_addresses_ssn'); });",
+                  "pm.test('prior address history stays structured and repeatable', function () {",
+                  "  pm.expect(json.answers.beneficiary_prior_address_history).to.be.an('array').with.length(2);",
+                  "  pm.expect(json.answers.beneficiary_prior_address_history[0].city).to.eql('Sunnyvale');",
+                  "});",
+                  "pm.test('recent foreign address stays structured', function () {",
+                  "  pm.expect(json.answers.beneficiary_recent_foreign_address).to.be.an('object');",
+                  "  pm.expect(json.answers.beneficiary_recent_foreign_address.country).to.eql('Colombia');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save I-485 Structured Employment History Page",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"page_06_i864_employment\",\n  \"answers\": {\n    \"i485_i864_exemption\": \"not_requesting_exemption\",\n    \"prior_immigrant_visa_application\": false,\n    \"prior_permanent_residence_application\": false,\n    \"prior_lpr_status_rescinded\": false,\n    \"beneficiary_current_employer_or_school\": \"Acme Studio\",\n    \"beneficiary_current_occupation\": \"Designer\",\n    \"beneficiary_employment_history\": [\n      {\n        \"activity_type\": \"employment\",\n        \"name\": \"Acme Studio\",\n        \"occupation\": \"Designer\",\n        \"line1\": \"1 Main St\",\n        \"city\": \"Sunnyvale\",\n        \"state\": \"CA\",\n        \"zip\": \"94086\",\n        \"country\": \"United States\",\n        \"from\": \"2025-01-01\",\n        \"to\": \"\"\n      },\n      {\n        \"activity_type\": \"school\",\n        \"name\": \"Universidad de Ejemplo\",\n        \"occupation\": \"Student\",\n        \"city\": \"Bogota\",\n        \"country\": \"Colombia\",\n        \"from\": \"2022-01-15\",\n        \"to\": \"2024-12-20\",\n        \"outside_us\": true\n      },\n      {\n        \"activity_type\": \"unemployment\",\n        \"name\": \"Family support\",\n        \"occupation\": \"Unemployed\",\n        \"financial_support\": \"Savings and family support\",\n        \"from\": \"2021-01-01\",\n        \"to\": \"2021-12-31\"\n      }\n    ],\n    \"beneficiary_foreign_employer_or_school\": \"Universidad de Ejemplo\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 structured employment page saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('employment page is tracked', function () { pm.expect(json.saved_pages).to.include('page_06_i864_employment'); });",
+                  "pm.test('employment history stays structured and includes overflow entries', function () {",
+                  "  pm.expect(json.answers.beneficiary_employment_history).to.be.an('array').with.length(3);",
+                  "  pm.expect(json.answers.beneficiary_employment_history[1].outside_us).to.eql(true);",
+                  "});",
+                  "pm.test('employment answer source is user entered', function () { pm.expect(json.answer_sources.beneficiary_employment_history.source_type).to.eql('user'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resave I-485 Employment Page Timestamp Merge Regression",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"page_06_i864_employment\",\n  \"answers\": {\n    \"i485_i864_exemption\": \"not_requesting_exemption\",\n    \"prior_immigrant_visa_application\": false,\n    \"prior_permanent_residence_application\": false,\n    \"prior_lpr_status_rescinded\": false,\n    \"beneficiary_current_employer_or_school\": \"Acme Studio Updated\",\n    \"beneficiary_current_occupation\": \"Lead Designer\",\n    \"beneficiary_employment_history\": [\n      {\n        \"activity_type\": \"employment\",\n        \"name\": \"Acme Studio Updated\",\n        \"occupation\": \"Lead Designer\",\n        \"line1\": \"1 Main St\",\n        \"city\": \"Sunnyvale\",\n        \"state\": \"CA\",\n        \"zip\": \"94086\",\n        \"country\": \"United States\",\n        \"from\": \"2025-01-01\",\n        \"to\": \"\"\n      }\n    ],\n    \"beneficiary_foreign_employer_or_school\": \"Universidad de Ejemplo\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 employment page resaves without timestamp comparison error', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('latest employment answer wins after merge', function () {",
+                  "  pm.expect(json.answers.beneficiary_current_employer_or_school).to.eql('Acme Studio Updated');",
+                  "  pm.expect(json.answers.beneficiary_current_occupation).to.eql('Lead Designer');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save I-485 Biographic Checkbox Page",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"page_09_children_biographic\",\n  \"answers\": {\n    \"children_count\": 0,\n    \"children_details\": \"\",\n    \"beneficiary_ethnicity\": \"hispanic_or_latino\",\n    \"beneficiary_race\": [\n      \"white\"\n    ],\n    \"beneficiary_height_feet\": 5,\n    \"beneficiary_height_inches\": 4,\n    \"beneficiary_weight_pounds\": 135,\n    \"beneficiary_eye_color\": \"brown\",\n    \"beneficiary_hair_color\": \"black\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/page -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 biographic checkbox page saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('biographic page is tracked', function () { pm.expect(json.saved_pages).to.include('page_09_children_biographic'); });",
+                  "pm.test('single checkbox-style color answers are saved as scalar option values', function () {",
+                  "  pm.expect(json.answers.beneficiary_eye_color).to.eql('brown');",
+                  "  pm.expect(json.answers.beneficiary_hair_color).to.eql('black');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get I-485 Ingestion State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 state returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-485 state includes evaluation', function () { pm.expect(json.evaluation).to.be.an('object'); });",
+                  "pm.test('I-485 state preserves structured repeatable answers', function () {",
+                  "  pm.expect(json.answers.beneficiary_prior_address_history).to.be.an('array');",
+                  "  pm.expect(json.answers.beneficiary_employment_history).to.be.an('array');",
+                  "});",
+                  "pm.test('I-485 state has no timestamp merge failure after repeated page saves', function () {",
+                  "  pm.expect(json.answers.beneficiary_current_employer_or_school).to.eql('Acme Studio Updated');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get I-485 Fill Preview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/form-fill-preview",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "form-fill-preview"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/form-fill-preview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 fill preview returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-485 preview includes generation status', function () { pm.expect(json.generation_status).to.be.a('string'); });",
+                  "pm.test('I-485 preview exposes field counts', function () { pm.expect(json.field_count).to.be.a('number'); });",
+                  "pm.test('I-485 preview exposes structured address and employment fields', function () {",
+                  "  const targets = json.fields.map(function (field) { return field.target_key; });",
+                  "  pm.expect(targets).to.include.members(['form_i485.beneficiary_recent_foreign_address', 'form_i485.beneficiary_employment_history']);",
+                  "});",
+                  "pm.test('I-485 preview exposes single checkbox-style colors', function () {",
+                  "  const eye = json.fields.find(function (field) { return field.question_id === 'beneficiary_eye_color'; });",
+                  "  const hair = json.fields.find(function (field) { return field.question_id === 'beneficiary_hair_color'; });",
+                  "  pm.expect(eye.answer_type).to.eql('single_check');",
+                  "  pm.expect(eye.value).to.eql('brown');",
+                  "  pm.expect(hair.answer_type).to.eql('single_check');",
+                  "  pm.expect(hair.value).to.eql('black');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request I-485 Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checklist_item_code\": \"form_i485\",\n  \"original_filename\": \"postman-i485.pdf\",\n  \"mime_type\": \"application/pdf\",\n  \"document_language\": \"english\",\n  \"has_translation\": false,\n  \"extracted_fields\": {\n    \"beneficiary_first_name\": \"Avery\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/uploads/request",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "uploads",
+                "request"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/uploads/request -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 upload is requested', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('i485_upload_id', json.upload_id);",
+                  "pm.test('I-485 upload id is returned', function () { pm.expect(json.upload_id).to.match(/^[0-9a-f-]{36}$/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload I-485 Binary",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{sample_upload_file}}",
+                  "contentType": "application/pdf"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i485_upload_id}}/binary",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i485_upload_id}}",
+                "binary"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/uploads/{{i485_upload_id}}/binary -F 'file=@{{sample_upload_file}};type=application/pdf'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 binary uploads', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-485 upload status is uploaded', function () { pm.expect(json.upload_status).to.eql('uploaded'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm I-485 Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_type\": \"form_i485\",\n  \"document_language\": \"english\",\n  \"has_translation\": false,\n  \"extraction_confidence\": 0.86,\n  \"extracted_fields\": {\n    \"beneficiary_first_name\": \"Avery\",\n    \"beneficiary_last_name\": \"Garcia\",\n    \"beneficiary_i94_number\": \"898715649A4\",\n    \"beneficiary_entered_us_legally\": true,\n    \"beneficiary_first_marriage_detected\": true,\n    \"beneficiary_prior_address_history\": [{\"city\": \"Sunnyvale\"}],\n    \"petitioner_first_name\": \"Jordan\",\n    \"petitioner_last_name\": \"Petitioner\",\n    \"marriage_date\": \"2025-07-20\",\n    \"satisfies_checklist_codes\": [\"form_i485\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i485_upload_id}}/confirm",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i485_upload_id}}",
+                "confirm"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/uploads/{{i485_upload_id}}/confirm -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 upload confirms', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-485 document type is saved', function () { pm.expect(json.document_type).to.eql('form_i485'); });",
+                  "pm.test('I-485 extracted I-94 is saved', function () { pm.expect(json.extracted_fields.beneficiary_i94_number).to.eql('898715649A4'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Import I-485 Answers From Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upload_id\": \"{{i485_upload_id}}\",\n  \"overwrite\": false\n}"
+            },
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/import-from-upload",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "i485-ingestion",
+                "import-from-upload"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/i485-ingestion/import-from-upload -H 'Content-Type: application/json' -d '{...}'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 import returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-485 import uses requested upload', function () { pm.expect(json.upload_id).to.eql(pm.collectionVariables.get('i485_upload_id')); });",
+                  "pm.test('I-485 import creates proposals', function () { pm.expect(json.proposals.length).to.be.above(0); });",
+                  "pm.test('I-485 imported state keeps beneficiary name', function () { pm.expect(json.state.answers.beneficiary_first_name).to.eql('Avery'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Supplemental Forms And Filing Validation",
+      "item": [
+        {
+          "name": "Get Filing Validation Capabilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/filing-validation",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "filing-validation"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/filing-validation"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('filing validation capabilities return 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const byCode = Object.fromEntries(json.forms.map(function (form) { return [form.form_code, form]; }));",
+                  "pm.test('default validation scope is I-485 and I-864', function () { pm.expect(json.default_validation_scope).to.eql(['form_i485', 'form_i864']); });",
+                  "pm.test('supported validator codes are listed', function () { pm.expect(json.supported_form_codes).to.include.members(['form_i130', 'form_i130a', 'form_i131', 'form_i485', 'form_i765', 'form_i864', 'form_g1145']); });",
+                  "pm.test('I-131 capability is source dated and template aware', function () {",
+                  "  pm.expect(byCode.form_i131.source.questionnaire_version).to.eql('i131-01-20-25-local-v1');",
+                  "  pm.expect(byCode.form_i131.template_field_count).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get I-864 Supplemental Questionnaire",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/content/forms/i864/questionnaire",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "content",
+                "forms",
+                "i864",
+                "questionnaire"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/content/forms/i864/questionnaire"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-864 questionnaire returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-864 questionnaire is source dated', function () { pm.expect(json.verified_on).to.match(/^\\d{4}-\\d{2}-\\d{2}$/); });",
+                  "pm.test('I-864 questionnaire has pages and official source URL', function () {",
+                  "  pm.expect(json.form_code).to.eql('form_i864');",
+                  "  pm.expect(json.pages.length).to.be.above(0);",
+                  "  pm.expect(json.official_url).to.include('uscis.gov');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Import I-864 Answers From Case Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/forms/i864/ingestion/import-from-case",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "forms",
+                "i864",
+                "ingestion",
+                "import-from-case"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/forms/i864/ingestion/import-from-case -H 'Content-Type: application/json' -d '{...}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"overwrite\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-864 case-data import returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-864 import proposes and saves sponsor answers', function () {",
+                  "  pm.expect(json.imported_count).to.be.above(0);",
+                  "  pm.expect(json.state.answers.i864_sponsor_basis).to.eql('petitioner');",
+                  "  pm.expect(json.state.answers.i864_household_income).to.eql(72000);",
+                  "});",
+                  "pm.test('I-864 imported answer source is case intake', function () { pm.expect(json.state.answer_sources.i864_sponsor_basis.source_type).to.eql('case_intake'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview I-864 Fill State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/forms/i864/ingestion/form-fill-preview",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "forms",
+                "i864",
+                "ingestion",
+                "form-fill-preview"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/forms/i864/ingestion/form-fill-preview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-864 fill preview returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-864 preview has field and readiness shape', function () {",
+                  "  pm.expect(json.form_key).to.eql('i864');",
+                  "  pm.expect(json.field_count).to.be.a('number');",
+                  "  pm.expect(json.missing_required_count).to.be.a('number');",
+                  "});",
+                  "pm.test('I-864 preview includes imported household income field', function () {",
+                  "  const questionIds = json.fields.map(function (field) { return field.question_id; });",
+                  "  pm.expect(questionIds).to.include('i864_household_income');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Opt Into I-131 And Add Travel Preflight Facts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/intake/step",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "intake",
+                "step"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/intake/step -H 'Content-Type: application/json' -d '{...}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"step_key\": \"postman_i131_preflight\",\n  \"payload\": {\n    \"wants_i131\": true,\n    \"beneficiary_date_of_birth\": \"2001-11-23\",\n    \"beneficiary_country_of_citizenship\": \"CO\",\n    \"beneficiary_class_of_admission\": \"B2\",\n    \"beneficiary_i94_number\": \"898715649A4\",\n    \"beneficiary_current_address_line1\": \"123 Sample Street\",\n    \"beneficiary_current_address_line2\": \"Apt 4B\",\n    \"beneficiary_current_city\": \"Oakland\",\n    \"beneficiary_current_state\": \"CA\",\n    \"beneficiary_current_zip\": \"94612\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-131 preflight intake facts save', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-131 opt-in is reflected in merged intake', function () { pm.expect(json.merged.wants_i131).to.eql(true); });",
+                  "pm.test('structured current address is reflected in merged intake', function () { pm.expect(json.merged.beneficiary_current_city).to.eql('Oakland'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Import I-131 Answers From Case Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/forms/i131/ingestion/import-from-case",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "forms",
+                "i131",
+                "ingestion",
+                "import-from-case"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/forms/i131/ingestion/import-from-case -H 'Content-Type: application/json' -d '{...}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"overwrite\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-131 case-data import returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-131 import sets the pending-I-485 advance parole path', function () {",
+                  "  pm.expect(json.state.answers.i131_application_type).to.eql('advanced_parole_i485_pending');",
+                  "  pm.expect(json.state.answer_sources.i131_application_type.source_type).to.eql('case_intake');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save I-131 Proposed Travel Page",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/forms/i131/ingestion/page",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "forms",
+                "i131",
+                "ingestion",
+                "page"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/forms/i131/ingestion/page -H 'Content-Type: application/json' -d '{...}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_id\": \"i131_page_05_proposed_travel\",\n  \"answers\": {\n    \"i131_intended_departure_date\": \"2026-11-03\",\n    \"i131_travel_purpose\": \"Visit family while the I-485 is pending.\",\n    \"i131_countries_to_visit\": \"Colombia\",\n    \"i131_trip_count\": \"multiple\",\n    \"i131_expected_trip_length\": \"14 days\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-131 proposed travel page saves', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('I-131 travel page is tracked', function () { pm.expect(json.saved_pages).to.include('i131_page_05_proposed_travel'); });",
+                  "pm.test('I-131 travel purpose is saved', function () { pm.expect(json.answers.i131_travel_purpose).to.include('Visit family'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run Default Filing Validation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "filing-validation"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('default filing validation returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('default filing validation scope is stable', function () { pm.expect(json.validation_scope).to.eql(['form_i485', 'form_i864']); });",
+                  "pm.test('default filing validation returns per-form issues', function () {",
+                  "  const formCodes = json.forms.map(function (form) { return form.form_code; });",
+                  "  pm.expect(formCodes).to.eql(['form_i485', 'form_i864']);",
+                  "  pm.expect(json.summary.form_count).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run Requested Form Filing Validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "filing-validation"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation -H 'Content-Type: application/json' -d '{...}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"form_codes\": [\n    \"form_i130\",\n    \"form_i130a\",\n    \"form_i765\",\n    \"form_i131\",\n    \"form_g1145\"\n  ],\n  \"template_paths\": {\n    \"form_i131\": \"missing-template.pdf\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('requested filing validation returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const byCode = Object.fromEntries(json.forms.map(function (form) { return [form.form_code, form]; }));",
+                  "pm.test('requested filing validation includes selected forms', function () { pm.expect(Object.keys(byCode)).to.include.members(['form_i130', 'form_i130a', 'form_i765', 'form_i131', 'form_g1145']); });",
+                  "pm.test('I-131 validation reports source metadata and missing evidence', function () {",
+                  "  pm.expect(byCode.form_i131.source.questionnaire_version).to.eql('i131-01-20-25-local-v1');",
+                  "  const i131Codes = byCode.form_i131.issues.map(function (issue) { return issue.code; });",
+                  "  pm.expect(i131Codes).to.include('form_i131_beneficiary_passport_photos_evidence_missing_required');",
+                  "});",
+                  "pm.test('validation roadmap keeps partial validators visible', function () {",
+                  "  const roadmapCodes = json.roadmap.map(function (entry) { return entry.form_code; });",
+                  "  pm.expect(roadmapCodes).to.include.members(['form_i130', 'form_i130a', 'form_i131', 'form_i765', 'form_g1145']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unsupported Filing Validation Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "filing-validation"
+              ]
+            },
+            "description": "curl -X POST {{api_base_url}}/api/v1/cases/{{case_id}}/filing-validation -H 'Content-Type: application/json' -d '{\"form_codes\":[\"form_i999\"]}'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"form_codes\": [\n    \"form_i999\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('unsupported filing validation request returns 200 with roadmap issue', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('unsupported validator is explicit and non-passing', function () {",
+                  "  pm.expect(json.summary.status).to.eql('needs_review');",
+                  "  pm.expect(json.forms[0].issues[0].code).to.eql('form_i999_validator_not_implemented');",
+                  "});",
+                  "pm.test('unsupported form appears in roadmap as unknown', function () {",
+                  "  const item = json.roadmap.find(function (entry) { return entry.form_code === 'form_i999'; });",
+                  "  pm.expect(item.status).to.eql('unknown');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 Guardrails And Cleanup",
+      "item": [
+        {
+          "name": "Missing Case Returns 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{missing_case_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{missing_case_id}}"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{missing_case_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('missing case returns 404', function () { pm.response.to.have.status(404); });",
+                  "const json = pm.response.json();",
+                  "pm.test('missing case error is explicit', function () { pm.expect(json.detail).to.eql('Case not found'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete I-130 Upload",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i130_upload_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i130_upload_id}}"
+              ]
+            },
+            "description": "curl -X DELETE {{api_base_url}}/api/v1/uploads/{{i130_upload_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-130 upload deletes', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete I-485 Upload",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/uploads/{{i485_upload_id}}",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "{{i485_upload_id}}"
+              ]
+            },
+            "description": "curl -X DELETE {{api_base_url}}/api/v1/uploads/{{i485_upload_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('I-485 upload deletes', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Uploads Empty After Cleanup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base_url}}/api/v1/cases/{{case_id}}/uploads",
+              "host": [
+                "{{api_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cases",
+                "{{case_id}}",
+                "uploads"
+              ]
+            },
+            "description": "curl {{api_base_url}}/api/v1/cases/{{case_id}}/uploads"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('uploads cleanup check returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('test uploads are removed', function () { pm.expect(json).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

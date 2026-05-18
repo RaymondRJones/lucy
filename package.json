@@ -1,0 +1,27 @@
+{
+  "name": "lucy",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "./.venv313/bin/uvicorn app.main:app --reload --app-dir apps/api --port 8000",
+    "dev:web": "npm run dev --workspace web",
+    "dev:lan": "node scripts/dev-lan.mjs",
+    "ingest:evidence": "./.venv313/bin/python -m app.cli.ingest_evidence --path MARRIAGE_EVIDENCE",
+    "inspect:case": "./.venv313/bin/python -m app.cli.inspect_case",
+    "seed:happy-path": "./.venv313/bin/python -m app.cli.seed_happy_path",
+    "seed:packet-scenarios": "./.venv313/bin/python -m app.cli.seed_packet_scenarios",
+    "generate:g1450": "./.venv313/bin/python -m app.cli.generate_g1450",
+    "generate:i485": "./.venv313/bin/python -m app.cli.generate_i485",
+    "seed:i485-sample": "./.venv313/bin/python -m app.cli.seed_i485_sample",
+    "test:api": "./.venv313/bin/pytest apps/api/tests",
+    "test:postman": "newman run test-postman-collection.json --working-dir .",
+    "build:web": "npm run build --workspace web",
+    "lint:web": "npm run lint --workspace web",
+    "typecheck:web": "npm run typecheck --workspace web"
+  },
+  "devDependencies": {
+    "newman": "^6.2.2"
+  }
+}

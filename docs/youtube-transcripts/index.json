@@ -1,0 +1,57 @@
+{
+  "fetched_on": "2026-04-29",
+  "tool": "youtube-transcript-api",
+  "language_preference": [
+    "en"
+  ],
+  "videos": [
+    {
+      "form_code": "I-485",
+      "video_id": "Hv35h6ND8No",
+      "url": "https://www.youtube.com/watch?v=Hv35h6ND8No",
+      "title_hint": "I-485 walkthrough transcript",
+      "language": "English",
+      "language_code": "en",
+      "is_generated": false,
+      "snippet_count": 453,
+      "text_path": "docs/youtube-transcripts/i485/transcript.txt",
+      "json_path": "docs/youtube-transcripts/i485/transcript.json"
+    },
+    {
+      "form_code": "I-131",
+      "video_id": "Ec3HdljZ1nU",
+      "url": "https://www.youtube.com/watch?v=Ec3HdljZ1nU",
+      "title_hint": "I-131 walkthrough transcript",
+      "language": "English",
+      "language_code": "en",
+      "is_generated": false,
+      "snippet_count": 144,
+      "text_path": "docs/youtube-transcripts/i131/transcript.txt",
+      "json_path": "docs/youtube-transcripts/i131/transcript.json"
+    },
+    {
+      "form_code": "I-765",
+      "video_id": "iOiBvBzJD7I",
+      "url": "https://www.youtube.com/watch?v=iOiBvBzJD7I",
+      "title_hint": "I-765 walkthrough transcript",
+      "language": "English (auto-generated)",
+      "language_code": "en",
+      "is_generated": true,
+      "snippet_count": 199,
+      "text_path": "docs/youtube-transcripts/i765/transcript.txt",
+      "json_path": "docs/youtube-transcripts/i765/transcript.json"
+    },
+    {
+      "form_code": "I-864",
+      "video_id": "s06z2X7xI_4",
+      "url": "https://www.youtube.com/watch?v=s06z2X7xI_4",
+      "title_hint": "I-864 walkthrough transcript",
+      "language": "English",
+      "language_code": "en",
+      "is_generated": false,
+      "snippet_count": 330,
+      "text_path": "docs/youtube-transcripts/i864/transcript.txt",
+      "json_path": "docs/youtube-transcripts/i864/transcript.json"
+    }
+  ]
+}

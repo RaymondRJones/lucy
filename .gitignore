@@ -1,0 +1,36 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.*.example
+.next
+.venv
+.venv*/
+node_modules
+dist
+coverage
+*.tsbuildinfo
+__pycache__
+*.pyc
+*.egg-info
+.pytest_cache
+.mypy_cache
+
+# Local PII and user-provided evidence. Keep these on disk only.
+MARRIAGE_EVIDENCE/
+credit-card-info.json
+local-card-info.json
+
+# Local runtime state and generated user documents.
+storage/*.db
+storage/*.db-*
+storage/*.sqlite
+storage/*.sqlite3
+storage/generated/
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Avoid accidentally adding personal PDFs outside approved public fixtures/templates.
+*.pdf
+!blank-immigration-documents/*.pdf
+!docs/postman/fixtures/*.pdf

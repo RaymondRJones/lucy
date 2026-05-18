@@ -1,0 +1,1213 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+
+import { CaseSelector } from "@/components/case-selector";
+import {
+  apiUrl,
+  generateFormPdf,
+  getFormFillPreview,
+  getFormIngestionState,
+  getFormQuestionnaire,
+  getPrescreenState,
+  importFormFromCaseData,
+  saveFormPage,
+} from "@/lib/api";
+import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import {
+  manualFlagCountForPage,
+  manualFlagsForPage,
+  manualFlagSummaries,
+  normalizeManualQuestionFlags,
+  type ManualQuestionFlags,
+} from "@/lib/manual-question-flags";
+import {
+  ensurePacketFormOption,
+  nextPacketFormOption,
+  packetFormHref,
+  packetFormsForIncluded,
+  type PacketFormFlowOption,
+} from "@/lib/packet-form-flow";
+import type {
+  CaseSummary,
+  FormFillPreview,
+  FormFlag,
+  FormIngestionState,
+  FormPdfGenerateResponse,
+  FormQuestion,
+  FormQuestionnaire,
+  FormQuestionnairePage,
+  PrescreenState,
+} from "@/lib/types";
+const SUPPORTED_FORMS = new Set(["i130", "i130a", "i765", "i131", "i864"]);
+const MISSING_REQUIRED_DISPLAY_LIMIT = 5;
+
+const US_STATE_OPTIONS = [
+  { value: "AL", label: "Alabama" },
+  { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" },
+  { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" },
+  { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" },
+  { value: "DE", label: "Delaware" },
+  { value: "DC", label: "District of Columbia" },
+  { value: "FL", label: "Florida" },
+  { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" },
+  { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" },
+  { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" },
+  { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" },
+  { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" },
+  { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" },
+  { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" },
+  { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" },
+  { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" },
+  { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" },
+  { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" },
+  { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" },
+  { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" },
+  { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" },
+  { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" },
+  { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" },
+  { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" },
+  { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" },
+  { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" },
+  { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" },
+  { value: "WY", label: "Wyoming" },
+  { value: "AA", label: "Armed Forces Americas" },
+  { value: "AE", label: "Armed Forces Europe" },
+  { value: "AP", label: "Armed Forces Pacific" },
+  { value: "AS", label: "American Samoa" },
+  { value: "FM", label: "Federated States of Micronesia" },
+  { value: "GU", label: "Guam" },
+  { value: "MH", label: "Marshall Islands" },
+  { value: "MP", label: "Northern Mariana Islands" },
+  { value: "PR", label: "Puerto Rico" },
+  { value: "PW", label: "Palau" },
+  { value: "VI", label: "U.S. Virgin Islands" },
+];
+
+const US_STATE_CODES = new Set(US_STATE_OPTIONS.map((option) => option.value));
+const US_STATE_NAME_TO_CODE = new Map(
+  US_STATE_OPTIONS.map((option) => [option.label.toLowerCase().replace(/[^a-z]/g, ""), option.value]),
+);
+
+const ADDRESS_STATE_QUESTION_IDS = new Set([
+  "beneficiary_mailing_state",
+  "beneficiary_physical_state",
+  "petitioner_current_state",
+]);
+
+type AddressQuestionGroup = {
+  id: string;
+  title: string;
+  description: string;
+  questionIds: string[];
+};
+
+type QuestionDisplayItem =
+  | { type: "group"; group: AddressQuestionGroup; questions: FormQuestion[] }
+  | { type: "question"; question: FormQuestion };
+
+const I765_ADDRESS_GROUPS: AddressQuestionGroup[] = [
+  {
+    id: "i765_mailing_address",
+    title: "Mailing address",
+    description: "Where USCIS should send notices for this work authorization request.",
+    questionIds: [
+      "beneficiary_mailing_in_care_of",
+      "beneficiary_mailing_address_line1",
+      "beneficiary_mailing_address_line2",
+      "beneficiary_mailing_city",
+      "beneficiary_mailing_state",
+      "beneficiary_mailing_zip",
+    ],
+  },
+  {
+    id: "i765_physical_address",
+    title: "Physical address, if different",
+    description: "The applicant's actual residence only when it is not the mailing address.",
+    questionIds: [
+      "beneficiary_physical_address_line1",
+      "beneficiary_physical_address_line2",
+      "beneficiary_physical_city",
+      "beneficiary_physical_state",
+      "beneficiary_physical_zip",
+    ],
+  },
+];
+
+const I765_ADDRESS_GROUP_BY_QUESTION_ID = new Map(
+  I765_ADDRESS_GROUPS.flatMap((group) => group.questionIds.map((questionId) => [questionId, group] as const)),
+);
+
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+function normalizeFormKey(value: string | null | undefined) {
+  const normalized = (value || "i765").toLowerCase().replace("-", "");
+  return SUPPORTED_FORMS.has(normalized) ? normalized : "i765";
+}
+
+function formatStatus(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function fieldValue(value: unknown) {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  return "";
+}
+
+function normalizeUsStateCode(value: unknown) {
+  const raw = fieldValue(value).trim();
+  if (!raw) {
+    return "";
+  }
+  const upper = raw.toUpperCase();
+  if (US_STATE_CODES.has(upper)) {
+    return upper;
+  }
+  return US_STATE_NAME_TO_CODE.get(raw.toLowerCase().replace(/[^a-z]/g, "")) ?? "";
+}
+
+function isAddressStateQuestion(question: FormQuestion) {
+  return ADDRESS_STATE_QUESTION_IDS.has(question.id);
+}
+
+function isPositiveIntegerQuestion(question: FormQuestion) {
+  return question.id === "i131_expected_trip_length";
+}
+
+function normalizeQuestionAnswerForSave(question: FormQuestion, value: unknown) {
+  if (isAddressStateQuestion(question)) {
+    return normalizeUsStateCode(value) || value;
+  }
+  if (isPositiveIntegerQuestion(question)) {
+    const digits = fieldValue(value).replace(/\D/g, "");
+    return digits ? Number(digits) : "";
+  }
+  return value;
+}
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === "" || value === false) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasMeaningfulValue);
+  }
+  if (typeof value === "object") {
+    return Object.values(value).some(hasMeaningfulValue);
+  }
+  return true;
+}
+
+function normalizeInputValue(question: FormQuestion, rawValue: string | boolean | string[]) {
+  if (isPositiveIntegerQuestion(question)) {
+    const digits = String(rawValue).replace(/\D/g, "");
+    return digits ? Number(digits) : "";
+  }
+  if (question.answer_type === "number") {
+    if (rawValue === "") {
+      return "";
+    }
+    return Number(rawValue);
+  }
+  return rawValue;
+}
+
+function flagTone(flag: FormFlag) {
+  if (flag.severity === "blocking") {
+    return "border-red-200 bg-red-50 text-red-950";
+  }
+  if (flag.category === "outside_niche") {
+    return "border-amber-200 bg-amber-50 text-amber-950";
+  }
+  return "border-ink/10 bg-white text-ink";
+}
+
+function isChecked(value: unknown, option: string) {
+  return Array.isArray(value) && value.includes(option);
+}
+
+function sourceLabel(source: FormIngestionState["answer_sources"][string] | undefined) {
+  if (!source) {
+    return null;
+  }
+  if (source.source_type === "user") {
+    return "User entered";
+  }
+  return formatStatus(source.source_type);
+}
+
+function buildQuestionDisplayItems(formKey: string, page: FormQuestionnairePage): QuestionDisplayItem[] {
+  if (formKey !== "i765" || page.id !== "i765_page_02_addresses") {
+    return page.questions.map((question) => ({ type: "question", question }));
+  }
+
+  const questionsById = new Map(page.questions.map((question) => [question.id, question]));
+  const renderedGroupIds = new Set<string>();
+  const items: QuestionDisplayItem[] = [];
+
+  for (const question of page.questions) {
+    const group = I765_ADDRESS_GROUP_BY_QUESTION_ID.get(question.id);
+    if (!group) {
+      items.push({ type: "question", question });
+      continue;
+    }
+    if (renderedGroupIds.has(group.id)) {
+      continue;
+    }
+    renderedGroupIds.add(group.id);
+    items.push({
+      type: "group",
+      group,
+      questions: group.questionIds.map((questionId) => questionsById.get(questionId)).filter((entry): entry is FormQuestion => Boolean(entry)),
+    });
+  }
+
+  return items;
+}
+
+function QuestionHelpButton({ question }: { question: FormQuestion }) {
+  if (!question.deep_explanation) {
+    return null;
+  }
+
+  return (
+    <span className="group/help relative inline-flex">
+      <button
+        type="button"
+        aria-label={`More context for ${question.label}`}
+        className="flex h-6 w-6 items-center justify-center rounded-full border border-pine/35 bg-white text-xs font-bold text-pine transition hover:border-pine focus:border-pine"
+      >
+        ?
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-8 z-20 hidden w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-ink/15 bg-white p-3 text-left text-xs font-normal leading-5 text-ink shadow-lg group-focus-within/help:block group-hover/help:block"
+      >
+        <span className="block font-semibold text-ink">How to answer this</span>
+        <span className="mt-1 block">{question.deep_explanation}</span>
+        {question.teaching_source ? (
+          <span className="mt-2 block border-t border-ink/10 pt-2 text-ink/55">
+            Based on {question.teaching_source.label}, fetched {question.teaching_source.fetched_on}.
+          </span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function QuestionControl({
+  question,
+  value,
+  onChange,
+}: {
+  question: FormQuestion;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  if (question.answer_type === "boolean") {
+    return (
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          className={classNames(
+            "h-10 rounded-lg border px-4 text-sm font-semibold",
+            value === true ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
+          )}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          className={classNames(
+            "h-10 rounded-lg border px-4 text-sm font-semibold",
+            value === false ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
+          )}
+        >
+          No
+        </button>
+      </div>
+    );
+  }
+
+  if (question.answer_type === "select") {
+    return (
+      <select
+        value={fieldValue(value)}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+      >
+        <option value="">Select</option>
+        {question.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (question.answer_type === "multi_select") {
+    return (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {question.options.map((option) => (
+          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={isChecked(value, option.value)}
+              onChange={(event) => {
+                const current = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+                onChange(event.target.checked ? [...current, option.value] : current.filter((entry) => entry !== option.value));
+              }}
+              className="h-4 w-4 rounded border-ink/30 text-pine"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  if (isAddressStateQuestion(question)) {
+    return (
+      <select
+        value={normalizeUsStateCode(value)}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+      >
+        <option value="">Select</option>
+        {US_STATE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (isPositiveIntegerQuestion(question)) {
+    return (
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={fieldValue(value).replace(/\D/g, "")}
+        onChange={(event) => onChange(normalizeInputValue(question, event.target.value))}
+        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+      />
+    );
+  }
+
+  if (["textarea", "address", "address_list"].includes(question.answer_type)) {
+    return (
+      <textarea
+        value={fieldValue(value)}
+        onChange={(event) => onChange(event.target.value)}
+        rows={3}
+        className="w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm leading-6 text-ink"
+      />
+    );
+  }
+
+  const inputType = question.answer_type === "date" ? "date" : question.answer_type === "number" ? "number" : "text";
+  return (
+    <input
+      type={inputType}
+      value={fieldValue(value)}
+      onChange={(event) => onChange(normalizeInputValue(question, event.target.value))}
+      className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+    />
+  );
+}
+
+export function FormIngestionWorkspace({
+  initialCaseId,
+  initialFormKey,
+}: {
+  initialCaseId?: string;
+  initialFormKey?: string;
+}) {
+  const [formKey] = useState(normalizeFormKey(initialFormKey));
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [questionnaire, setQuestionnaire] = useState<FormQuestionnaire | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const [answerSources, setAnswerSources] = useState<FormIngestionState["answer_sources"]>({});
+  const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
+  const [flags, setFlags] = useState<FormFlag[]>([]);
+  const [fillPreview, setFillPreview] = useState<FormFillPreview | null>(null);
+  const [generatedPdf, setGeneratedPdf] = useState<FormPdfGenerateResponse | null>(null);
+  const [prescreen, setPrescreen] = useState<PrescreenState | null>(null);
+  const [completionPct, setCompletionPct] = useState(0);
+  const [readiness, setReadiness] = useState("not_loaded");
+  const [message, setMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [loadedCaseStateKey, setLoadedCaseStateKey] = useState<string | null>(null);
+  const autoSyncKeyRef = useRef<string | null>(null);
+  const canGeneratePdf = Boolean(questionnaire?.local_template_pdf);
+
+  useEffect(() => {
+    if (initialCaseId) {
+      rememberCaseId(initialCaseId);
+      setCaseId(initialCaseId);
+      return;
+    }
+    setCaseId(getSavedCaseId());
+  }, [initialCaseId]);
+
+  useEffect(() => {
+    setQuestionnaire(null);
+    setSelectedPageId("");
+    setAnswers({});
+    setAnswerSources({});
+    setManualFlags({});
+    setFlags([]);
+    setFillPreview(null);
+    setGeneratedPdf(null);
+    setCompletionPct(0);
+    setReadiness("not_loaded");
+    getFormQuestionnaire(formKey)
+      .then((payload) => {
+        setQuestionnaire(payload);
+        setSelectedPageId(payload.pages[0]?.id ?? "");
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load form questionnaire."));
+  }, [formKey]);
+
+  useEffect(() => {
+    if (!caseId) {
+      return;
+    }
+    const stateKey = `${caseId}:${formKey}`;
+    setLoadedCaseStateKey(null);
+    getPrescreenState(caseId)
+      .then(setPrescreen)
+      .catch(() => setPrescreen(null));
+    getFormIngestionState(caseId, formKey)
+      .then((state) => {
+        setAnswers(state.answers);
+        setAnswerSources(state.answer_sources);
+        setManualFlags(normalizeManualQuestionFlags(state.manual_flags));
+        setFlags(state.evaluation.flags);
+        setCompletionPct(state.evaluation.completion_pct);
+        setReadiness(state.evaluation.readiness);
+        return getFormFillPreview(caseId, formKey);
+      })
+      .then((preview) => {
+        setFillPreview(preview);
+        setLoadedCaseStateKey(stateKey);
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load saved form answers."));
+  }, [caseId, formKey]);
+
+  useEffect(() => {
+    if (!caseId) {
+      return;
+    }
+    const stateKey = `${caseId}:${formKey}`;
+    if (loadedCaseStateKey !== stateKey || autoSyncKeyRef.current === stateKey) {
+      return;
+    }
+    autoSyncKeyRef.current = stateKey;
+    importFormFromCaseData(caseId, formKey)
+      .then((result) => {
+        setAnswers(result.state.answers);
+        setAnswerSources(result.state.answer_sources);
+        setManualFlags(normalizeManualQuestionFlags(result.state.manual_flags));
+        setFlags(result.state.evaluation.flags);
+        setCompletionPct(result.state.evaluation.completion_pct);
+        setReadiness(result.state.evaluation.readiness);
+        getFormFillPreview(caseId, formKey)
+          .then((preview) => setFillPreview(preview))
+          .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh form fill preview."));
+        setMessage(
+          result.imported_count
+            ? `Synced ${result.imported_count} answers from saved case data. ${result.skipped_count} existing form answers were preserved.`
+            : "Checked saved case data; this form is already in sync.",
+        );
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Could not sync answers from case data."));
+  }, [caseId, formKey, loadedCaseStateKey]);
+
+  function refreshPreview(activeCaseId: string) {
+    getFormFillPreview(activeCaseId, formKey)
+      .then((preview) => setFillPreview(preview))
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh form fill preview."));
+  }
+
+  function applyState(state: FormIngestionState) {
+    setAnswers(state.answers);
+    setAnswerSources(state.answer_sources);
+    setManualFlags(normalizeManualQuestionFlags(state.manual_flags));
+    setFlags(state.evaluation.flags);
+    setCompletionPct(state.evaluation.completion_pct);
+    setReadiness(state.evaluation.readiness);
+    if (caseId) {
+      refreshPreview(caseId);
+    }
+  }
+
+  const selectedPage = useMemo<FormQuestionnairePage | null>(() => {
+    return questionnaire?.pages.find((page) => page.id === selectedPageId) ?? null;
+  }, [questionnaire, selectedPageId]);
+
+  const pageFlags = useMemo(() => {
+    if (!selectedPage) {
+      return [];
+    }
+    const questionIds = new Set(selectedPage.questions.map((question) => question.id));
+    return flags.filter((flag) => questionIds.has(flag.question_id));
+  }, [flags, selectedPage]);
+
+  const manualReviewItems = useMemo(() => manualFlagSummaries(questionnaire?.pages ?? [], manualFlags), [
+    manualFlags,
+    questionnaire,
+  ]);
+  const missingRequiredItems = useMemo(() => fillPreview?.missing_required ?? [], [fillPreview]);
+  const visibleMissingRequiredItems = useMemo(
+    () => missingRequiredItems.slice(0, MISSING_REQUIRED_DISPLAY_LIMIT),
+    [missingRequiredItems],
+  );
+  const hiddenMissingRequiredCount = Math.max(missingRequiredItems.length - visibleMissingRequiredItems.length, 0);
+  const missingRequiredQuestionIds = useMemo(
+    () => new Set(missingRequiredItems.map((item) => item.question_id)),
+    [missingRequiredItems],
+  );
+  const formFlowOptions = useMemo<PacketFormFlowOption[]>(() => {
+    return ensurePacketFormOption(packetFormsForIncluded(prescreen?.evaluation.included_forms), formKey);
+  }, [formKey, prescreen]);
+  const nextFormOption = useMemo(() => nextPacketFormOption(formFlowOptions, formKey), [formFlowOptions, formKey]);
+  const isFormComplete = completionPct === 100 && !missingRequiredItems.length;
+  const selectedPageItems = useMemo(
+    () => (selectedPage ? buildQuestionDisplayItems(formKey, selectedPage) : []),
+    [formKey, selectedPage],
+  );
+
+  function updateAnswer(questionId: string, value: unknown) {
+    setAnswers((current) => ({ ...current, [questionId]: value }));
+  }
+
+  function isPageComplete(page: FormQuestionnairePage) {
+    const requiredQuestions = page.questions.filter((question) => question.required);
+    if (!requiredQuestions.length) {
+      return false;
+    }
+    const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
+    return pageMissingCount === 0 && requiredQuestions.every((question) => hasMeaningfulValue(answers[question.id]));
+  }
+
+  function pageAnswersForSave(page: FormQuestionnairePage) {
+    return Object.fromEntries(
+      page.questions
+        .map((question) => [question.id, normalizeQuestionAnswerForSave(question, answers[question.id])])
+        .filter(([, value]) => value !== undefined),
+    );
+  }
+
+  function saveCurrentPage() {
+    if (!caseId || !selectedPage) {
+      setMessage("Create or open a case first, then return to this form page.");
+      return;
+    }
+    const pageAnswers = pageAnswersForSave(selectedPage);
+    startTransition(() => {
+      saveFormPage(caseId, formKey, selectedPage.id, pageAnswers, manualFlagsForPage(selectedPage, manualFlags))
+        .then((state) => {
+          applyState(state);
+          setMessage(`Saved this ${questionnaire?.form_code ?? "form"} page and refreshed the case mapping.`);
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "Could not save this form page."));
+    });
+  }
+
+  function toggleManualFlag(question: FormQuestion) {
+    if (!caseId || !selectedPage) {
+      setMessage("Choose a case first, then mark questions to revisit.");
+      return;
+    }
+    const nextFlags = { ...manualFlags };
+    if (nextFlags[question.id]) {
+      delete nextFlags[question.id];
+    } else {
+      nextFlags[question.id] = true;
+    }
+    setManualFlags(nextFlags);
+    startTransition(() => {
+      saveFormPage(
+        caseId,
+        formKey,
+        selectedPage.id,
+        pageAnswersForSave(selectedPage),
+        manualFlagsForPage(selectedPage, nextFlags),
+      )
+        .then((state) => {
+          applyState(state);
+          setMessage(nextFlags[question.id] ? "Marked for later review." : "Removed the manual review mark.");
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "Could not update the manual mark."));
+    });
+  }
+
+  function renderQuestionCard(question: FormQuestion) {
+    return (
+      <div
+        key={question.id}
+        className={classNames(
+          "grid gap-2 rounded-lg border p-4",
+          missingRequiredQuestionIds.has(question.id)
+            ? "border-clay/35 bg-clay/5"
+            : manualFlags[question.id]
+              ? "border-sand/60 bg-sand/15"
+              : "border-ink/10 bg-paper/55",
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-sm font-semibold text-ink">
+            {question.label}
+            {question.required ? <span className="text-clay"> *</span> : null}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {missingRequiredQuestionIds.has(question.id) ? (
+              <span className="rounded-full bg-clay/10 px-2.5 py-1 text-xs font-semibold text-clay">
+                Missing
+              </span>
+            ) : null}
+            <button
+              type="button"
+              aria-pressed={Boolean(manualFlags[question.id])}
+              onClick={() => toggleManualFlag(question)}
+              disabled={isPending}
+              className={classNames(
+                "rounded-full border px-3 py-1 text-xs font-semibold transition disabled:opacity-55",
+                manualFlags[question.id]
+                  ? "border-sand bg-sand/45 text-ink"
+                  : "border-ink/10 bg-white text-ink/55 hover:border-sand/70 hover:text-ink",
+              )}
+            >
+              {manualFlags[question.id] ? "Flagged" : "Come back"}
+            </button>
+            <QuestionHelpButton question={question} />
+          </div>
+        </div>
+        {question.plain_language ? (
+          <span className="text-xs leading-5 text-ink/70">{question.plain_language}</span>
+        ) : null}
+        <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
+        <span className="text-xs text-ink/55">
+          {question.pdf_ref}
+          {question.db_path ? ` · maps to ${question.db_path}` : ""}
+        </span>
+        {sourceLabel(answerSources[question.id]) ? (
+          <span className="text-xs font-semibold text-pine">{sourceLabel(answerSources[question.id])}</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderAddressGroup(group: AddressQuestionGroup, questions: FormQuestion[]) {
+    const missingCount = questions.filter((question) => missingRequiredQuestionIds.has(question.id)).length;
+    const manualFlagCount = questions.filter((question) => manualFlags[question.id]).length;
+
+    return (
+      <div
+        key={group.id}
+        className={classNames(
+          "grid gap-3 rounded-lg border p-4",
+          missingCount ? "border-clay/30 bg-clay/5" : manualFlagCount ? "border-sand/55 bg-sand/10" : "border-ink/10 bg-paper/55",
+        )}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-ink">{group.title}</p>
+            <p className="mt-1 text-xs leading-5 text-ink/62">{group.description}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-1">
+            {missingCount ? (
+              <span className="rounded-full bg-clay/10 px-2.5 py-1 text-xs font-semibold text-clay">
+                {missingCount} missing
+              </span>
+            ) : null}
+            {manualFlagCount ? (
+              <span className="rounded-full bg-sand/55 px-2.5 py-1 text-xs font-semibold text-ink/70">
+                {manualFlagCount} flagged
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {questions.map((question) => (
+            <div
+              key={question.id}
+              className={classNames(
+                "grid gap-1 rounded-lg border p-3",
+                question.answer_type === "boolean" ? "md:col-span-2" : "",
+                missingRequiredQuestionIds.has(question.id)
+                  ? "border-clay/25 bg-white"
+                  : manualFlags[question.id]
+                    ? "border-sand/50 bg-white"
+                    : "border-ink/10 bg-white/80",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold leading-5 text-ink/68">
+                  {question.label}
+                  {question.required ? <span className="text-clay"> *</span> : null}
+                </span>
+                <div className="flex shrink-0 items-center gap-1">
+                  {missingRequiredQuestionIds.has(question.id) ? (
+                    <span className="rounded-full bg-clay/10 px-2 py-0.5 text-[11px] font-semibold text-clay">
+                      Missing
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-pressed={Boolean(manualFlags[question.id])}
+                    onClick={() => toggleManualFlag(question)}
+                    disabled={isPending}
+                    className={classNames(
+                      "rounded-full border px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-55",
+                      manualFlags[question.id]
+                        ? "border-sand bg-sand/45 text-ink"
+                        : "border-ink/10 bg-white text-ink/50 hover:border-sand/70 hover:text-ink",
+                    )}
+                  >
+                    {manualFlags[question.id] ? "Flagged" : "Come back"}
+                  </button>
+                  <QuestionHelpButton question={question} />
+                </div>
+              </div>
+              <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
+              <span className="text-xs text-ink/50">
+                {question.pdf_ref}
+                {sourceLabel(answerSources[question.id]) ? ` · ${sourceLabel(answerSources[question.id])}` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function importFromCaseData() {
+    if (!caseId) {
+      setMessage("Create or open a case first, then return to this form page.");
+      return;
+    }
+    startTransition(() => {
+      importFormFromCaseData(caseId, formKey)
+        .then((result) => {
+          applyState(result.state);
+          setMessage(
+            `Pulled ${result.imported_count} answers from reviewed case data. ${result.skipped_count} existing answers were preserved.`,
+          );
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "Could not pull answers from case data."));
+    });
+  }
+
+  function generatePdf() {
+    if (!caseId) {
+      setMessage("Create or open a case first, then return to this form page.");
+      return;
+    }
+    startTransition(() => {
+      generateFormPdf(caseId, formKey, { allow_incomplete: true })
+        .then((result) => {
+          setGeneratedPdf(result);
+          setMessage(`Generated draft ${questionnaire?.form_code ?? "form"} PDF at ${result.generated_pdf}.`);
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "Could not generate the form PDF."));
+    });
+  }
+
+  function navigateToForm(nextFormKey: string) {
+    const option = formFlowOptions.find((candidate) => candidate.formKey === nextFormKey);
+    if (!option) {
+      return;
+    }
+    window.location.assign(packetFormHref(option.formKey, caseId));
+  }
+
+  function selectCase(nextCase: CaseSummary) {
+    rememberCaseId(nextCase.id);
+    window.location.assign(`/form-ingestion?form=${encodeURIComponent(formKey)}&caseId=${encodeURIComponent(nextCase.id)}`);
+  }
+
+  if (!questionnaire) {
+    return <main className="mx-auto max-w-5xl px-6 py-10 text-ink">Loading form questionnaire...</main>;
+  }
+
+  return (
+    <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 text-ink">
+      <header className="flex flex-col gap-4 border-b border-ink/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-pine/80">{questionnaire.form_code} ingestion</p>
+          <h1 className="font-display text-4xl text-ink">{questionnaire.title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
+            Source-dated questionnaire pages for collecting answers, mapping case fields, flagging niche risks, and generating a local review-draft PDF.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={formKey}
+            onChange={(event) => navigateToForm(event.target.value)}
+            className="h-10 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold text-ink"
+          >
+            {formFlowOptions.map((option) => (
+              <option key={option.formKey} value={option.formKey}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={importFromCaseData}
+            disabled={!caseId || isPending}
+            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
+          >
+            Pull from case data
+          </button>
+          <button
+            type="button"
+            onClick={generatePdf}
+            disabled={!caseId || isPending || !canGeneratePdf}
+            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
+          >
+            {canGeneratePdf ? "Generate draft PDF" : "PDF template pending"}
+          </button>
+          <Link
+            href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
+            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
+          >
+            Generate full packet
+          </Link>
+          <Link href="/" className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink">
+            Case workspace
+          </Link>
+          <a
+            href={questionnaire.official_url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
+          >
+            USCIS source
+          </a>
+        </div>
+      </header>
+
+      {message ? <p className="rounded-lg border border-ink/10 bg-white p-3 text-sm text-ink/75">{message}</p> : null}
+
+      {generatedPdf ? (
+        <section className="rounded-lg border border-pine/20 bg-white p-4 text-sm text-ink/75">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="font-semibold text-ink">Draft PDF generated</p>
+              <p className="mt-1 break-all">{generatedPdf.generated_pdf}</p>
+            </div>
+            <a
+              href={apiUrl(generatedPdf.download_url)}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-pine bg-pine px-4 py-2 text-center text-sm font-semibold text-white"
+            >
+              Open PDF
+            </a>
+          </div>
+          <p className="mt-2">
+            Filled {generatedPdf.field_count} template fields from {generatedPdf.mapped_question_count} mapped questions.
+            {generatedPdf.ready_for_pdf_generation ? "" : " This draft still needs questionnaire completion and review."}
+          </p>
+        </section>
+      ) : null}
+
+      {isFormComplete ? (
+        <section className="rounded-lg border border-pine/20 bg-white p-5">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Form complete</p>
+              <h2 className="font-display text-2xl text-ink">Choose what to do next</h2>
+              <p className="mt-1 text-sm leading-6 text-ink/65">
+                {questionnaire.form_code} has its required answers. Generate a draft, continue the packet path, or assemble the full packet.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <button
+              type="button"
+              onClick={generatePdf}
+              disabled={!caseId || isPending || !canGeneratePdf}
+              className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-left text-sm font-semibold text-ink transition hover:border-pine/35 hover:bg-white disabled:opacity-55"
+            >
+              Generate draft PDF
+            </button>
+            {nextFormOption ? (
+              <Link
+                href={packetFormHref(nextFormOption.formKey, caseId)}
+                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
+              >
+                Go to next: {nextFormOption.label}
+              </Link>
+            ) : (
+              <Link
+                href={caseId ? `/review?caseId=${encodeURIComponent(caseId)}` : "/review"}
+                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
+              >
+                Review checklist
+              </Link>
+            )}
+            <Link
+              href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
+              className="rounded-lg border border-ink/15 bg-white p-3 text-sm font-semibold text-ink"
+            >
+              Generate full packet
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {!caseId ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <CaseSelector
+            selectedCaseId=""
+            onSelect={selectCase}
+            disabled={isPending}
+            label="Choose saved case"
+          />
+          <p className="mt-3">No active case ID is stored in this browser. Choose a case before saving answers.</p>
+        </section>
+      ) : (
+        <section className="grid gap-4 rounded-lg border border-ink/10 bg-white p-4 text-sm text-ink/70 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end">
+          <CaseSelector
+            selectedCaseId={caseId}
+            onSelect={selectCase}
+            disabled={isPending}
+            label="Switch case"
+          />
+          <p>
+            <span className="font-semibold text-ink">Active case ID:</span>{" "}
+            <span className="break-all">{caseId}</span>
+          </p>
+        </section>
+      )}
+
+      {fillPreview ? (
+        <section className="grid gap-3 rounded-lg border border-ink/10 bg-white p-5 md:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))]">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Fill preview</p>
+            <h2 className="font-display text-2xl text-ink">{formatStatus(fillPreview.generation_status)}</h2>
+            <p className="mt-1 text-sm leading-6 text-ink/65">{fillPreview.questionnaire_version}</p>
+          </div>
+          {[
+            ["Mapped", fillPreview.field_count],
+            ["Missing", fillPreview.missing_required_count],
+            ["Risk", fillPreview.blocking_flag_count],
+            ["Review", fillPreview.low_confidence_count],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-ink/10 bg-paper/55 p-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink/45">{label}</p>
+              <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {missingRequiredItems.length ? (
+        <section className="rounded-lg border border-clay/20 bg-clay/5 p-4 text-sm text-ink/76">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="font-semibold text-ink">Missing required answers</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-clay">
+              {missingRequiredItems.length} remaining
+            </p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {visibleMissingRequiredItems.map((item) => (
+              <button
+                key={item.question_id}
+                type="button"
+                onClick={() => setSelectedPageId(item.page_id)}
+                className="max-w-full rounded-full border border-clay/20 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/72 transition hover:border-clay/40 hover:text-clay"
+              >
+                {item.label}
+              </button>
+            ))}
+            {hiddenMissingRequiredCount ? (
+              <span className="rounded-full border border-clay/20 bg-white px-3 py-1.5 text-xs font-semibold text-ink/55">
+                +{hiddenMissingRequiredCount} more shown in the page list
+              </span>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-[280px_1fr]">
+        <aside className="rounded-lg border border-ink/10 bg-white p-4">
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-ink">Completion</p>
+            <div className="mt-2 h-2 rounded-full bg-ink/10">
+              <div className="h-2 rounded-full bg-pine" style={{ width: `${completionPct}%` }} />
+            </div>
+            <p className="mt-2 text-xs uppercase tracking-[0.18em] text-ink/55">
+              {completionPct}% · {formatStatus(readiness)}
+            </p>
+          </div>
+          <div className="grid gap-2">
+            {questionnaire.pages.map((page, index) => {
+              const manualFlagCount = manualFlagCountForPage(page, manualFlags);
+              const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
+              const pageComplete = isPageComplete(page);
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => setSelectedPageId(page.id)}
+                  className={classNames(
+                    "rounded-lg border px-3 py-2 text-left text-sm",
+                    selectedPageId === page.id ? "border-pine bg-mist text-ink" : "border-ink/10 bg-white text-ink/75",
+                    pageMissingCount ? "border-clay/30" : "",
+                  )}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="font-semibold">
+                      {index + 1}. {page.title}
+                    </span>
+                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {pageMissingCount ? (
+                        <span className="rounded-full bg-clay/10 px-2 py-0.5 text-[11px] font-semibold text-clay">
+                          {pageMissingCount} missing
+                        </span>
+                      ) : pageComplete ? (
+                        <span className="rounded-full bg-pine/10 px-2 py-0.5 text-[11px] font-semibold text-pine">
+                          Done
+                        </span>
+                      ) : null}
+                      {manualFlagCount ? (
+                        <span className="rounded-full bg-sand/55 px-2 py-0.5 text-[11px] font-semibold text-ink/70">
+                          {manualFlagCount}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-ink/55">{page.pdf_part}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="rounded-lg border border-ink/10 bg-white p-5">
+          {selectedPage ? (
+            <>
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-pine/80">{selectedPage.pdf_part}</p>
+                  <h2 className="font-display text-2xl text-ink">{selectedPage.title}</h2>
+                  <p className="mt-1 text-sm text-ink/60">Local PDF pages {selectedPage.local_pdf_pages.join(", ")}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveCurrentPage}
+                  disabled={isPending}
+                  className="rounded-lg bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {isPending ? "Saving..." : "Save page"}
+                </button>
+              </div>
+
+              {pageFlags.length ? (
+                <div className="mb-5 grid gap-2">
+                  {pageFlags.map((flag) => (
+                    <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border p-3 text-sm", flagTone(flag))}>
+                      <p className="font-semibold">{formatStatus(flag.code)}</p>
+                      <p className="mt-1 leading-6">{flag.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {manualReviewItems.length ? (
+                <div className="mb-5 rounded-lg border border-sand/50 bg-sand/15 p-3 text-sm text-ink/72">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-semibold text-ink">Come-back questions</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">
+                      {manualReviewItems.length} marked
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {manualReviewItems.map((item) => (
+                      <button
+                        key={item.questionId}
+                        type="button"
+                        onClick={() => setSelectedPageId(item.pageId)}
+                        className="max-w-full rounded-full border border-ink/10 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/70 transition hover:border-pine/30 hover:text-pine"
+                      >
+                        {item.pageTitle}: {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4">
+                {selectedPageItems.map((item) =>
+                  item.type === "group" ? renderAddressGroup(item.group, item.questions) : renderQuestionCard(item.question),
+                )}
+              </div>
+            </>
+          ) : null}
+        </section>
+      </section>
+
+      <section className="rounded-lg border border-ink/10 bg-white p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Source control</p>
+            <h2 className="font-display text-2xl">Questionnaire version {questionnaire.version}</h2>
+          </div>
+          <p className="text-sm text-ink/60">Verified {questionnaire.verified_on}</p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {questionnaire.sources.map((source) => (
+            <a
+              key={source.label}
+              href={source.url.startsWith("http") ? source.url : undefined}
+              className="rounded-lg border border-ink/10 bg-paper/50 p-3 text-sm text-ink/75"
+            >
+              <span className="font-semibold text-ink">{source.label}</span>
+              <span className="mt-1 block leading-6">{source.notes}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
