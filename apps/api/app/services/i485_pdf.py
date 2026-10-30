@@ -32,6 +32,15 @@ PART14_ADDITIONAL_INFO_FIELDS = {
 PART14_ADDITIONAL_INFO_DA = "/CourierNewPS-BoldMT 7.00 Tf 0 g"
 PART14_ADDITIONAL_INFO_WRAP_WIDTH = 92
 PART14_ADDITIONAL_INFO_MAX_LINES = 10
+FAMILY_STATUS_FIELD = "Pt9Line57_HouseholdSize[0]"
+# Character limits come from rendering the 09/18/26 template; longer text clips, so it moves to Part 14.
+FAMILY_STATUS_MAX_CHARS = 38
+SKILL_ROW_FIELDS = tuple(f"TextField{row}[0]" for row in range(1, 9))
+SKILL_ROW_MAX_CHARS = 76
+BENEFIT_ROW_LIMIT = 4
+BENEFIT_NAME_MAX_CHARS = 20
+BENEFIT_REASON_MAX_CHARS = 11
+SEE_PART14 = "See Part 14"
 
 QUESTION_BY_ID = {question["id"]: question for question in all_i485_questions()}
 
@@ -115,8 +124,7 @@ STATE_CHOICE_FIELDS = {
 
 TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_a_number": tuple(
-        ["AlienNumber[0]", "Pt1Line4_AlienNumber[0]", "Pt2Line2_AlienNumber[0]"]
-        + [f"AlienNumber[{index}]" for index in range(1, 24)]
+        ["Pt2Line2_AlienNumber[0]"] + [f"Pt1Line4_AlienNumber[{index}]" for index in range(25)]
     ),
     "beneficiary_last_name": (
         "Pt1Line1_FamilyName[0]",
@@ -182,7 +190,6 @@ TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "children_count": ("Pt6Line1_TotalChildren[0]",),
     "beneficiary_height_feet": ("Pt7Line3_HeightFeet[0]",),
     "beneficiary_height_inches": ("Pt7Line3_HeightInches[0]",),
-    "household_size": ("Pt9Line57_HouseholdSize[0]",),
     "beneficiary_phone": ("Pt3Line3_DaytimePhoneNumber1[0]",),
     "beneficiary_email": ("Pt3Line5_Email[0]",),
 }
@@ -288,12 +295,18 @@ CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
     "current_spouse_applying_with_beneficiary": {False: ("Pt6Line11_YN[0]", "/N"), True: ("Pt6Line11_YN[1]", "/Y")},
 }
 
+# Answers saved against the 01/20/25 edition that no longer have a field on the current form.
+RETIRED_QUESTION_IDS = {
+    "received_cash_benefits",
+    "received_long_term_institutionalization",
+    "public_charge_benefit_details",
+}
+
 NON_PDF_CONTROL_QUESTIONS = {
     "i485_i864_exemption",
     "i485_employment_based_category",
     "i485_special_category",
     "petitioner_citizenship_status",
-    "certifications_licenses_skills",
     "applicant_reviewed_certification",
     "interpreter_used",
     "preparer_used",
@@ -356,8 +369,7 @@ AUTO_BOOLEAN_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "military_police_armed_group": ("Pt8Line49_YesNo[0]", "Pt8Line49_YesNo[1]", "Pt8Line50_YesNo[0]", "Pt8Line50_YesNo[1]", "Pt8Line51_YesNo[0]", "Pt8Line51_YesNo[1]"),
     "communist_totalitarian_party": ("Pt8Line52_YesNo[0]", "Pt8Line52_YesNo[1]"),
     "persecution_or_child_soldiers": ("Pt8Line53a_YesNo[0]", "Pt8Line53a_YesNo[1]", "Pt8Line53b_YesNo[0]", "Pt8Line53b_YesNo[1]", "Pt8Line53c_YesNo[0]", "Pt8Line53c_YesNo[1]", "Pt8Line53d_YesNo[0]", "Pt8Line53d_YesNo[1]", "Pt8Line54_YesNo[0]", "Pt8Line54_YesNo[1]", "Pt8Line55_YesNo[0]", "Pt8Line55_YesNo[1]"),
-    "received_cash_benefits": ("Pt9Line63_YesNo[0]", "Pt9Line63_YesNo[1]"),
-    "received_long_term_institutionalization": ("Pt9Line64_YesNo[0]", "Pt9Line64_YesNo[1]"),
+    "received_means_tested_public_benefit": ("Pt9Line63_YesNo[0]", "Pt9Line63_YesNo[1]"),
     "failed_to_attend_removal": ("Pt9Line67_YesNo[0]", "Pt9Line67_YesNo[1]"),
     "fraudulent_documents": ("Pt9Line68_YesNo[0]", "Pt9Line68_YesNo[1]"),
     "lied_for_immigration_benefit": ("Pt9Line69_YesNo[0]", "Pt9Line69_YesNo[1]"),
@@ -1066,6 +1078,143 @@ def _normalized_address_for_pdf(
     return normalized
 
 
+def _part14_has_room(text_values: dict[str, str], text: str) -> bool:
+    open_slots = sum(
+        1 for field_name in sorted(PART14_ADDITIONAL_INFO_FIELDS) if field_name not in text_values
+    )
+    return len(_part14_text_chunks(text)) <= open_slots
+
+
+def _record_mapped_question(
+    *,
+    question_id: str,
+    fields: list[str],
+    mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
+) -> None:
+    mapped_question_ids.add(question_id)
+    mapped_questions.append(
+        {
+            "question_id": question_id,
+            "label": QUESTION_BY_ID[question_id]["label"],
+            "pdf_fields": sorted(set(fields)),
+        }
+    )
+
+
+def _family_status_text(answers: dict[str, Any]) -> str:
+    written = str(answers.get("public_charge_family_status") or "").strip()
+    if written:
+        return written
+    parts = []
+    marital_status = answers.get("beneficiary_current_marital_status")
+    if _value_is_answered(marital_status):
+        parts.append(str(marital_status).replace("_", " ").capitalize())
+    household_size = answers.get("household_size")
+    if _value_is_answered(household_size):
+        parts.append(f"household size {household_size}" if parts else f"Household size {household_size}")
+    return "; ".join(parts)
+
+
+def _add_public_charge_fields(
+    *,
+    answers: dict[str, Any],
+    text_values: dict[str, str],
+    mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
+) -> None:
+    # Answers that do not fit stay unmapped so the review screen reports them instead of dropping them.
+    family_status = _family_status_text(answers)
+    if family_status:
+        continuation: list[str] = []
+        if len(family_status) <= FAMILY_STATUS_MAX_CHARS:
+            text_values[FAMILY_STATUS_FIELD] = family_status
+            fits = True
+        elif _part14_has_room(text_values, family_status):
+            text_values[FAMILY_STATUS_FIELD] = SEE_PART14
+            continuation = _add_part14_continuation(
+                text_values=text_values, page_number="19", part_number="9", item_number="57", text=family_status
+            )
+            fits = True
+        else:
+            fits = False
+        if fits:
+            for question_id in ("household_size", "public_charge_family_status"):
+                if _value_is_answered(answers.get(question_id)):
+                    _record_mapped_question(
+                        question_id=question_id,
+                        fields=[FAMILY_STATUS_FIELD, *continuation],
+                        mapped_questions=mapped_questions,
+                        mapped_question_ids=mapped_question_ids,
+                    )
+
+    raw_skills = str(answers.get("certifications_licenses_skills") or "")
+    skills = [skill.strip() for skill in raw_skills.replace(";", "\n").splitlines() if skill.strip()]
+    if skills:
+        short_skills = [skill for skill in skills if len(skill) <= SKILL_ROW_MAX_CHARS]
+        row_skills = short_skills[: len(SKILL_ROW_FIELDS)]
+        overflow = [skill for skill in skills if skill not in row_skills]
+        overflow_text = "; ".join(overflow)
+        if not overflow or _part14_has_room(text_values, overflow_text):
+            fields = list(SKILL_ROW_FIELDS[: len(row_skills)])
+            for field_name, skill in zip(SKILL_ROW_FIELDS, row_skills):
+                text_values[field_name] = skill
+            if overflow:
+                fields.extend(
+                    _add_part14_continuation(
+                        text_values=text_values, page_number="19", part_number="9", item_number="62", text=overflow_text
+                    )
+                )
+            _record_mapped_question(
+                question_id="certifications_licenses_skills",
+                fields=fields,
+                mapped_questions=mapped_questions,
+                mapped_question_ids=mapped_question_ids,
+            )
+
+    benefits = _list_entries(answers.get("means_tested_benefit_history"))
+    if benefits:
+        continuation_lines = []
+        for index, entry in enumerate(benefits, start=1):
+            name = str(entry.get("benefit_name") or "").strip()
+            reason = str(entry.get("reason") or "").strip()
+            if index > BENEFIT_ROW_LIMIT or len(name) > BENEFIT_NAME_MAX_CHARS or len(reason) > BENEFIT_REASON_MAX_CHARS:
+                continuation_lines.append(
+                    f"{name}: {_as_pdf_date(entry.get('start_date'))} to {_as_pdf_date(entry.get('end_date')) or 'present'}; "
+                    f"amount {str(entry.get('dollar_amount') or '').strip() or 'N/A'}; reason: {reason}"
+                )
+        continuation_text = "\n".join(continuation_lines)
+        if not continuation_lines or _part14_has_room(text_values, continuation_text):
+            fields = []
+            for row, entry in enumerate(benefits[:BENEFIT_ROW_LIMIT], start=1):
+                name = str(entry.get("benefit_name") or "").strip()
+                reason = str(entry.get("reason") or "").strip()
+                row_values = {
+                    1: name if len(name) <= BENEFIT_NAME_MAX_CHARS else SEE_PART14,
+                    2: _as_pdf_date(entry.get("start_date")),
+                    3: _as_pdf_date(entry.get("end_date")),
+                    4: str(entry.get("dollar_amount") or "").strip(),
+                    5: reason if len(reason) <= BENEFIT_REASON_MAX_CHARS else SEE_PART14,
+                }
+                for column, value in row_values.items():
+                    if value:
+                        field_name = f"Pt8Line68c_Column{column}Row{row}[0]"
+                        text_values[field_name] = value
+                        fields.append(field_name)
+            if continuation_lines:
+                fields.extend(
+                    _add_part14_continuation(
+                        text_values=text_values, page_number="20", part_number="9", item_number="64", text=continuation_text
+                    )
+                )
+            _record_mapped_question(
+                question_id="means_tested_benefit_history",
+                fields=fields,
+                mapped_questions=mapped_questions,
+                mapped_question_ids=mapped_question_ids,
+            )
+
+
 def _add_special_fields(
     *,
     answers: dict[str, Any],
@@ -1353,6 +1502,13 @@ def build_i485_pdf_field_payload(
         mapped_question_ids=mapped_question_ids,
     )
 
+    _add_public_charge_fields(
+        answers=normalized_answers,
+        text_values=text_values,
+        mapped_questions=mapped_questions,
+        mapped_question_ids=mapped_question_ids,
+    )
+
     _add_special_fields(
         answers=normalized_answers,
         text_values=text_values,
@@ -1367,7 +1523,12 @@ def build_i485_pdf_field_payload(
 
     unmapped_answered_questions = []
     for question_id, value in sorted(answers.items()):
-        if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not _value_is_answered(value):
+        if (
+            question_id in mapped_question_ids
+            or question_id in NON_PDF_CONTROL_QUESTIONS
+            or question_id in RETIRED_QUESTION_IDS
+            or not _value_is_answered(value)
+        ):
             continue
         question = QUESTION_BY_ID.get(question_id, {})
         unmapped_answered_questions.append(

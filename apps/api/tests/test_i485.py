@@ -8,7 +8,7 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.content.i485_sample import build_sample_i485_answers
-from app.content.i485_questionnaire import I485_PART_GUIDANCE, I485_QUESTIONNAIRE, all_i485_questions
+from app.content.i485_questionnaire import I485_PART_GUIDANCE, I485_QUESTIONNAIRE, I485_VERIFIED_ON, all_i485_questions
 
 from app.models.entities import CaseRecord, IntakeResponse, UploadedDocument
 from app.services.i485 import (
@@ -49,7 +49,7 @@ def test_i485_questionnaire_has_fourteen_pages_and_source_mappings():
     assert all(question["deep_explanation"] for question in all_i485_questions())
     assert all(question["teaching_source"]["label"] == "USCIS Form I-485 instructions" for question in all_i485_questions())
     assert all(question["teaching_source"]["url"].startswith("https://www.uscis.gov/") for question in all_i485_questions())
-    assert all(question["teaching_source"]["fetched_on"] == "2026-05-05" for question in all_i485_questions())
+    assert all(question["teaching_source"]["fetched_on"] == I485_VERIFIED_ON for question in all_i485_questions())
     assert set(I485_PART_GUIDANCE) == {f"Part {part_number}" for part_number in range(1, 15)}
     assert all(
         I485_PART_GUIDANCE[question["pdf_ref"].split(",", 1)[0]] in question["deep_explanation"]

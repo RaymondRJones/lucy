@@ -20,6 +20,7 @@ SUPPLEMENTAL_FORMS_VERIFIED_ON = "2026-04-28"
 I765_VERIFIED_ON = "2026-05-09"
 I131_VERIFIED_ON = "2026-04-29"
 I864_HOUSEHOLD_HELP_VERIFIED_ON = "2026-05-02"
+I864_EDITION_VERIFIED_ON = "2026-10-30"
 
 FORM_TEACHING_SOURCES: dict[str, dict[str, str]] = {
     "i131": {
@@ -833,7 +834,7 @@ I864_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("petitioner_phone", "Sponsor daytime phone number", "text", pdf_ref="Part 8, Item 3", db_path="intake.petitioner_phone"),
             q("petitioner_mobile_phone", "Sponsor mobile phone number", "text", required=False, pdf_ref="Part 8, Item 4", db_path="intake.petitioner_mobile_phone"),
             q("petitioner_email", "Sponsor email address", "text", pdf_ref="Part 8, Item 5", db_path="intake.petitioner_email"),
-            q("sponsor_reviewed_contract", "Sponsor has reviewed the contract and understands the form must be signed", "boolean", pdf_ref="Part 8", ideal_answer=True, risk_when=False, risk_code="unsigned_form_risk"),
+            q("sponsor_reviewed_contract", "Sponsor has reviewed the contract, including the consumer report authorization, and understands the form must be signed", "boolean", pdf_ref="Part 8", ideal_answer=True, risk_when=False, risk_code="unsigned_form_risk"),
             q("interpreter_used", "Was an interpreter used?", "boolean", required=False, pdf_ref="Part 9", ideal_answer=False),
             q("preparer_used", "Was a preparer used?", "boolean", required=False, pdf_ref="Part 10", ideal_answer=False),
             q("additional_information_needed", "Is additional information needed on the continuation page?", "boolean", required=False, pdf_ref="Part 11", ideal_answer=False),
@@ -954,8 +955,8 @@ SUPPLEMENTAL_FORM_CONFIGS: dict[str, dict[str, Any]] = {
             {
                 "label": "USCIS Form I-864 landing page",
                 "url": "https://www.uscis.gov/i-864",
-                "verified_on": SUPPLEMENTAL_FORMS_VERIFIED_ON,
-                "notes": "USCIS page listed edition 10/17/24 when checked.",
+                "verified_on": I864_EDITION_VERIFIED_ON,
+                "notes": "USCIS page listed edition 08/24/26, the only edition it accepts beginning Oct. 1, 2026.",
             },
             {
                 "label": "USCIS Form I-864 instructions",
@@ -966,7 +967,7 @@ SUPPLEMENTAL_FORM_CONFIGS: dict[str, dict[str, Any]] = {
             {
                 "label": "Local blank I-864 PDF",
                 "url": "blank-immigration-documents/i-864.pdf",
-                "verified_on": SUPPLEMENTAL_FORMS_VERIFIED_ON,
+                "verified_on": I864_EDITION_VERIFIED_ON,
                 "notes": "Local editable template used for development PDF field mapping.",
             },
         ],

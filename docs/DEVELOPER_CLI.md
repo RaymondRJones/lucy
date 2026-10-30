@@ -213,6 +213,8 @@ The seeded profiles cover:
 - Texas packet with I-765 but no I-131, using the private-carrier lockbox address
 - Georgia core adjustment packet with no optional I-765/I-131
 - Arizona travel-document path with a prior-marriage termination record
+- Washington packet with a yes on I-485 Item 63 and a filled Item 64 benefit table
+- Illinois packet with long Item 57, Item 62, and Item 64 answers that continue in Part 14
 
 By default the command also runs packet assembly for every case and prints each packet URL, output PDF,
 page count, included/skipped counts, and USCIS lockbox result. To create the cases without generating

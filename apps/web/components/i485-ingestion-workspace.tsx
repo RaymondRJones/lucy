@@ -107,7 +107,7 @@ function hasMeaningfulEntryValue(value: unknown) {
 }
 
 function cleanQuestionAnswer(question: I485Question, value: unknown) {
-  if (["address_list", "employment_history_list"].includes(question.answer_type)) {
+  if (["address_list", "employment_history_list", "benefit_history_list"].includes(question.answer_type)) {
     const entries = repeatableEntries(question, value).filter((entry) => Object.values(entry).some(hasMeaningfulEntryValue));
     return entries.length ? entries : undefined;
   }
@@ -396,7 +396,7 @@ function QuestionControl({
     return <StructuredAddressControl question={question} value={value} onChange={onChange} />;
   }
 
-  if (["address_list", "employment_history_list"].includes(question.answer_type) && question.entry_fields?.length) {
+  if (["address_list", "employment_history_list", "benefit_history_list"].includes(question.answer_type) && question.entry_fields?.length) {
     return <RepeatableHistoryControl question={question} value={value} onChange={onChange} />;
   }
 

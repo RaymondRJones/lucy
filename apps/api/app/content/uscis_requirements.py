@@ -2,6 +2,7 @@ from __future__ import annotations
 
 VERIFIED_ON = "2026-04-27"
 I131_REQUIREMENTS_VERIFIED_ON = "2026-04-29"
+I485_I864_REQUIREMENTS_VERIFIED_ON = "2026-10-30"
 
 
 def _evidence(
@@ -163,11 +164,13 @@ USCIS_REQUIREMENTS = [
     {
         "code": "form_i485",
         "label": "Form I-485",
-        "accepted_edition": "01/20/25",
-        "verified_on": VERIFIED_ON,
+        "accepted_edition": "09/18/26",
+        "verified_on": I485_I864_REQUIREMENTS_VERIFIED_ON,
         "official_url": "https://www.uscis.gov/i-485",
         "summary": "Application to adjust status inside the United States.",
         "important_notes": [
+            "USCIS says it rejects the 01/20/25 and 09/04/26 editions if postmarked or electronically submitted on or after Sept. 18, 2026, with no grace period.",
+            "The 09/18/26 edition revises the Part 9 public charge questions, including Item 63 on any means-tested public benefit, and renumbers later Part 9 items.",
             "USCIS says where to file depends on the eligibility category and directs applicants to the I-485 filing-address page.",
             "Lockbox filings may not immediately display an A-Number on the receipt notice because of a USCIS process change.",
         ],
@@ -272,11 +275,13 @@ USCIS_REQUIREMENTS = [
     {
         "code": "form_i864",
         "label": "Form I-864",
-        "accepted_edition": "10/17/24",
-        "verified_on": VERIFIED_ON,
+        "accepted_edition": "08/24/26",
+        "verified_on": I485_I864_REQUIREMENTS_VERIFIED_ON,
         "official_url": "https://www.uscis.gov/i-864",
         "summary": "Affidavit of Support that documents the sponsor's financial ability to support the intending immigrant.",
         "important_notes": [
+            "USCIS says it only accepts the 08/24/26 edition beginning Oct. 1, 2026, and will not process the 10/17/24 edition postmarked or electronically submitted on or after that date.",
+            "The 08/24/26 edition adds a sponsor authorization for USCIS to obtain consumer report information. USCIS says sponsors with a credit or security freeze should respond promptly to any request to release it.",
             "USCIS says sponsors should include the most recent federal income tax return and related income evidence or explain why a return was not required.",
             "If a supporting document is not in English, USCIS says a full English translation and translator certification must be included.",
         ],

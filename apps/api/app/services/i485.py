@@ -293,6 +293,8 @@ def _conditional_required_question_ids(answers: dict[str, Any]) -> set[str]:
     first_prior = prior_addresses[0] if isinstance(prior_addresses, list) and prior_addresses else None
     if isinstance(first_prior, dict) and _value_is_answered(first_prior) and not _is_non_us_address(first_prior):
         required_ids.add("beneficiary_recent_foreign_address")
+    if answers.get("received_means_tested_public_benefit") is True:
+        required_ids.add("means_tested_benefit_history")
     return required_ids
 
 

@@ -135,6 +135,82 @@ SCENARIOS = [
             "i131_expected_trip_length": "10 days",
         },
     ),
+    PacketScenario(
+        slug="wa-public-benefit-history",
+        case_name="Packet scenario - Washington means-tested benefit on 09/18/26 I-485",
+        state_code="WA",
+        carrier="usps",
+        petitioner_first_name="Morgan",
+        petitioner_last_name="Lee",
+        beneficiary_first_name="Dana",
+        beneficiary_last_name="Lee",
+        beneficiary_country="Philippines",
+        city="Seattle",
+        state="WA",
+        zip_code="98101",
+        wants_i765=True,
+        wants_i131=False,
+        needs_translation=False,
+        annual_income=64000,
+        extra_answers={
+            "public_charge_family_status": "Married; 2 people in household",
+            "certifications_licenses_skills": "Licensed practical nurse\nTagalog and English fluency",
+            "received_means_tested_public_benefit": True,
+            "means_tested_benefit_history": [
+                {
+                    "benefit_name": "Sample cash aid",
+                    "start_date": "2024-02-01",
+                    "end_date": "2024-07-31",
+                    "dollar_amount": "1800",
+                    "reason": "Job loss",
+                },
+                {
+                    "benefit_name": "Sample rental assistance program",
+                    "start_date": "2025-01-15",
+                    "end_date": "",
+                    "dollar_amount": "",
+                    "reason": "Income dropped during a long-term illness and treatment.",
+                },
+            ],
+        },
+    ),
+    PacketScenario(
+        slug="il-long-public-charge-answers",
+        case_name="Packet scenario - Illinois long public charge answers using Part 14",
+        state_code="IL",
+        carrier="private",
+        petitioner_first_name="Alex",
+        petitioner_last_name="Novak",
+        beneficiary_first_name="Jamie",
+        beneficiary_last_name="Novak",
+        beneficiary_country="Poland",
+        city="Chicago",
+        state="IL",
+        zip_code="60601",
+        wants_i765=False,
+        wants_i131=False,
+        needs_translation=True,
+        annual_income=58000,
+        extra_answers={
+            "household_size": 4,
+            "public_charge_family_status": (
+                "Married and living with my spouse, my spouse's two minor children from a prior relationship, "
+                "and no other relatives."
+            ),
+            "certifications_licenses_skills": "\n".join(f"Sample skill or license {index}" for index in range(1, 11)),
+            "received_means_tested_public_benefit": True,
+            "means_tested_benefit_history": [
+                {
+                    "benefit_name": f"Sample benefit program {index}",
+                    "start_date": f"202{index}-01-01",
+                    "end_date": f"202{index}-06-30",
+                    "dollar_amount": str(index * 100),
+                    "reason": "Income loss",
+                }
+                for index in range(1, 7)
+            ],
+        },
+    ),
 ]
 
 

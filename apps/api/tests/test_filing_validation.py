@@ -8,6 +8,7 @@ from pypdf import PdfReader
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.content.i485_questionnaire import I485_VERIFIED_ON
 from app.db.session import get_session
 from app.main import app
 from app.models.entities import CaseRecord, QAIssue, UploadedDocument
@@ -188,7 +189,7 @@ def test_filing_validation_reports_missing_i485_required_answers():
 
     assert report["summary"]["status"] == "blocked"
     assert "form_i485_beneficiary_last_name_missing_required" in codes
-    assert report["forms"][0]["source"]["verified_on"] == "2026-05-05"
+    assert report["forms"][0]["source"]["verified_on"] == I485_VERIFIED_ON
 
 
 def test_filing_validation_inspects_default_blank_i485_pdf_fields():

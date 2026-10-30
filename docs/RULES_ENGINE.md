@@ -167,6 +167,12 @@ It is intentionally separate from persisted packet QA:
 - The I-485 question map models repeatable prior-address and five-year employment/school/unemployment history
   as structured entry lists with on-form capacity metadata and Part 14 overflow review guidance; the PDF draft
   maps the first employment-history entry to Part 4 Item 7 and continuation entries to Part 14 draft fields.
+- The I-485 question map follows the 09/18/26 edition (verified 2026-10-30, https://www.uscis.gov/i-485). Item 57 is a
+  written family status, drafted from marital status and household size when left blank. Item 63 asks about any
+  means-tested public benefit, and a yes makes the Item 64 benefit table required. Answers saved to the prior
+  `received_cash_benefits`, `received_long_term_institutionalization`, and `public_charge_benefit_details` questions
+  are retained but never carried over, so existing cases show Item 63 as missing until it is answered. Text too long
+  for a form field moves to Part 14, and text that does not fit in Part 14 is reported as an unmapped answer.
 - `form_i130` is supported as a partial validator for petitioner citizenship, core relationship facts,
   first-marriage scope, adjustment-of-status path selection, tracked citizenship/marriage supporting evidence,
   and source-dated core question metadata; blank I-130 PDFs are auto-detected from `blank-immigration-documents/`

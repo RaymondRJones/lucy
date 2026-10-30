@@ -5,8 +5,8 @@ from typing import Any
 from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, I94_INFO_SOURCE
 
 
-I485_QUESTIONNAIRE_VERSION = "i485-01-20-25-marriage-v1"
-I485_VERIFIED_ON = "2026-05-05"
+I485_QUESTIONNAIRE_VERSION = "i485-09-18-26-marriage-v1"
+I485_VERIFIED_ON = "2026-10-30"
 I485_OFFICIAL_URL = "https://www.uscis.gov/i-485"
 I485_OFFICIAL_PDF_URL = "https://www.uscis.gov/sites/default/files/document/forms/i-485.pdf"
 I485_OFFICIAL_INSTRUCTIONS_URL = "https://www.uscis.gov/sites/default/files/document/forms/i-485instr.pdf"
@@ -17,7 +17,7 @@ I485_SOURCES: list[dict[str, str]] = [
         "label": "USCIS Form I-485 landing page",
         "url": I485_OFFICIAL_URL,
         "verified_on": I485_VERIFIED_ON,
-        "notes": "USCIS page listed edition 01/20/25 and provides the current form and instructions download links when checked.",
+        "notes": "USCIS page listed edition 09/18/26 with no grace period; the 01/20/25 and 09/04/26 editions are rejected if postmarked on or after Sept. 18, 2026.",
     },
     {
         "label": "USCIS Form I-485 PDF",
@@ -367,36 +367,36 @@ I485_HELP_OVERRIDES: dict[str, tuple[str, str]] = {
         "USCIS instructions explain this asks whether the category is exempt, not whether the applicant is likely to become a public charge. Family, employment, and diversity categories are generally subject to the public charge questions.",
     ),
     "household_size": (
-        "Count only the people the I-485 instructions require for the public charge household.",
-        "USCIS instructions warn that this household size may differ from Form I-864. Do not add people just because they are petitioners unless the I-485 instructions say to count them.",
+        "Count the people whose income, assets, and liabilities are included in Items 58-60.",
+        "The I-485 instructions say a household size given in Item 57 should include any individuals whose income, assets, and liabilities are reported in Items 58-60. This count may differ from the Form I-864 household size.",
+    ),
+    "public_charge_family_status": (
+        "Describe the applicant's family status in your own words, such as who is in the household.",
+        "Item 57 is now a written description instead of a number. If this is left blank, Lucy drafts it from the marital status and household size answers so you can review it. Long descriptions continue in Part 14.",
     ),
     "annual_household_income_band": (
-        "Choose the income band that best reflects income available to the applicant's public charge household.",
-        "USCIS guidance notes that available income may include a petitioning sponsor's income even where household-size counting rules differ. Keep the answer consistent with the facts and documents.",
+        "Choose the band for the household's annual income, leaving out any income from means-tested public benefits.",
+        "The I-485 instructions allow income provided to the household from outside sources, such as alimony or child support. They say to exclude means-tested public benefit income and income from illegal activities. Keep the answer consistent with the facts and documents.",
     ),
     "household_assets_band": (
-        "Choose the band for household-owned assets.",
-        "USCIS instructions give examples such as savings, checking accounts, deposits, and real estate, including assets located outside the United States.",
+        "Choose the band for assets owned by members of the household.",
+        "The I-485 instructions give examples such as bank deposits, annuities, stocks, bonds, mutual funds, certificates of deposit, retirement accounts, educational accounts, and real estate. Assets not owned by household members may not be included.",
     ),
     "household_liabilities_band": (
-        "Choose the band for debts owed by people in the public charge household.",
-        "USCIS instructions give examples such as mortgages, loans, credit card debt, student loans, and car loans.",
+        "Choose the band for debts owed by members of the household, both secured and unsecured.",
+        "The I-485 instructions give examples such as mortgages, car loans, unpaid child or spousal support, unpaid taxes, and current credit card balances.",
     ),
     "certifications_licenses_skills": (
-        "List skills, licenses, certifications, education, and work experience that show employability.",
-        "Think of this as a concise employability snapshot, not a full resume. Capture practical skills, licenses, certificates, education, languages, and work experience that apply.",
+        "List each skill on its own line, including workforce skills, training, occupational licenses, foreign languages, and certificates.",
+        "The I-485 instructions ask for all skills in Item 62, including licenses, foreign language skills, and certificates for skilled trades or completed occupational programs. The form has eight rows; Lucy continues any extra lines in Part 14.",
     ),
-    "received_cash_benefits": (
-        "Answer yes only for the listed cash assistance benefits, such as SSI, TANF, or similar income-maintenance cash benefits.",
-        "USCIS instructions say this question is not asking about every public benefit. It specifically calls out that SNAP or Medicaid are not the same as the listed cash-benefit question.",
+    "received_means_tested_public_benefit": (
+        "Answer yes if the applicant has ever received, or is currently receiving, any means-tested public benefit.",
+        "This edition asks about any means-tested public benefit, past or current at filing, not only the cash assistance and long-term care named on the prior edition. An earlier answer to the old question does not carry over. The form instructions do not list the programs, so review the USCIS Policy Manual (Volume 8, Part G) or ask a qualified legal professional if unsure which programs count.",
     ),
-    "received_long_term_institutionalization": (
-        "Answer whether the applicant received long-term institutional care paid by the government.",
-        "If yes, the following detail fields should explain when, how long, and what kind of institutionalization occurred.",
-    ),
-    "public_charge_benefit_details": (
-        "If a public-charge benefit answer is yes, explain the benefit or institutional care details here.",
-        "USCIS instructions separate listed cash assistance and long-term institutional care from other benefits. Capture the program name, dates received, who paid, and any documents that show the details. Leave this blank when the yes/no public-charge benefit questions are all no.",
+    "means_tested_benefit_history": (
+        "For each benefit, give the name, start and end dates, dollar amount if applicable, and the reason it was received.",
+        "The I-485 instructions ask for a detailed explanation of why each benefit was received, such as job loss, long-term illness, or insufficient income. The form has four rows and a narrow Reason column, so Lucy continues long reasons and extra benefits in Part 14.",
     ),
     "unlawful_presence_after_1997": (
         "Answer whether the applicant had unlawful presence after April 1, 1997, including visa overstay.",
@@ -769,6 +769,14 @@ EMPLOYMENT_HISTORY_FIELDS: list[dict[str, Any]] = [
     {"key": "notes", "label": "Review notes", "type": "textarea", "required": False},
 ]
 
+MEANS_TESTED_BENEFIT_FIELDS: list[dict[str, Any]] = [
+    {"key": "benefit_name", "label": "Means-tested public benefit received", "type": "text", "required": True},
+    {"key": "start_date", "label": "Start date", "type": "date", "required": True},
+    {"key": "end_date", "label": "End date (blank if still receiving)", "type": "date"},
+    {"key": "dollar_amount", "label": "Dollar amount (if applicable)", "type": "text"},
+    {"key": "reason", "label": "Reason the benefit was received", "type": "textarea", "required": True},
+]
+
 FOREIGN_EMPLOYMENT_FIELDS: list[dict[str, Any]] = [
     {"key": "name", "label": "Employer, company, or school name", "type": "text", "required": True},
     {"key": "occupation", "label": "Occupation or status", "type": "text", "required": True},
@@ -1092,38 +1100,47 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
     {
         "id": "page_13_public_charge",
         "title": "Public Charge Household Snapshot",
-        "pdf_part": "Part 9, Items 57-66",
+        "pdf_part": "Part 9, Items 57-64",
         "local_pdf_pages": [19, 20],
         "questions": [
-            q("household_size", "Household size", "number", pdf_ref="Part 9, Item 57", db_path="intake.household_size"),
+            q("household_size", "Household size counted in Items 58-60", "number", pdf_ref="Part 9, Item 57", db_path="intake.household_size"),
+            q("public_charge_family_status", "Family status in your own words", "textarea", required=False, pdf_ref="Part 9, Item 57"),
             q("annual_household_income_band", "Annual household income band", "select", pdf_ref="Part 9, Item 58", db_path="intake.annual_household_income_band", options=[{"value": "0_27000", "label": "$0-$27,000"}, {"value": "27001_52000", "label": "$27,001-$52,000"}, {"value": "52001_85000", "label": "$52,001-$85,000"}, {"value": "85001_141000", "label": "$85,001-$141,000"}, {"value": "over_141000", "label": "Over $141,000"}]),
             q("household_assets_band", "Total household assets band", "select", pdf_ref="Part 9, Item 59", options=[{"value": "0_18400", "label": "$0-$18,400"}, {"value": "18401_136000", "label": "$18,401-$136,000"}, {"value": "136001_321400", "label": "$136,001-$321,400"}, {"value": "321401_707100", "label": "$321,401-$707,100"}, {"value": "over_707100", "label": "Over $707,100"}]),
             q("household_liabilities_band", "Total household liabilities band", "select", pdf_ref="Part 9, Item 60", options=[{"value": "0", "label": "$0"}, {"value": "1_10100", "label": "$1-$10,100"}, {"value": "10101_57700", "label": "$10,101-$57,700"}, {"value": "57701_186800", "label": "$57,701-$186,800"}, {"value": "over_186800", "label": "Over $186,800"}]),
             q("highest_education", "Highest degree or grade completed", "select", pdf_ref="Part 9, Item 61", options=[{"value": "less_than_high_school", "label": "Less than high school"}, {"value": "high_school", "label": "High school/GED"}, {"value": "some_college", "label": "1+ years college, no degree"}, {"value": "associate", "label": "Associate's degree"}, {"value": "bachelor", "label": "Bachelor's degree"}, {"value": "master", "label": "Master's degree"}, {"value": "professional", "label": "Professional degree"}, {"value": "doctorate", "label": "Doctorate"}]),
-            q("certifications_licenses_skills", "Certifications, licenses, skills, and educational certificates", "textarea", required=False, pdf_ref="Part 9, Item 62"),
-            q("received_cash_benefits", "Has the applicant ever received SSI, TANF, or cash benefits for income maintenance?", "boolean", pdf_ref="Part 9, Item 63", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
-            q("received_long_term_institutionalization", "Has the applicant ever received long-term institutionalization at government expense?", "boolean", pdf_ref="Part 9, Item 64", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
-            q("public_charge_benefit_details", "Benefit or institutionalization details, if any", "textarea", required=False, pdf_ref="Part 9, Items 65-66"),
+            q("certifications_licenses_skills", "Skills, including certifications, licenses, and educational certificates", "textarea", pdf_ref="Part 9, Item 62"),
+            q("received_means_tested_public_benefit", "Has the applicant ever received any means-tested public benefit?", "boolean", pdf_ref="Part 9, Item 63", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
+            q(
+                "means_tested_benefit_history",
+                "Means-tested public benefits received",
+                "benefit_history_list",
+                required=False,
+                pdf_ref="Part 9, Item 64",
+                entry_fields=MEANS_TESTED_BENEFIT_FIELDS,
+                form_entry_limit=4,
+                overflow_pdf_ref="Part 14, Additional Information",
+            ),
         ],
     },
     {
         "id": "page_14_violations_signature",
         "title": "Illegal Entries, Miscellaneous Conduct, and Signature Workflow",
-        "pdf_part": "Part 9, Items 67-86; Parts 10-14",
+        "pdf_part": "Part 9, Items 65-84; Parts 10-14",
         "local_pdf_pages": [20, 21, 22, 23, 24],
         "questions": [
-            q("failed_to_attend_removal", "Has the applicant ever failed or refused to attend a removal proceeding filed on or after April 1, 1997?", "boolean", pdf_ref="Part 9, Item 67", ideal_answer=False, risk_when=True, risk_code="removal_history"),
-            q("fraudulent_documents", "Has the applicant ever submitted altered, fraudulent, or counterfeit documents to obtain an immigration benefit?", "boolean", pdf_ref="Part 9, Item 68", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("lied_for_immigration_benefit", "Has the applicant ever lied, concealed, or misrepresented information for a U.S. immigration benefit?", "boolean", pdf_ref="Part 9, Item 69", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("false_us_citizen_claim", "Has the applicant ever falsely claimed to be a U.S. citizen?", "boolean", pdf_ref="Part 9, Item 70", ideal_answer=False, risk_when=True, risk_code="false_us_citizenship"),
-            q("stowaway", "Has the applicant ever been a stowaway?", "boolean", pdf_ref="Part 9, Item 71", ideal_answer=False, risk_when=True, risk_code="immigration_violation"),
-            q("document_fraud_civil_penalty", "Is the applicant under a final civil penalty order for fraudulent documents?", "boolean", pdf_ref="Part 9, Item 72", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("alien_smuggling", "Has the applicant ever knowingly encouraged or helped another person enter the United States illegally?", "boolean", pdf_ref="Part 9, Item 73", ideal_answer=False, risk_when=True, risk_code="alien_smuggling"),
-            q("entered_without_inspection", "Has the applicant ever entered the United States without inspection and admission or parole?", "boolean", pdf_ref="Part 9, Item 74", db_path="intake.unlawful_entry", ideal_answer=False, risk_when=True, risk_code="unlawful_entry"),
-            q("deported_removed_or_departed_after_order", "Has the applicant ever been excluded, deported, removed, or departed after such an order?", "boolean", pdf_ref="Part 9, Item 75", ideal_answer=False, risk_when=True, risk_code="removal_history"),
-            q("unlawful_presence_after_1997", "Since April 1, 1997, has the applicant been unlawfully present in the United States?", "boolean", pdf_ref="Part 9, Item 76", ideal_answer=False, risk_when=True, risk_code="unlawful_presence"),
-            q("illegal_reentry_after_unlawful_presence_or_removal", "Has the applicant reentered or attempted to reenter without inspection after unlawful presence over one year or after removal?", "boolean", pdf_ref="Part 9, Items 78.a-78.b", ideal_answer=False, risk_when=True, risk_code="illegal_reentry"),
-            q("polygamy_child_custody_voting_tax_armed_forces", "Any polygamy, child-custody interference, unlawful voting, tax renunciation, alien military exemption/discharge/desertion, or avoiding wartime service?", "boolean", pdf_ref="Part 9, Items 79-86", ideal_answer=False, risk_when=True, risk_code="miscellaneous_inadmissibility"),
+            q("failed_to_attend_removal", "Has the applicant ever failed or refused to attend a removal proceeding filed on or after April 1, 1997?", "boolean", pdf_ref="Part 9, Item 65", ideal_answer=False, risk_when=True, risk_code="removal_history"),
+            q("fraudulent_documents", "Has the applicant ever submitted altered, fraudulent, or counterfeit documents to obtain an immigration benefit?", "boolean", pdf_ref="Part 9, Item 66", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("lied_for_immigration_benefit", "Has the applicant ever lied, concealed, or misrepresented information for a U.S. immigration benefit?", "boolean", pdf_ref="Part 9, Item 67", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("false_us_citizen_claim", "Has the applicant ever falsely claimed to be a U.S. citizen?", "boolean", pdf_ref="Part 9, Item 68", ideal_answer=False, risk_when=True, risk_code="false_us_citizenship"),
+            q("stowaway", "Has the applicant ever been a stowaway?", "boolean", pdf_ref="Part 9, Item 69", ideal_answer=False, risk_when=True, risk_code="immigration_violation"),
+            q("document_fraud_civil_penalty", "Is the applicant under a final civil penalty order for fraudulent documents?", "boolean", pdf_ref="Part 9, Item 71", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("alien_smuggling", "Has the applicant ever knowingly encouraged or helped another person enter the United States illegally?", "boolean", pdf_ref="Part 9, Item 70", ideal_answer=False, risk_when=True, risk_code="alien_smuggling"),
+            q("entered_without_inspection", "Has the applicant ever entered the United States without inspection and admission or parole?", "boolean", pdf_ref="Part 9, Item 73", db_path="intake.unlawful_entry", ideal_answer=False, risk_when=True, risk_code="unlawful_entry"),
+            q("deported_removed_or_departed_after_order", "Has the applicant ever been excluded, deported, removed, or departed after such an order?", "boolean", pdf_ref="Part 9, Item 72", ideal_answer=False, risk_when=True, risk_code="removal_history"),
+            q("unlawful_presence_after_1997", "Since April 1, 1997, has the applicant been unlawfully present in the United States?", "boolean", pdf_ref="Part 9, Item 74", ideal_answer=False, risk_when=True, risk_code="unlawful_presence"),
+            q("illegal_reentry_after_unlawful_presence_or_removal", "Has the applicant reentered or attempted to reenter without inspection after unlawful presence over one year or after removal?", "boolean", pdf_ref="Part 9, Items 76.a-76.b", ideal_answer=False, risk_when=True, risk_code="illegal_reentry"),
+            q("polygamy_child_custody_voting_tax_armed_forces", "Any polygamy, child-custody interference, unlawful voting, tax renunciation, alien military exemption/discharge/desertion, or avoiding wartime service?", "boolean", pdf_ref="Part 9, Items 77-84", ideal_answer=False, risk_when=True, risk_code="miscellaneous_inadmissibility"),
             q("beneficiary_phone", "Applicant daytime or mobile phone number", "text", pdf_ref="Part 10, Items 1-2", db_path="intake.beneficiary_phone"),
             q("beneficiary_email", "Applicant email address", "text", pdf_ref="Part 10, Item 3", db_path="intake.beneficiary_email"),
             q("applicant_reviewed_certification", "Applicant has reviewed the certification and understands signature must be original before filing", "boolean", pdf_ref="Part 10, Item 4", ideal_answer=True, risk_when=False, risk_code="signature_not_confirmed"),
