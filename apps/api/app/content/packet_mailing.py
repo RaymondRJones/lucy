@@ -9,6 +9,9 @@ PACKET_MAILING_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
     "uscis-lockbox-filing-locations-chart-for-certain-family-based-forms"
 )
+I130_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-130-addresses"
+I765_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-765-addresses"
+I131_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-131-addresses"
 I485_FILING_ADDRESS_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
     "direct-filing-addresses-for-form-i-485-application-to-register-permanent-residence-or-adjust-status"
@@ -245,13 +248,20 @@ def mailing_recommendation_for_location(value: str | None, carrier: str = "usps"
         "usps_address_lines": lockbox["usps_address_lines"],
         "private_carrier_address_lines": lockbox["private_carrier_address_lines"],
         "source_url": PACKET_MAILING_SOURCE_URL,
-        "related_source_urls": [I485_FILING_ADDRESS_SOURCE_URL],
+        "related_source_urls": [
+            I485_FILING_ADDRESS_SOURCE_URL,
+            I130_FILING_ADDRESS_SOURCE_URL,
+            I765_FILING_ADDRESS_SOURCE_URL,
+            I131_FILING_ADDRESS_SOURCE_URL,
+        ],
         "source_last_reviewed": PACKET_MAILING_SOURCE_LAST_REVIEWED,
         "verified_on": PACKET_MAILING_VERIFIED_ON,
         "note": (
             "For family-based Forms I-130, I-131, I-485, I-765, I-824, or I-864, "
             "USCIS routes the packet by where the filer lives and the delivery method. "
-            "USCIS announced an Oct. 7, 2026 filing-location change for Forms I-130 and I-485, while its "
-            "family-based lockbox chart was last updated Oct. 11, 2024. Verify the live USCIS pages again before mailing."
+            "After its Oct. 7, 2026 filing-location update, the USCIS address pages for Forms I-130, I-485, I-765, "
+            "and I-131 still send these family-based filings to this lockbox chart, checked 2026-10-30. "
+            "The separate addresses USCIS lists for Form I-130 filed alone do not apply to this packet. "
+            "Verify the live USCIS pages again before mailing."
         ),
     }
