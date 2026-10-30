@@ -16,6 +16,8 @@ from sqlmodel import Session, select
 from app.content.fee_schedule import G1450_FORM_FEES
 from app.content.packet_mailing import mailing_recommendation_for_location
 from app.content.packet_ordering import (
+    I130_REPEATED_EVIDENCE_CODES,
+    I130_SECTION_UPLOAD_CODES,
     I131_SECTION_UPLOAD_CODES,
     I485_SECTION_UPLOAD_CODES,
     I485_PACKET_EXCLUDED_UPLOAD_CODES,
@@ -55,6 +57,8 @@ COVER_LETTER_FORM_ITEMS = {
     "i864": "Completed and signed Form I-864",
     "i765": "Completed and signed Form I-765",
     "i131": "Completed and signed Form I-131",
+    "i130": "Completed and signed Form I-130",
+    "i130a": "Completed and signed Form I-130A",
 }
 COVER_LETTER_UPLOAD_ITEMS = {
     "form_g1145": "E-Notification of Application/Petition Acceptance",
@@ -82,8 +86,13 @@ COVER_LETTER_UPLOAD_ITEMS = {
     "form_i765": "Completed and signed Form I-765",
     "form_i131": "Completed and signed Form I-131",
     "travel_explanation_i131": "Advance parole travel explanation and evidence",
+    "form_i130": "Completed and signed Form I-130",
+    "form_i130a": "Completed and signed Form I-130A",
+    "petitioner_passport_photos": "2 passport-style photos of petitioner",
+    "petitioner_citizenship_proof": "Proof of petitioner's U.S. citizenship",
 }
 COVER_LETTER_PAYMENT_FEE_ITEMS = {
+    "form_i130": "Form I-130 filing fee",
     "form_i485": "Form I-485 filing fee",
     "form_i765": "Form I-765 filing fee",
     "form_i131": "Form I-131 filing fee",
@@ -102,6 +111,7 @@ GENERATED_FORM_UPLOAD_CODES = {
     "form_i765",
     "form_i131",
 }
+I130_GENERATED_FORM_UPLOAD_CODES = {"form_i130", "form_i130a"}
 SECTION_INDEX_PURPOSES = {
     "I-485 section": (
         "This section supports Form I-485 with applicant identity, last-entry/I-94, civil-document, "
@@ -120,6 +130,10 @@ SECTION_INDEX_PURPOSES = {
     ),
     "I-131 section": (
         "This section supports Form I-131 advance parole based on the pending I-485."
+    ),
+    "I-130 section": (
+        "This section supports Forms I-130 and I-130A, filed together with Form I-485, with citizenship, "
+        "civil-document, and bona fide marriage evidence."
     ),
 }
 SCANNER_FRIENDLY_PRINTING_GUIDANCE = {
@@ -344,12 +358,24 @@ def _has_answered_form_state(session: Session, case_id: UUID, form_key: str) -> 
     return any(value not in (None, "", [], {}) for value in state.get("answers", {}).values())
 
 
-def _packet_form_sequence(session: Session, case_id: UUID, facts: dict[str, Any]) -> list[str]:
+def _is_concurrent_i130(values: dict[str, Any]) -> bool:
+    # Reads the saved answer because case facts normalize a blank status to not filed.
+    return str(values.get("i130_filing_status") or "").strip().lower() in {"not_filed", "none"}
+
+
+def _packet_form_sequence(
+    session: Session,
+    case_id: UUID,
+    facts: dict[str, Any],
+    concurrent_i130: bool = False,
+) -> list[str]:
     forms = ["g1145", "i485", "i864"]
     if facts.get("wants_i765") or _has_answered_form_state(session, case_id, "i765"):
         forms.append("i765")
     if facts.get("wants_i131") or _has_answered_form_state(session, case_id, "i131"):
         forms.append("i131")
+    if concurrent_i130:
+        forms.extend(["i130", "i130a"])
     return forms
 
 
@@ -367,7 +393,7 @@ def _generate_packet_form(
     if form_key == "i485":
         generated = generate_i485_pdf(session=session, case_id=case_id, allow_incomplete=allow_incomplete)
         return "Form I-485", generated.output_path, generated.warnings
-    if form_key in {"i765", "i131", "i864"}:
+    if form_key in {"i765", "i131", "i864", "i130", "i130a"}:
         generated = generate_form_pdf(
             session=session,
             case_id=case_id,
@@ -425,12 +451,14 @@ def _parse_fee_amount(checklist_code: str) -> Decimal:
         raise ValueError(f"Missing local fee metadata for {checklist_code}.") from exc
 
 
-def _i485_payment_items(session: Session, case_id: UUID) -> list[CaseChecklistItem]:
+def _i485_payment_items(session: Session, case_id: UUID, concurrent_i130: bool = False) -> list[CaseChecklistItem]:
     payment_order = {code: index for index, code in enumerate(I485_PACKET_PAYMENT_CHECKLIST_ORDER)}
     items = [
         item
         for item in payable_checklist_items(session, case_id)
-        if item.code in payment_order and _parse_fee_amount(item.code) > 0
+        if item.code in payment_order
+        and (concurrent_i130 or item.code != "form_i130")
+        and _parse_fee_amount(item.code) > 0
     ]
     return sorted(items, key=lambda item: payment_order[item.code])
 
@@ -471,12 +499,13 @@ def _append_payment_forms(
     template_path: Path,
     uploaded_payment_included: bool = False,
     payment_form: str = "G-1450",
+    concurrent_i130: bool = False,
 ) -> None:
     form_key = payment_form.lower().replace("-", "")
     generate_payment_packet = (
         generate_case_g1650_packet_from_payload if payment_form == "G-1650" else generate_case_g1450_packet_from_payload
     )
-    items = _i485_payment_items(session, case_id)
+    items = _i485_payment_items(session, case_id, concurrent_i130)
     selected_codes, skipped_codes = _selected_i485_payment_codes(items, selected_payment_checklist_codes)
     for code in skipped_codes:
         skipped_documents.append(
@@ -584,11 +613,12 @@ def _upload_exclusion_reason(
     upload: UploadedDocument,
     explicit_upload_selection: bool,
     generated_form_upload_codes: set[str] | None = None,
+    concurrent_i130: bool = False,
 ) -> str | None:
     code = upload.checklist_item_code or ""
     if code in (generated_form_upload_codes or set()):
         return "Generated form is already included in this packet; uploaded form PDFs are skipped to avoid duplicate forms."
-    if code in I485_PACKET_EXCLUDED_UPLOAD_CODES:
+    if code in I485_PACKET_EXCLUDED_UPLOAD_CODES and not (concurrent_i130 and code in I130_SECTION_UPLOAD_CODES):
         return "Excluded from this compilation because the packet is centered on I-485, not I-130/I-130A petition materials."
     if not explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
         return "Upload is not mapped to the USCIS-ordered I-485 packet document set."
@@ -605,6 +635,8 @@ def _upload_label(upload: UploadedDocument, checklist_by_code: dict[str, CaseChe
 def _packet_section_for_upload_code(checklist_code: str, form_sequence: list[str]) -> str:
     if checklist_code in I485_PACKET_PAYMENT_UPLOAD_CODES:
         return "Payment"
+    if "i130" in form_sequence and checklist_code in I130_SECTION_UPLOAD_CODES:
+        return "I-130 section"
     if checklist_code in I485_SECTION_UPLOAD_CODES:
         return "I-485 section"
     if checklist_code in I864_SECTION_UPLOAD_CODES:
@@ -682,10 +714,13 @@ def _append_upload_document(
     generated_form_upload_codes: set[str] | None,
     included_documents: list[dict[str, Any]],
     skipped_documents: list[dict[str, Any]],
+    concurrent_i130: bool = False,
 ) -> None:
     label = _upload_label(upload, checklist_by_code)
     path = _safe_upload_path(upload)
-    exclusion_reason = _upload_exclusion_reason(upload, explicit_upload_selection, generated_form_upload_codes)
+    exclusion_reason = _upload_exclusion_reason(
+        upload, explicit_upload_selection, generated_form_upload_codes, concurrent_i130
+    )
     if exclusion_reason:
         skipped_documents.append(
             _skipped_entry(
@@ -792,7 +827,7 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
     payment_fee_items: list[str] = []
     payment_form_keys: set[str | None] = set()
     has_payment_form = False
-    i485_bona_fide_items: list[str] = []
+    bona_fide_items: dict[str, list[str]] = {}
 
     for document in included_documents:
         section = document.get("section") or "Additional uploaded documents"
@@ -822,9 +857,10 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
             item_label in section_seen for section_seen in seen_items.values()
         ):
             continue
-        if section == "I-485 section" and checklist_code in I485_BONA_FIDE_CODES:
-            if item_label not in i485_bona_fide_items:
-                i485_bona_fide_items.append(item_label)
+        if section in {"I-485 section", "I-130 section"} and checklist_code in I485_BONA_FIDE_CODES:
+            section_bona_fide_items = bona_fide_items.setdefault(section, [])
+            if item_label not in section_bona_fide_items:
+                section_bona_fide_items.append(item_label)
             continue
         _add_cover_letter_item(section_payload, seen_items, item_label)
 
@@ -851,12 +887,11 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
                 "Signed payment authorization (Form G-1450 or Form G-1650)",
             )
 
-    i485_section = by_label.get("I-485 section")
-    if i485_section is not None and i485_bona_fide_items:
+    for section, items in bona_fide_items.items():
         _add_cover_letter_item(
-            i485_section,
+            by_label[section],
             seen_items,
-            {"label": "Evidence of bona fide marriage:", "children": i485_bona_fide_items},
+            {"label": "Evidence of bona fide marriage:", "children": items},
         )
     return [section for section in sections if section["items"]]
 
@@ -973,7 +1008,13 @@ def assemble_packet_pdf(
     ]
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    form_sequence = _packet_form_sequence(session, case_id, facts)
+    concurrent_i130 = _is_concurrent_i130(values)
+    form_sequence = _packet_form_sequence(session, case_id, facts, concurrent_i130)
+    if facts.get("i130_not_filed") and not concurrent_i130:
+        warnings.append(
+            "The Form I-130 status is not set, so this packet leaves out Forms I-130 and I-130A and treats the "
+            "petition as already filed. Answer the prescreen I-130 question if it has not been filed."
+        )
     explicit_upload_selection = include_upload_ids is not None
     uploads = sorted(_confirmed_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
     incomplete_uploads = sorted(_incomplete_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
@@ -993,7 +1034,11 @@ def assemble_packet_pdf(
     for upload in uploads:
         uploads_by_code.setdefault(upload.checklist_item_code or "", []).append(upload)
     processed_upload_ids: set[UUID] = set()
-    generated_form_upload_codes = GENERATED_FORM_UPLOAD_CODES if include_generated_forms else set()
+    generated_form_upload_codes = (
+        GENERATED_FORM_UPLOAD_CODES | (I130_GENERATED_FORM_UPLOAD_CODES if concurrent_i130 else set())
+        if include_generated_forms
+        else set()
+    )
 
     def append_uploads(checklist_code: str, section: str, *, duplicate: bool = False) -> None:
         for upload in uploads_by_code.get(checklist_code, []):
@@ -1009,6 +1054,7 @@ def assemble_packet_pdf(
                 generated_form_upload_codes=generated_form_upload_codes,
                 included_documents=included_documents,
                 skipped_documents=skipped_documents,
+                concurrent_i130=concurrent_i130,
             )
             processed_upload_ids.add(upload.id)
 
@@ -1028,13 +1074,25 @@ def assemble_packet_pdf(
             warnings=warnings,
         )
 
-    def append_section_index(section: str, checklist_codes: tuple[str, ...], *, require_items: bool = False) -> None:
+    def append_section_index(
+        section: str,
+        checklist_codes: tuple[str, ...],
+        *,
+        require_items: bool = False,
+        repeated_codes: set[str] | None = None,
+    ) -> None:
         if not include_generated_forms or not include_supporting_evidence:
             return
         item_labels = _supporting_item_labels(
             checklist_codes=checklist_codes,
             uploads_by_code=uploads_by_code,
-            processed_upload_ids=processed_upload_ids,
+            processed_upload_ids={
+                upload_id
+                for upload_id in processed_upload_ids
+                if not any(
+                    upload.id == upload_id for code in (repeated_codes or set()) for upload in uploads_by_code.get(code, [])
+                )
+            },
             checklist_by_code=checklist_by_code,
         )
         if require_items and not item_labels:
@@ -1073,6 +1131,7 @@ def assemble_packet_pdf(
             ),
             uploaded_payment_included=uploaded_payment_included,
             payment_form="G-1650" if g1650_payment_payload else "G-1450",
+            concurrent_i130=concurrent_i130,
         )
 
     append_generated_form("g1145", "Form G-1145")
@@ -1087,8 +1146,12 @@ def assemble_packet_pdf(
                     evidence_code
                     for evidence_code in I485_SECTION_UPLOAD_CODES
                     if evidence_code not in {"beneficiary_passport_photos", "form_i485"}
+                    and not (concurrent_i130 and evidence_code in I485_BONA_FIDE_CODES)
                 ),
             )
+            continue
+        # Concurrent filings keep one copy of relationship evidence, in the I-130 section.
+        if concurrent_i130 and code in I485_BONA_FIDE_CODES:
             continue
         append_uploads(code, "I-485 section")
 
@@ -1122,8 +1185,37 @@ def assemble_packet_pdf(
         for code in I131_SECTION_UPLOAD_CODES:
             append_uploads(code, "I-131 section")
 
+    if concurrent_i130:
+        append_generated_form("i130", "I-130 section")
+        append_uploads("form_i130", "I-130 section")
+        append_generated_form("i130a", "I-130 section")
+        append_uploads("form_i130a", "I-130 section")
+        append_section_index(
+            "I-130 section",
+            tuple(code for code in I130_SECTION_UPLOAD_CODES if code not in I130_GENERATED_FORM_UPLOAD_CODES),
+            repeated_codes=I130_REPEATED_EVIDENCE_CODES,
+        )
+        for code in I130_SECTION_UPLOAD_CODES:
+            if code not in I130_GENERATED_FORM_UPLOAD_CODES:
+                append_uploads(code, "I-130 section", duplicate=code in I130_REPEATED_EVIDENCE_CODES)
+
+    fresh_payment_requested = g1450_payment_payload is not None or g1650_payment_payload is not None
     for upload in uploads:
         if upload.id in processed_upload_ids:
+            continue
+        if fresh_payment_requested and (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES:
+            skipped_documents.append(
+                _skipped_entry(
+                    label=_upload_label(upload, checklist_by_code),
+                    reason="A fresh payment form was generated for this packet, so this uploaded payment PDF was left out to avoid paying twice.",
+                    source_type="upload",
+                    section="Payment",
+                    checklist_item_code=upload.checklist_item_code,
+                    upload_id=upload.id,
+                    path=_safe_upload_path(upload),
+                )
+            )
+            processed_upload_ids.add(upload.id)
             continue
         _append_upload_document(
             writer=body_writer,
@@ -1135,6 +1227,7 @@ def assemble_packet_pdf(
             generated_form_upload_codes=generated_form_upload_codes,
             included_documents=included_documents,
             skipped_documents=skipped_documents,
+            concurrent_i130=concurrent_i130,
         )
         processed_upload_ids.add(upload.id)
 
@@ -1142,7 +1235,7 @@ def assemble_packet_pdf(
         code = upload.checklist_item_code or ""
         if code and uploads_by_code.get(code):
             continue
-        if _upload_exclusion_reason(upload, explicit_upload_selection, generated_form_upload_codes):
+        if _upload_exclusion_reason(upload, explicit_upload_selection, generated_form_upload_codes, concurrent_i130):
             continue
         if not explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
             continue

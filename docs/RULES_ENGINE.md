@@ -117,6 +117,12 @@ I-485 packet payments first when present, then the generated cover letter/table 
 I-485 evidence, I-864 evidence, I-693, I-765, and I-131. Payment PDFs can be generated from the G-1450 service during packet assembly, or supplied as confirmed `payment_g1450` uploads when the user
 brings their own signed Form G-1450. I-130 and I-130A petition materials are skipped for the
 pending-I-130 path and reported in the manifest instead of being silently merged.
+When `i130_filing_status` is `not_filed`, the packet is a concurrent filing: it adds the Form I-130 fee to the payment
+set and ends with an I-130 section holding Forms I-130 and I-130A, petitioner and beneficiary photos, citizenship proof,
+the marriage certificate, prior-marriage records, and the single copy of bona fide marriage evidence. USCIS sets no
+order between Forms I-130 and I-485, so section placement follows `i-485-complete-package-req.md`. Photos and civil
+documents repeat because each filing needs its own copy. A blank status keeps the I-485-only packet and adds a warning.
+A freshly generated payment form replaces any uploaded payment PDF, which is reported as skipped so fees are not paid twice.
 Bank-account payment uses the same flow through Form G-1650, with one payment form per payable filing and one payment
 method per packet (verified 2026-10-30, https://www.uscis.gov/g-1650). The `payment_g1450` checklist code is kept for
 stored cases and now covers either form. Previously generated G-1450 and G-1650 PDFs are not auto-merged because stale payment PDFs can contain outdated

@@ -51,6 +51,7 @@ PACKET_ASSEMBLY_GUIDANCE_SOURCES = [
 I485_PACKET_GENERATED_FORMS = ("g1145", "i485", "i864", "i765", "i131")
 
 I485_PACKET_PAYMENT_CHECKLIST_ORDER = (
+    "form_i130",
     "form_i485",
     "form_i765",
     "form_i131",
@@ -87,13 +88,42 @@ I485_PACKET_UPLOAD_ORDER = {
     "form_i765": 500,
     "form_i131": 700,
     "travel_explanation_i131": 710,
+    "form_i130": 800,
+    "form_i130a": 810,
+    "petitioner_passport_photos": 820,
+    "petitioner_citizenship_proof": 830,
 }
 
 I485_PACKET_EXCLUDED_UPLOAD_CODES = {
     "form_i130",
     "form_i130a",
     "petitioner_citizenship_proof",
+    "petitioner_passport_photos",
     "medical_exam_supporting_records",
+}
+
+# Concurrent spouse filing only. Evidence list verified 2026-10-30 at https://www.uscis.gov/i-130.
+# The I-130 section follows the local package outline; USCIS sets no order between Forms I-130 and I-485.
+I130_SECTION_UPLOAD_CODES = (
+    "form_i130",
+    "form_i130a",
+    "petitioner_passport_photos",
+    "beneficiary_passport_photos",
+    "petitioner_citizenship_proof",
+    "marriage_certificate",
+    "prior_marriage_termination_records",
+    "joint_bank_statement",
+    "joint_lease",
+    "utility_bills",
+    "photos_together",
+    "affidavits",
+)
+
+# Both petitions need their own copy of these, so they are repeated in the I-130 section.
+I130_REPEATED_EVIDENCE_CODES = {
+    "beneficiary_passport_photos",
+    "marriage_certificate",
+    "prior_marriage_termination_records",
 }
 
 I485_SECTION_UPLOAD_CODES = (

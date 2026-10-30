@@ -55,6 +55,36 @@ BASE_SAMPLE: dict[str, Any] = {
 
 
 SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
+    "i130": {
+        "petitioner_sex": "male",
+        "petitioner_mailing_same_as_physical": True,
+        "petitioner_physical_address_from": "2024-01-01",
+        "petitioner_parent1_last_name": "Sampleparent",
+        "petitioner_parent1_first_name": "Casey",
+        "petitioner_parent1_date_of_birth": "1969-02-03",
+        "petitioner_parent1_sex": "female",
+        "petitioner_parent2_last_name": "Sampleparent",
+        "petitioner_parent2_first_name": "Morgan",
+        "petitioner_parent2_date_of_birth": "1968-03-04",
+        "petitioner_parent2_sex": "male",
+        "beneficiary_prior_petition_filed": "no",
+        "beneficiary_current_country": "United States",
+        "beneficiary_ever_in_united_states": True,
+        "beneficiary_ever_in_immigration_proceedings": False,
+        "beneficiary_immigration_proceedings_type": "",
+        "beneficiary_current_employer_country": "United States",
+        "beneficiary_last_shared_country": "United States",
+        "beneficiary_last_shared_address_from": "2025-08-01",
+        "beneficiary_consular_country": "",
+        "petitioner_prior_employer_country": "",
+        "petitioner_prior_country": "",
+        "beneficiary_foreign_country": "",
+        "beneficiary_native_country": "",
+    },
+    "i130a": {
+        "beneficiary_country_of_residence": "United States",
+        "beneficiary_current_country": "United States",
+    },
     "i765": {
         "i765_reason_for_applying": "initial_permission",
         "i765_physical_same_as_mailing": True,

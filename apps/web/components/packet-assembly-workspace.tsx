@@ -42,8 +42,8 @@ const FORM_LABELS: Record<string, string> = {
 };
 
 const CARD_TYPES = ["Visa", "Mastercard", "American Express", "Discover"];
-const PACKET_PAYMENT_CODES = new Set(["form_i485", "form_i765", "form_i131"]);
-const GENERATED_ONLY_UPLOAD_CODES = new Set(["form_g1145", "form_i485", "form_i864", "form_i765", "form_i131"]);
+const PACKET_PAYMENT_CODES = new Set(["form_i130", "form_i485", "form_i765", "form_i131"]);
+const GENERATED_ONLY_UPLOAD_CODES = new Set(["form_g1145", "form_i130", "form_i130a", "form_i485", "form_i864", "form_i765", "form_i131"]);
 const MAX_PACKET_UPLOAD_SIZE_MB = 100;
 
 const DEFAULT_PAYMENT_FORM = {

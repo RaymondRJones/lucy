@@ -44,6 +44,7 @@ class PacketScenario:
     needs_translation: bool
     first_marriage_for_both: bool = True
     annual_income: int = 95000
+    i130_filing_status: str = "not_filed"
     extra_answers: dict[str, Any] = field(default_factory=dict)
 
 
@@ -136,6 +137,26 @@ SCENARIOS = [
         },
     ),
     PacketScenario(
+        slug="co-pending-i130",
+        case_name="Packet scenario - Colorado I-485 after I-130 already pending",
+        state_code="CO",
+        carrier="usps",
+        petitioner_first_name="Robin",
+        petitioner_last_name="Hayes",
+        beneficiary_first_name="Quinn",
+        beneficiary_last_name="Hayes",
+        beneficiary_country="Kenya",
+        city="Denver",
+        state="CO",
+        zip_code="80202",
+        wants_i765=True,
+        wants_i131=False,
+        needs_translation=False,
+        annual_income=79000,
+        i130_filing_status="pending",
+        extra_answers={"i130_receipt_number": "IOE0000000000"},
+    ),
+    PacketScenario(
         slug="wa-public-benefit-history",
         case_name="Packet scenario - Washington means-tested benefit on 09/18/26 I-485",
         state_code="WA",
@@ -220,6 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--web-base-url", default="http://localhost:3000")
     parser.add_argument("--no-generate-packets", action="store_true")
+    parser.add_argument("--only", nargs="+", metavar="SLUG", help="Seed only these scenario slugs.")
     return parser
 
 
@@ -233,7 +255,7 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
     beneficiary_email = _safe_email(scenario.beneficiary_first_name, scenario.slug)
     petitioner_email = _safe_email(scenario.petitioner_first_name, scenario.slug)
     address = {
-        "line1": f"100 {scenario.case_name.split(' - ')[-1][:24]} Avenue",
+        "line1": f"100 {scenario.city} Avenue",
         "line2": "Apt 2",
         "city": scenario.city,
         "state": scenario.state,
@@ -279,6 +301,27 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
             "wants_i765": scenario.wants_i765,
             "wants_i131": scenario.wants_i131,
             "needs_translation": scenario.needs_translation,
+            "i130_filing_status": scenario.i130_filing_status,
+            "petitioner_physical_address_line1": address["line1"],
+            "petitioner_physical_address_line2": address["line2"],
+            "petitioner_physical_city": address["city"],
+            "petitioner_physical_state": address["state"],
+            "petitioner_physical_zip": address["zip"],
+            "beneficiary_intended_us_address_line1": address["line1"],
+            "beneficiary_intended_us_address_line2": address["line2"],
+            "beneficiary_intended_us_city": address["city"],
+            "beneficiary_intended_us_state": address["state"],
+            "beneficiary_intended_us_zip": address["zip"],
+            "beneficiary_last_shared_address_line1": address["line1"],
+            "beneficiary_last_shared_address_line2": address["line2"],
+            "beneficiary_last_shared_city": address["city"],
+            "beneficiary_last_shared_state": address["state"],
+            "beneficiary_last_shared_zip": address["zip"],
+            "beneficiary_adjustment_city": address["city"],
+            "beneficiary_adjustment_state": address["state"],
+            "petitioner_spouse1_first_name": scenario.beneficiary_first_name,
+            "beneficiary_spouse1_last_name": scenario.petitioner_last_name,
+            "beneficiary_spouse1_first_name": scenario.petitioner_first_name,
             "annual_income": scenario.annual_income,
             "i864_household_income": scenario.annual_income,
             "i864_tax_income_1": scenario.annual_income,
@@ -383,6 +426,9 @@ def _seed_scenario(session: Session, scenario: PacketScenario, generate_packets:
         _seed_supplemental_form(session, case, "i765", answers)
     if scenario.wants_i131:
         _seed_supplemental_form(session, case, "i131", answers)
+    if scenario.i130_filing_status == "not_filed":
+        _seed_supplemental_form(session, case, "i130", answers)
+        _seed_supplemental_form(session, case, "i130a", answers)
     session.commit()
 
     checklist_items, facts = generate_checklist(session, case.id)
@@ -447,9 +493,10 @@ def main() -> None:
     args = build_parser().parse_args()
     create_db_and_tables()
     generate_packets = not args.no_generate_packets
+    scenarios = [scenario for scenario in SCENARIOS if not args.only or scenario.slug in args.only]
 
     with Session(engine) as session:
-        results = [_seed_scenario(session, scenario, generate_packets) for scenario in SCENARIOS]
+        results = [_seed_scenario(session, scenario, generate_packets) for scenario in scenarios]
 
     base_url = args.web_base_url.rstrip("/")
     payload = {

@@ -163,6 +163,17 @@ CHECKLIST_TEMPLATES = [
         when_all=("concurrent_filing_eligible",),
     ),
     ChecklistTemplate(
+        code="petitioner_passport_photos",
+        category="identity_documents",
+        label="Petitioner passport-style photos",
+        owner_role="petitioner",
+        description="Recent passport-style photographs of the U.S. citizen spouse for Form I-130.",
+        why_needed="The USCIS Form I-130 checklist lists passport-style photographs for spouse petitions (verified 2026-10-30, https://www.uscis.gov/i-130).",
+        what_to_save_now="Keep a scanned reference copy plus the final printed photos you plan to include.",
+        when_all=("petitioner_is_us_citizen",),
+        when_not=("i130_already_filed", "i130_needs_review"),
+    ),
+    ChecklistTemplate(
         code="beneficiary_i94",
         category="identity_documents",
         label="Beneficiary I-94 record",
