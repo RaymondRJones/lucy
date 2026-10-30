@@ -117,7 +117,9 @@ I-485 packet payments first when present, then the generated cover letter/table 
 I-485 evidence, I-864 evidence, I-693, I-765, and I-131. Payment PDFs can be generated from the G-1450 service during packet assembly, or supplied as confirmed `payment_g1450` uploads when the user
 brings their own signed Form G-1450. I-130 and I-130A petition materials are skipped for the
 pending-I-130 path and reported in the manifest instead of being silently merged.
-Previously generated G-1450 PDFs are not auto-merged because stale payment PDFs can contain outdated
+Bank-account payment uses the same flow through Form G-1650, with one payment form per payable filing and one payment
+method per packet (verified 2026-10-30, https://www.uscis.gov/g-1650). The `payment_g1450` checklist code is kept for
+stored cases and now covers either form. Previously generated G-1450 and G-1650 PDFs are not auto-merged because stale payment PDFs can contain outdated
 applicant/requestor data.
 When packet assembly is run with `include_supporting_evidence=false`, uploaded supporting evidence is
 excluded from the merged PDF so the user can print a forms/payment-only draft while preserving the

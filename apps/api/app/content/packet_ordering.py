@@ -26,6 +26,13 @@ PACKET_ASSEMBLY_GUIDANCE_SOURCES = [
         "use": "Source for placing Form G-1450 on top of the application, petition, or request when paying by credit card.",
     },
     {
+        "label": "USCIS Form G-1650",
+        "url": "https://www.uscis.gov/g-1650",
+        "last_reviewed": "2026-06-03",
+        "verified_on": "2026-10-30",
+        "use": "Source for placing Form G-1650 on top of the application, petition, or request when paying from a U.S. bank account.",
+    },
+    {
         "label": "USCIS Filing Fees",
         "url": "https://www.uscis.gov/forms/filing-fees",
         "last_reviewed": "2025-09-18",

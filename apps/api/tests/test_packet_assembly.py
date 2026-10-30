@@ -459,7 +459,7 @@ def test_packet_assembly_does_not_reuse_stale_generated_payment_pdfs(tmp_path):
         for document in result.skipped_documents
         if document["source_type"] == "generated_payment_form"
     } == {"form_i485", "form_i765"}
-    assert all("No fresh G-1450 was generated" in document["reason"] for document in result.skipped_documents)
+    assert all("No fresh G-1450 or G-1650 was generated" in document["reason"] for document in result.skipped_documents)
 
 
 def test_packet_assembly_includes_uploaded_g1450_payment_pdf(tmp_path, monkeypatch):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-PACKET_MAILING_VERIFIED_ON = "2026-04-30"
+PACKET_MAILING_VERIFIED_ON = "2026-10-30"
 PACKET_MAILING_SOURCE_LAST_REVIEWED = "2024-10-11"
 PACKET_MAILING_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
@@ -251,6 +251,7 @@ def mailing_recommendation_for_location(value: str | None, carrier: str = "usps"
         "note": (
             "For family-based Forms I-130, I-131, I-485, I-765, I-824, or I-864, "
             "USCIS routes the packet by where the filer lives and the delivery method. "
-            "Verify the live USCIS page again before mailing."
+            "USCIS announced an Oct. 7, 2026 filing-location change for Forms I-130 and I-485, while its "
+            "family-based lockbox chart was last updated Oct. 11, 2024. Verify the live USCIS pages again before mailing."
         ),
     }

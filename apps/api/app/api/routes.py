@@ -51,6 +51,7 @@ from app.schemas.common import (
     FilingValidationRequest,
     FilingValidationResponseRead,
     FormCaseDataImportRequest,
+    G1650GenerateRequest,
     FormCaseDataImportResponseRead,
     FormFillPreviewRead,
     FormIngestionStateRead,
@@ -123,6 +124,7 @@ from app.services.intake import (
     normalize_country,
     upsert_intake_step,
 )
+from app.services.g1650 import generate_case_g1650_packet_from_payload, validate_g1650_payload
 from app.services.packet_assembly import assemble_packet_pdf
 from app.services.prescreen import get_prescreen_state, save_prescreen_answers
 from app.services.qa import get_qa_results, run_qa
@@ -601,6 +603,7 @@ def get_case_g1450_options(case_id: UUID, session: Session = Depends(get_session
         case_id=case_id,
         template_pdf=str(settings.g1450_template_path),
         template_exists=settings.g1450_template_path.exists(),
+        g1650_template_exists=settings.g1650_template_path.exists(),
         payment_note=G1450_PAYMENT_NOTE,
         options=[G1450PaymentOptionRead(**option.__dict__) for option in options],
     )
@@ -631,6 +634,55 @@ def generate_case_g1450_pdfs(
         session,
         case_id,
         "g1450.generated",
+        {
+            "selected_checklist_codes": payload.selected_checklist_codes,
+            "generated_count": len(packet.generated),
+            "skipped_count": len(packet.skipped),
+            "total_authorized_amount": packet.total_authorized_amount,
+        },
+    )
+    session.commit()
+    return G1450GenerateResponseRead(
+        case_id=case_id,
+        generated=[
+            G1450GeneratedPdfRead(
+                checklist_code=result.checklist_code,
+                form_code=result.form_code,
+                filing_category=result.filing_category,
+                authorized_amount=result.authorized_amount,
+                generated_pdf=str(result.output_path),
+                download_url=_generated_pdf_download_url(case_id, result.output_path),
+            )
+            for result in packet.generated
+        ],
+        skipped=packet.skipped,
+        total_authorized_amount=packet.total_authorized_amount,
+        payment_note=packet.payment_note,
+    )
+
+
+@router.post("/cases/{case_id}/g1650/generate", response_model=G1450GenerateResponseRead)
+def generate_case_g1650_pdfs(
+    case_id: UUID,
+    payload: G1650GenerateRequest,
+    session: Session = Depends(get_session),
+):
+    _get_case_or_404(session, case_id)
+    try:
+        packet = generate_case_g1650_packet_from_payload(
+            session=session,
+            case_id=case_id,
+            payload=payload.model_dump(exclude={"selected_checklist_codes"}),
+            template_path=settings.g1650_template_path,
+            output_dir=GENERATED_PDF_DIR,
+            selected_checklist_codes=payload.selected_checklist_codes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    _log(
+        session,
+        case_id,
+        "g1650.generated",
         {
             "selected_checklist_codes": payload.selected_checklist_codes,
             "generated_count": len(packet.generated),
@@ -954,6 +1006,8 @@ def generate_case_packet_pdf(
     _get_case_or_404(session, case_id)
     payload = payload or PacketAssemblyGenerateRequest()
     try:
+        if payload.g1650_payment:
+            validate_g1650_payload(payload.g1650_payment.model_dump())
         result = assemble_packet_pdf(
             session=session,
             case_id=case_id,
@@ -964,8 +1018,10 @@ def generate_case_packet_pdf(
             include_generated_forms=payload.include_generated_forms,
             allow_incomplete=payload.allow_incomplete,
             g1450_payment_payload=payload.g1450_payment.model_dump() if payload.g1450_payment else None,
+            g1650_payment_payload=payload.g1650_payment.model_dump() if payload.g1650_payment else None,
             selected_payment_checklist_codes=payload.g1450_selected_checklist_codes,
             g1450_template_path=settings.g1450_template_path,
+            g1650_template_path=settings.g1650_template_path,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

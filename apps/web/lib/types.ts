@@ -637,8 +637,19 @@ export type G1450PaymentOptions = {
   case_id: string;
   template_pdf: string;
   template_exists: boolean;
+  g1650_template_exists: boolean;
   payment_note: string;
   options: G1450PaymentOption[];
+};
+
+export type G1650BankDetails = {
+  account_ownership: string;
+  account_type: string;
+  account_holder_name: string;
+  business_name: string;
+  bank_name: string;
+  routing_number: string;
+  account_number: string;
 };
 
 export type G1450GeneratePayload = {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -382,6 +383,31 @@ def generate_case_g1450_packet_from_payload(
     selected_checklist_codes: list[str] | None = None,
     source_json_path: Path | None = None,
 ) -> G1450PacketPlan:
+    return generate_case_payment_packet(
+        session=session,
+        case_id=case_id,
+        payload=payload,
+        template_path=template_path,
+        output_dir=output_dir,
+        selected_checklist_codes=selected_checklist_codes,
+        source_json_path=source_json_path,
+        generate_form=generate_g1450_pdf_from_payload,
+        filename_suffix="g-1450",
+    )
+
+
+def generate_case_payment_packet(
+    *,
+    session: Session,
+    case_id: UUID,
+    payload: dict[str, Any],
+    template_path: Path,
+    output_dir: Path,
+    selected_checklist_codes: list[str] | None,
+    generate_form: Callable[..., GeneratedG1450],
+    filename_suffix: str,
+    source_json_path: Path | None = None,
+) -> G1450PacketPlan:
     items = payable_checklist_items(session, case_id)
     applicable_codes = {item.code for item in items}
     selected_codes = applicable_codes if selected_checklist_codes is None else set(selected_checklist_codes)
@@ -413,7 +439,7 @@ def generate_case_g1450_packet_from_payload(
             )
             continue
         amount = f"{parsed_amount:.2f}"
-        filename = f"{case_id}-{fee['form_code'].lower()}-g-1450.pdf"
+        filename = f"{case_id}-{fee['form_code'].lower()}-{filename_suffix}.pdf"
         item_payload = _payload_with_case_requestor_name(
             session=session,
             case_id=case_id,
@@ -421,7 +447,7 @@ def generate_case_g1450_packet_from_payload(
             checklist_code=item.code,
         )
         generated.append(
-            generate_g1450_pdf_from_payload(
+            generate_form(
                 payload=item_payload,
                 template_path=template_path,
                 output_path=output_dir / filename,

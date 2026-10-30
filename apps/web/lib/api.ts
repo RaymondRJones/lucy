@@ -12,6 +12,7 @@ import type {
   G1450GeneratePayload,
   G1450GenerateResponse,
   G1450PaymentOptions,
+  G1650BankDetails,
   I485CaseDataImportResponse,
   I485IngestionState,
   I485FormFillPreview,
@@ -376,6 +377,7 @@ export function generatePacketAssembly(
     include_generated_forms?: boolean;
     allow_incomplete?: boolean;
     g1450_payment?: Omit<G1450GeneratePayload, "selected_checklist_codes">;
+    g1650_payment?: G1650BankDetails;
     g1450_selected_checklist_codes?: string[] | null;
   },
 ) {

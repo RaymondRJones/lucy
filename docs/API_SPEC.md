@@ -90,6 +90,7 @@
     - `include_generated_forms`: defaults to `true`
     - `allow_incomplete`: defaults to `true` so draft form PDFs can be generated for review
     - `g1450_payment`: optional one-request card payload for generating I-485 packet payment PDFs during assembly; card details are not saved
+    - `g1650_payment`: optional one-request bank payload that generates Form G-1650 payment PDFs instead; a request with both `g1450_payment` and `g1650_payment` is rejected
     - `g1450_selected_checklist_codes`: optional payment checklist-code allowlist for the I-485 packet payment set
   - generated packet PDFs follow scanner-friendly USCIS mail guidance: I-485-centered payment PDFs appear first when available or generated, then the generated cover letter/table of contents, then G-1145, the I-485 section, the I-864 section, the I-693 medical section, I-765 when applicable, and I-131 when applicable; I-130 and I-130A can now be prepared as review-draft PDFs through form ingestion, but this packet compiler remains I-485-centered and does not yet merge those petition drafts into the assembly output
   - generated packets add plain letter-size section index pages for major form/evidence segments such as I-485, I-864, I-765, and I-131, rather than relying on physical tabs, binders, folders, sticky notes, or other scanner-hostile separators
@@ -157,6 +158,12 @@
 - `GET /cases/{case_id}/g1450/payment-options`
   - return applicable checklist-backed Form G-1450 payment options, including paper-fee amount, source URL,
     source edition, verification date, whether the fee is payable, and whether the local G-1450 template exists
+- `POST /cases/{case_id}/g1650/generate`
+  - generate one local Form G-1650 PDF for each selected applicable payable checklist form using one-request bank
+    details (`account_ownership`, `account_type`, `account_holder_name`, `business_name`, `bank_name`, `routing_number`,
+    `account_number`). Amounts are whole dollars because the form preprints `.00`, the signature stays blank, and
+    invalid routing numbers return 400. Bank details are not stored in case records or audit logs, but they are printed
+    on the generated PDFs in `storage/generated/`. Source verified 2026-10-30: https://www.uscis.gov/g-1650
 - `POST /cases/{case_id}/g1450/generate`
   - generate one local Form G-1450 PDF for each selected applicable payable checklist form using a one-request
     credit-card payload rather than a saved JSON file

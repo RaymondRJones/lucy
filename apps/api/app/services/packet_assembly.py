@@ -37,6 +37,7 @@ from app.services.family_pdf import generate_g1145_pdf
 from app.services.form_ingestion import get_form_state
 from app.services.form_pdf import generate_form_pdf
 from app.services.g1450 import generate_case_g1450_packet_from_payload, payable_checklist_items
+from app.services.g1650 import generate_case_g1650_packet_from_payload
 from app.services.i485_pdf import generate_i485_pdf
 from app.services.intake import derive_case_facts, get_merged_case_intake
 
@@ -439,8 +440,8 @@ def _payment_filename(case_id: UUID, checklist_code: str) -> str:
     return f"{case_id}-{form_code.lower()}-g-1450.pdf"
 
 
-def _payment_label(checklist_code: str) -> str:
-    return f"Form G-1450 payment for {G1450_FORM_FEES[checklist_code]['label']}"
+def _payment_label(checklist_code: str, payment_form: str = "G-1450") -> str:
+    return f"Form {payment_form} payment for {G1450_FORM_FEES[checklist_code]['label']}"
 
 
 def _selected_i485_payment_codes(
@@ -456,7 +457,7 @@ def _selected_i485_payment_codes(
     return selected_codes, skipped_codes
 
 
-def _append_g1450_payment_forms(
+def _append_payment_forms(
     *,
     writer: PdfWriter,
     session: Session,
@@ -465,42 +466,47 @@ def _append_g1450_payment_forms(
     included_documents: list[dict[str, Any]],
     skipped_documents: list[dict[str, Any]],
     warnings: list[str],
-    g1450_payment_payload: dict[str, Any] | None,
+    payment_payload: dict[str, Any] | None,
     selected_payment_checklist_codes: list[str] | None,
-    g1450_template_path: Path,
+    template_path: Path,
     uploaded_payment_included: bool = False,
+    payment_form: str = "G-1450",
 ) -> None:
+    form_key = payment_form.lower().replace("-", "")
+    generate_payment_packet = (
+        generate_case_g1650_packet_from_payload if payment_form == "G-1650" else generate_case_g1450_packet_from_payload
+    )
     items = _i485_payment_items(session, case_id)
     selected_codes, skipped_codes = _selected_i485_payment_codes(items, selected_payment_checklist_codes)
     for code in skipped_codes:
         skipped_documents.append(
             _skipped_entry(
-                label=f"Form G-1450 payment for {code}",
+                label=f"Form {payment_form} payment for {code}",
                 reason="Payment form is not part of the I-485 packet payment set or is not applicable to this case.",
                 source_type=PAYMENT_SOURCE_TYPE,
                 section="Payment",
-                form_key="g1450",
+                form_key=form_key,
                 checklist_item_code=code,
             )
         )
     if not selected_codes:
         return
 
-    if uploaded_payment_included and g1450_payment_payload is None and selected_payment_checklist_codes is None:
+    if uploaded_payment_included and payment_payload is None and selected_payment_checklist_codes is None:
         return
 
-    if g1450_payment_payload is None:
+    if payment_payload is None:
         for code in selected_codes:
             skipped_documents.append(
                 _skipped_entry(
-                    label=_payment_label(code),
+                    label=_payment_label(code, payment_form),
                     reason=(
-                        "No fresh G-1450 was generated for this packet. Enter card details in this "
-                        "request or upload a reviewed, signed G-1450 PDF."
+                        "No fresh G-1450 or G-1650 was generated for this packet. Enter card or bank details "
+                        "in this request or upload a reviewed, signed payment PDF."
                     ),
                     source_type=PAYMENT_SOURCE_TYPE,
                     section="Payment",
-                    form_key="g1450",
+                    form_key=form_key,
                     checklist_item_code=code,
                 )
             )
@@ -508,11 +514,11 @@ def _append_g1450_payment_forms(
 
     payment_paths: list[tuple[str, Path]] = []
     try:
-        payment_packet = generate_case_g1450_packet_from_payload(
+        payment_packet = generate_payment_packet(
             session=session,
             case_id=case_id,
-            payload=g1450_payment_payload,
-            template_path=g1450_template_path,
+            payload=payment_payload,
+            template_path=template_path,
             output_dir=output_dir,
             selected_checklist_codes=selected_codes,
         )
@@ -520,15 +526,15 @@ def _append_g1450_payment_forms(
         for code in selected_codes:
             skipped_documents.append(
                 _skipped_entry(
-                    label=_payment_label(code),
+                    label=_payment_label(code, payment_form),
                     reason=str(exc),
                     source_type=PAYMENT_SOURCE_TYPE,
                     section="Payment",
-                    form_key="g1450",
+                    form_key=form_key,
                     checklist_item_code=code,
                 )
             )
-        warnings.append("G-1450 payment PDFs could not be generated for the packet.")
+        warnings.append(f"{payment_form} payment PDFs could not be generated for the packet.")
         return
     payment_paths = [
         (result.checklist_code or "", result.output_path)
@@ -543,11 +549,11 @@ def _append_g1450_payment_forms(
         except Exception as exc:
             skipped_documents.append(
                 _skipped_entry(
-                    label=_payment_label(code),
+                    label=_payment_label(code, payment_form),
                     reason=f"Could not read payment PDF: {exc}",
                     source_type=PAYMENT_SOURCE_TYPE,
                     section="Payment",
-                    form_key="g1450",
+                    form_key=form_key,
                     checklist_item_code=code,
                     path=path,
                 )
@@ -555,11 +561,11 @@ def _append_g1450_payment_forms(
             continue
         included_documents.append(
             _document_entry(
-                label=_payment_label(code),
+                label=_payment_label(code, payment_form),
                 path=path,
                 source_type=PAYMENT_SOURCE_TYPE,
                 section="Payment",
-                form_key="g1450",
+                form_key=form_key,
                 checklist_item_code=code,
                 page_count=page_count,
             )
@@ -784,6 +790,7 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
     by_label: dict[str, dict[str, Any]] = {}
     seen_items: dict[str, set[str]] = {}
     payment_fee_items: list[str] = []
+    payment_form_keys: set[str | None] = set()
     has_payment_form = False
     i485_bona_fide_items: list[str] = []
 
@@ -799,6 +806,7 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
 
         if section == "Payment":
             checklist_code = document.get("checklist_item_code") or ""
+            payment_form_keys.add(document.get("form_key"))
             fee_item = COVER_LETTER_PAYMENT_FEE_ITEMS.get(checklist_code)
             if fee_item:
                 payment_fee_items.append(fee_item)
@@ -827,13 +835,20 @@ def _cover_letter_sections(included_documents: list[dict[str, Any]]) -> list[dic
             _add_cover_letter_item(
                 payment_section,
                 seen_items,
-                {"label": "Form G-1450 (Credit Card Authorization) for:", "children": unique_payment_fees},
+                {
+                    "label": (
+                        "Form G-1650 (ACH Authorization) for:"
+                        if "g1650" in payment_form_keys
+                        else "Form G-1450 (Credit Card Authorization) for:"
+                    ),
+                    "children": unique_payment_fees,
+                },
             )
         elif has_payment_form:
             _add_cover_letter_item(
                 payment_section,
                 seen_items,
-                "Form G-1450 (Credit Card Authorization)",
+                "Signed payment authorization (Form G-1450 or Form G-1650)",
             )
 
     i485_section = by_label.get("I-485 section")
@@ -931,6 +946,8 @@ def assemble_packet_pdf(
     g1450_payment_payload: dict[str, Any] | None = None,
     selected_payment_checklist_codes: list[str] | None = None,
     g1450_template_path: Path | None = None,
+    g1650_payment_payload: dict[str, Any] | None = None,
+    g1650_template_path: Path | None = None,
     output_dir: Path = PACKET_OUTPUT_DIR,
 ) -> PacketAssemblyResult:
     values = get_merged_case_intake(session, case_id)
@@ -1032,14 +1049,14 @@ def assemble_packet_pdf(
         )
 
     uploaded_payment_included = False
-    if g1450_payment_payload is None:
+    if g1450_payment_payload is None and g1650_payment_payload is None:
         before_payment_upload_count = len(included_documents)
         for code in I485_PACKET_PAYMENT_UPLOAD_CODES:
             append_uploads(code, "Payment")
         uploaded_payment_included = len(included_documents) > before_payment_upload_count
 
     if include_generated_forms:
-        _append_g1450_payment_forms(
+        _append_payment_forms(
             writer=body_writer,
             session=session,
             case_id=case_id,
@@ -1047,10 +1064,15 @@ def assemble_packet_pdf(
             included_documents=included_documents,
             skipped_documents=skipped_documents,
             warnings=warnings,
-            g1450_payment_payload=g1450_payment_payload,
+            payment_payload=g1650_payment_payload or g1450_payment_payload,
             selected_payment_checklist_codes=selected_payment_checklist_codes,
-            g1450_template_path=g1450_template_path or settings.g1450_template_path,
+            template_path=(
+                g1650_template_path or settings.g1650_template_path
+                if g1650_payment_payload
+                else g1450_template_path or settings.g1450_template_path
+            ),
             uploaded_payment_included=uploaded_payment_included,
+            payment_form="G-1650" if g1650_payment_payload else "G-1450",
         )
 
     append_generated_form("g1145", "Form G-1145")

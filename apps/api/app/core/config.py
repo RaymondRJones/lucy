@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(REPO_ROOT / 'storage' / 'app.db').as_posix()}"
     upload_dir: Path = REPO_ROOT / "storage" / "uploads"
     g1450_template_path: Path = REPO_ROOT / "blank-immigration-documents" / "g-1450.pdf"
+    g1650_template_path: Path = REPO_ROOT / "blank-immigration-documents" / "g-1650.pdf"
     max_upload_size_mb: int = 100
 
 
