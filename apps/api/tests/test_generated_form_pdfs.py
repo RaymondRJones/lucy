@@ -492,7 +492,7 @@ def test_g1450_generation_writes_all_payment_fields_and_checkboxes(tmp_path: Pat
             "CreditCardNumber_4[1]": "321",
             "ExpirationDate[0]": "08/2028",
             "SignatureOfApplicant[0]": "",
-            "AuthorizedPaymentAmt[0]": "1440.00",
+            "AuthorizedPaymentAmt[0]": "1440",
         },
         checkbox_values={
             "CreditCardTypeChBx[1]": "/MC",

@@ -12,9 +12,9 @@ from sqlmodel import Session
 from app.services.g1450 import (
     G1450PacketPlan,
     GeneratedG1450,
-    _parse_amount,
     _set_checkbox,
-    _set_need_appearances,
+    _use_saved_appearances,
+    _whole_dollar_amount,
     _split_name,
     generate_case_payment_packet,
 )
@@ -68,14 +68,6 @@ def validate_g1650_payload(payload: dict[str, Any]) -> None:
         raise ValueError("account_number must be 4 to 17 digits.")
 
 
-def _whole_dollar_amount(value: Any) -> str:
-    # The form preprints ".00" after the amount, so it can only state whole dollars.
-    amount = _parse_amount(value)
-    if amount <= 0 or amount != amount.to_integral_value():
-        raise ValueError("Form G-1650 needs a whole-dollar amount greater than zero.")
-    return str(int(amount))
-
-
 def generate_g1650_pdf_from_payload(
     *,
     payload: dict[str, Any],
@@ -90,6 +82,7 @@ def generate_g1650_pdf_from_payload(
     if not template_path.exists():
         raise ValueError(f"G-1650 template PDF not found at {template_path}.")
     validate_g1650_payload(payload)
+    # The form preprints ".00" after the amount.
     amount = _whole_dollar_amount(amount_override or payload.get("authorized_amount"))
     holder_name = _clean_string(payload, "account_holder_name")
     family_name, given_name, middle_name = _split_name(_clean_string(payload, "applicant_name") or holder_name)
@@ -111,9 +104,9 @@ def generate_g1650_pdf_from_payload(
 
     # Clone rather than copy pages: qualified field names rely on the template's field hierarchy.
     writer = PdfWriter(clone_from=PdfReader(template_path))
-    _set_need_appearances(writer)
+    _use_saved_appearances(writer)
     for page in writer.pages:
-        writer.update_page_form_field_values(page, text_values)
+        writer.update_page_form_field_values(page, text_values, auto_regenerate=False)
     for field_name, appearance in (
         ACCOUNT_OWNERSHIP_CHECKBOXES[_clean_string(payload, "account_ownership").lower()],
         ACCOUNT_TYPE_CHECKBOXES[_clean_string(payload, "account_type").lower()],

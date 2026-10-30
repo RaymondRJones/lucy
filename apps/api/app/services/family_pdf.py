@@ -12,7 +12,7 @@ from pypdf.generic import NameObject
 from app.services.i485_pdf import (
     _add_unit_fields,
     _set_checkbox_values,
-    _set_need_appearances,
+    _use_saved_appearances,
     _set_text_values,
     _template_field_names,
 )
@@ -546,8 +546,18 @@ def _first_marriage_count() -> str:
     return "1"
 
 
-def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
+def _without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
+    # Case-fact aliases copy a ZIP code into the postal code key, but the forms keep Postal Code for foreign addresses.
     normalized = dict(values)
+    for prefix in ("beneficiary_current", "petitioner_current"):
+        postal_key = f"{prefix}_postal_code"
+        if _value_is_answered(normalized.get(postal_key)) and normalized.get(postal_key) == normalized.get(f"{prefix}_zip"):
+            normalized.pop(postal_key)
+    return normalized
+
+
+def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
+    normalized = _without_zip_postal_aliases(values)
     if normalized.get("first_marriage_for_both") is True:
         normalized.setdefault("petitioner_marriage_count", _first_marriage_count())
         normalized.setdefault("beneficiary_marriage_count", _first_marriage_count())
@@ -739,6 +749,7 @@ def build_i130a_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    values = _without_zip_postal_aliases(values)
     text_values: dict[str, str] = {}
     checkbox_values: dict[str, str] = {}
     mapped_fields: list[dict[str, Any]] = []
@@ -844,7 +855,7 @@ def _generate_family_pdf_from_payload(
 
     reader = PdfReader(template_path)
     writer = _pdf_writer_from_reader(reader)
-    _set_need_appearances(writer)
+    _use_saved_appearances(writer)
     _set_text_values(writer, payload.text_values)
     _set_checkbox_values(writer, payload.checkbox_values)
 

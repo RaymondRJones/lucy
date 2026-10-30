@@ -96,6 +96,13 @@ def _parse_amount(value: Any) -> Decimal:
     return amount
 
 
+def _whole_dollar_amount(value: Any) -> str:
+    amount = _parse_amount(value)
+    if amount <= 0 or amount != amount.to_integral_value():
+        raise ValueError("Payment forms need a whole-dollar amount greater than zero.")
+    return str(int(amount))
+
+
 def _split_name(full_name: str) -> tuple[str, str, str]:
     parts = [part for part in full_name.strip().split() if part]
     if not parts:
@@ -183,12 +190,13 @@ def _set_checkbox(writer: PdfWriter, field_name: str, appearance: NameObject) ->
                 )
 
 
-def _set_need_appearances(writer: PdfWriter) -> None:
+def _use_saved_appearances(writer: PdfWriter) -> None:
+    # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
     writer._root_object.update(
         {
             NameObject("/AcroForm"): DictionaryObject(
                 {
-                    NameObject("/NeedAppearances"): BooleanObject(True),
+                    NameObject("/NeedAppearances"): BooleanObject(False),
                     NameObject("/Fields"): ArrayObject(),
                 }
             )
@@ -276,16 +284,17 @@ def generate_g1450_pdf_from_payload(
         # verified 2026-05-09.
         # USCIS says a typewritten name is not an acceptable G-1450 signature.
         "SignatureOfApplicant[0]": "",
-        "AuthorizedPaymentAmt[0]": amount,
+        # The form preprints ".00" after this field, so writing cents would print "675.00 .00".
+        "AuthorizedPaymentAmt[0]": _whole_dollar_amount(amount),
     }
 
     reader = PdfReader(template_path)
     writer = PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
-    _set_need_appearances(writer)
+    _use_saved_appearances(writer)
     for page in writer.pages:
-        writer.update_page_form_field_values(page, text_values)
+        writer.update_page_form_field_values(page, text_values, auto_regenerate=False)
     _set_checkbox(writer, selected_card[0], selected_card[1])
     if unit_field:
         appearance = {

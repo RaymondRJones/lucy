@@ -12,7 +12,7 @@ from sqlmodel import Session
 
 from app.content.admission_classes import normalize_class_of_admission
 from app.content.supplemental_forms import all_supplemental_form_questions, get_supplemental_form_config
-from app.services.family_pdf import build_i130_pdf_field_payload, build_i130a_pdf_field_payload
+from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_field_payload, build_i130a_pdf_field_payload
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
     build_form_fill_preview,
@@ -24,7 +24,7 @@ from app.services.intake import get_merged_case_intake
 from app.services.i485_pdf import (
     _add_unit_fields,
     _set_checkbox_values,
-    _set_need_appearances,
+    _use_saved_appearances,
     _set_text_values,
     _template_field_names,
 )
@@ -636,7 +636,10 @@ def build_form_pdf_field_payload(
             if isinstance(entry.get("field_key"), str)
         ]
         unmapped_answered_questions = []
-        for question_id, value in sorted(answers.items()):
+        # The combined address answer is written through its street, city, state, and ZIP parts.
+        if "beneficiary_current_address_line1" in mapped_question_ids:
+            mapped_question_ids.add("beneficiary_current_address")
+        for question_id, value in sorted(_without_zip_postal_aliases(answers).items()):
             if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not _value_is_answered(value):
                 continue
             question = question_by_id.get(question_id, {})
@@ -818,7 +821,7 @@ def generate_form_pdf_from_answers(
             acroform = root.get("/AcroForm") if hasattr(root, "get") else None
             if acroform:
                 writer._root_object.update({NameObject("/AcroForm"): acroform})
-    _set_need_appearances(writer)
+    _use_saved_appearances(writer)
     _set_text_values(writer, payload.text_values)
     _set_checkbox_values(writer, payload.checkbox_values)
 

@@ -145,7 +145,7 @@ def test_generate_g1450_pdf_from_card_json(tmp_path: Path):
     assert _page_field_value(reader, "MiddleName[0]") == "Q"
     assert _page_field_value(reader, "CCHolderGivenName[0]") == "Jane"
     assert _page_field_value(reader, "CreditCardNumber_1[0]") == "4111"
-    assert _page_field_value(reader, "AuthorizedPaymentAmt[0]") == "675.00"
+    assert _page_field_value(reader, "AuthorizedPaymentAmt[0]") == "675"
     assert _page_field_value(reader, "SignatureOfApplicant[0]") in {None, ""}
 
 

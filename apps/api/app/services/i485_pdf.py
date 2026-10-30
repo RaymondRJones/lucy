@@ -1618,7 +1618,7 @@ def _set_text_values(writer: PdfWriter, values: dict[str, str]) -> None:
                     annotation.update({NameObject("/DA"): TextStringObject(PART14_ADDITIONAL_INFO_DA)})
                 page_values[str(field_name)] = values[selected_name]
         if page_values:
-            writer.update_page_form_field_values(page, page_values)
+            writer.update_page_form_field_values(page, page_values, auto_regenerate=False)
 
 
 def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
@@ -1641,15 +1641,16 @@ def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
             )
 
 
-def _set_need_appearances(writer: PdfWriter) -> None:
+def _use_saved_appearances(writer: PdfWriter) -> None:
+    # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
     try:
-        writer.set_need_appearances_writer(True)
+        writer.set_need_appearances_writer(False)
     except Exception:
         acroform = writer._root_object.get("/AcroForm")
         if acroform is None:
             writer._root_object.update({NameObject("/AcroForm"): DictionaryObject()})
             acroform = writer._root_object["/AcroForm"]
-        acroform.update({NameObject("/NeedAppearances"): BooleanObject(True)})
+        acroform.update({NameObject("/NeedAppearances"): BooleanObject(False)})
 
 
 def _preview_from_answers(case_id: UUID, answers: dict[str, Any]) -> dict[str, Any]:
@@ -1706,7 +1707,7 @@ def generate_i485_pdf_from_answers(
     payload = build_i485_pdf_field_payload(answers, available_fields, button_choices)
 
     writer = PdfWriter(clone_from=reader)
-    _set_need_appearances(writer)
+    _use_saved_appearances(writer)
     _set_text_values(writer, payload.text_values)
     _set_checkbox_values(writer, payload.checkbox_values)
 

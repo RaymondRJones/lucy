@@ -12,6 +12,7 @@ from app.content.i485_questionnaire import all_i485_questions
 from app.content.i485_sample import build_sample_i485_answers
 from app.content.uscis_requirements import USCIS_REQUIREMENTS
 from app.services.form_pdf import build_form_pdf_field_payload, generate_form_pdf_from_answers
+from app.services.g1450 import generate_g1450_pdf_from_payload
 from app.services.i485 import conditional_required_i485_question_ids, evaluate_i485_answers
 from app.services.i485_pdf import (
     AUTO_BOOLEAN_FIELD_MAP,
@@ -278,3 +279,55 @@ def test_i864_generation_fills_moved_part8_fields(tmp_path: Path):
         available_fields=_template_field_names(PdfReader(I864_TEMPLATE)),
     )
     assert payload.missing_template_fields == []
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS[:1], ids=lambda scenario: scenario.slug)
+def test_generated_i485_prints_saved_field_and_barcode_appearances(tmp_path: Path, scenario):
+    answers = {key: value for key, value in _scenario_answers(scenario).items() if key in QUESTION_BY_ID}
+    result = generate_i485_pdf_from_answers(
+        case_id=uuid4(),
+        answers=answers,
+        template_path=I485_TEMPLATE,
+        output_path=tmp_path / "i485.pdf",
+        allow_incomplete=True,
+    )
+    reader = PdfReader(result.output_path)
+
+    assert reader.trailer["/Root"]["/AcroForm"]["/NeedAppearances"].value is False
+    widgets = [annotation.get_object() for page in reader.pages for annotation in page.get("/Annots") or []]
+    barcodes = [widget for widget in widgets if str(widget.get("/T")).startswith("PDF417BarCode")]
+    assert len(barcodes) == len(reader.pages)
+    assert all("/AP" in widget for widget in barcodes)
+    filled = [widget for widget in widgets if widget.get("/V") and widget.get("/FT") == "/Tx"]
+    assert filled and all("/AP" in widget for widget in filled)
+
+
+def test_g1650_prints_saved_field_and_barcode_appearances(tmp_path: Path):
+    from test_g1650 import _generate
+
+    reader = PdfReader(_generate(tmp_path))
+
+    assert reader.trailer["/Root"]["/AcroForm"]["/NeedAppearances"].value is False
+    widgets = [annotation.get_object() for annotation in reader.pages[0]["/Annots"]]
+    assert all("/AP" in widget for widget in widgets if widget.get("/V") and str(widget.get("/T")) != "None")
+
+
+def test_payment_forms_write_whole_dollars_before_the_preprinted_cents(tmp_path: Path):
+    payload = {
+        "cardholder_name": "Jordan Parker",
+        "credit_card_type": "Visa",
+        "credit_card_number": "4111111111111111",
+        "expiration_month": "1",
+        "expiration_year": "2030",
+        "security_code": "123",
+        "billing_address": {"street_1": "1 Main St", "city": "Oakland", "state": "CA", "postal_code": "94612"},
+    }
+    result = generate_g1450_pdf_from_payload(
+        payload=payload,
+        template_path=TEMPLATE_DIR / "g-1450.pdf",
+        output_path=tmp_path / "g1450.pdf",
+        amount_override="675.00",
+    )
+
+    assert pdf_field_values(result.output_path)["AuthorizedPaymentAmt[0]"] == {"675"}
+    assert result.authorized_amount == "675.00"
