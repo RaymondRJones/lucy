@@ -147,6 +147,20 @@ def _proposal_from_case_data(
     }
 
 
+def _other_names_as_lines(value: Any) -> Any:
+    # The I-485 stores other names as structured rows; the I-765 and I-131 questions take one name per line.
+    if not isinstance(value, list):
+        return value
+    lines = []
+    for entry in value:
+        if isinstance(entry, dict):
+            given = " ".join(str(entry.get(key) or "").strip() for key in ("given_name", "middle_name")).strip()
+            lines.append(f"{str(entry.get('family_name') or '').strip()}, {given}".strip(", "))
+        elif str(entry).strip():
+            lines.append(str(entry).strip())
+    return "\n".join(line for line in lines if line)
+
+
 def build_form_answer_proposals_from_case_data(form_key: str, merged: dict[str, Any]) -> list[dict[str, Any]]:
     normalized_form_key = normalize_form_key(form_key)
     merged = enrich_case_fact_aliases(merged)
@@ -157,10 +171,13 @@ def build_form_answer_proposals_from_case_data(form_key: str, merged: dict[str, 
         if not isinstance(db_path, str) or not db_path.startswith("intake."):
             continue
         source_field = db_path.removeprefix("intake.")
+        value = merged.get(source_field)
+        if source_field == "beneficiary_other_names":
+            value = _other_names_as_lines(value)
         proposal = _proposal_from_case_data(
             form_key=normalized_form_key,
             question_id=question["id"],
-            value=merged.get(source_field),
+            value=value,
             source_field=source_field,
         )
         if proposal:

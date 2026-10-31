@@ -23,11 +23,14 @@ from app.services.form_ingestion import (
 from app.services.i485 import build_i485_intake_projection, get_i485_state
 from app.services.intake import get_merged_case_intake
 from app.services.i485_pdf import (
+    OVERLONG_WARNING,
     _add_unit_fields,
     _set_checkbox_values,
     _use_saved_appearances,
     _set_text_values,
     _template_field_names,
+    fill_continuation_slots,
+    overlong_field_names,
 )
 
 
@@ -47,7 +50,6 @@ NON_PDF_CONTROL_QUESTIONS = {
     "applicant_reviewed_certification",
     "beneficiary_adjustment_path",
     "beneficiary_current_marital_status",
-    "beneficiary_employment_history",
     "beneficiary_has_ssn",
     "beneficiary_marriage_count",
     "first_marriage_for_both",
@@ -460,6 +462,91 @@ I864_HOUSEHOLD_DEFAULT_TEXT_VALUES = {
 
 
 @dataclass(frozen=True)
+class OtherNameMapping:
+    rows: tuple[tuple[str, str, str], ...]
+    # Character limits for family, given and middle name, from the box widths on the template.
+    limits: tuple[int, int, int]
+    continuation_slot: tuple[str, str, str, str]
+    page_number: str
+    wrap_width: int
+    max_lines: int
+
+
+OTHER_NAME_MAPPINGS = {
+    "i765": OtherNameMapping(
+        rows=(
+            ("Line2a_FamilyName[0]", "Line2b_GivenName[0]", "Line2c_MiddleName[0]"),
+            ("Line3a_FamilyName[1]", "Line3b_GivenName[1]", "Line3c_MiddleName[1]"),
+            ("Line3a_FamilyName[0]", "Line3b_GivenName[0]", "Line3c_MiddleName[0]"),
+        ),
+        limits=(28, 28, 28),
+        continuation_slot=("Pt6Line4a_PageNumber[0]", "Pt6Line4b_PartNumber[0]", "Pt6Line4c_ItemNumber[0]", "Pt6Line4d_AdditionalInfo[0]"),
+        page_number="1",
+        wrap_width=38,
+        max_lines=14,
+    ),
+    "i131": OtherNameMapping(
+        rows=tuple(
+            (f"Part2_Line2_FamilyName{row}[0]", f"Part2_Line2_GivenName{row}[0]", f"Part2_Line2_MiddleName{row}[0]")
+            for row in (1, 2, 3)
+        ),
+        limits=(34, 26, 21),
+        continuation_slot=("Part13_Line3_PageNumber[0]", "Part13_Line3_PartNumber[0]", "Part13_Line3_ItemNumber[0]", "Part13_Line3_AdditionalInfo[0]"),
+        page_number="5",
+        wrap_width=85,
+        max_lines=4,
+    ),
+}
+
+
+def _parse_other_name(line: str) -> tuple[str, str, str] | None:
+    # Which word is the family name cannot be guessed, so only "Family, Given Middle" is split into boxes.
+    family, separator, rest = line.partition(",")
+    if not separator or not family.strip() or not rest.strip():
+        return None
+    given, _, middle = rest.strip().partition(" ")
+    return family.strip(), given, middle.strip()
+
+
+def _add_other_name_fields(*, mapping: OtherNameMapping, value: Any, text_values: dict[str, str]) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    rows: list[tuple[str, str, str]] = []
+    continuation: list[str] = []
+    for line in (line.strip() for line in value.replace(";", "\n").splitlines()):
+        if not line:
+            continue
+        name = _parse_other_name(line)
+        fits = name and len(rows) < len(mapping.rows) and all(
+            len(part) <= limit for part, limit in zip(name, mapping.limits, strict=True)
+        )
+        if fits:
+            rows.append(name)
+        else:
+            continuation.append(line)
+    continuation_fields = fill_continuation_slots(
+        text_values=text_values,
+        slots=(mapping.continuation_slot,),
+        page_number=mapping.page_number,
+        part_number="2",
+        item_number="2",
+        text="; ".join(continuation),
+        wrap_width=mapping.wrap_width,
+        max_lines=mapping.max_lines,
+    )
+    # Left unmapped when it does not fit, so the review screen reports the names that did not make it onto the form.
+    if continuation_fields is None:
+        return []
+    fields = list(continuation_fields)
+    for name, row in zip(rows, mapping.rows, strict=False):
+        for part, field_name in zip(name, row, strict=True):
+            if part:
+                text_values[field_name] = part
+                fields.append(field_name)
+    return fields
+
+
+@dataclass(frozen=True)
 class FormPdfFieldPayload:
     text_values: dict[str, str]
     checkbox_values: dict[str, str]
@@ -743,6 +830,20 @@ def build_form_pdf_field_payload(
                 }
             )
 
+    if normalized_form_key in OTHER_NAME_MAPPINGS:
+        other_name_fields = _add_other_name_fields(
+            mapping=OTHER_NAME_MAPPINGS[normalized_form_key], value=answers.get("beneficiary_other_names"), text_values=text_values
+        )
+        if other_name_fields:
+            mapped_question_ids.add("beneficiary_other_names")
+            mapped_questions.append(
+                {
+                    "question_id": "beneficiary_other_names",
+                    "label": question_by_id.get("beneficiary_other_names", {}).get("label", "beneficiary_other_names"),
+                    "pdf_fields": other_name_fields,
+                }
+            )
+
     if normalized_form_key == "i864":
         for field_name, value in I864_HOUSEHOLD_DEFAULT_TEXT_VALUES.items():
             text_values.setdefault(field_name, value)
@@ -843,6 +944,9 @@ def generate_form_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    overlong = overlong_field_names(reader, payload.text_values)
+    if overlong:
+        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
 
     return GeneratedFormPdf(
         case_id=case_id,

@@ -11,11 +11,16 @@ from pypdf.generic import NameObject
 
 from app.core.config import settings
 from app.services.i485_pdf import (
+    OVERLONG_WARNING,
     _add_unit_fields,
+    _employment_continuation_line,
+    _normalize_us_state,
     _set_checkbox_values,
     _use_saved_appearances,
     _set_text_values,
     _template_field_names,
+    fill_continuation_slots,
+    overlong_field_names,
 )
 
 
@@ -703,6 +708,109 @@ def _add_i130a_prior_address(
         )
 
 
+I130A_EMPLOYER_ROWS = (
+    {
+        "name": "Pt2Line1_EmployerOrCompName[0]",
+        "line1": "Pt2Line2a_StreetNumberName[0]",
+        "city": "Pt2Line2c_CityOrTown[0]",
+        "state": "Pt2Line2d_State[0]",
+        "zip": "Pt2Line2e_ZipCode[0]",
+        "province": "Pt2Line2f_Province[0]",
+        "postal_code": "Pt2Line2g_PostalCode[0]",
+        "country": "Pt2Line2h_Country[0]",
+        "occupation": "Pt2Line3_Occupation[0]",
+        "from": "Pt2Line4a_DateFrom[0]",
+        "to": "Pt2Line4b_DateTo[0]",
+    },
+    {
+        "name": "Pt2Line5_EmployerOrCompName[0]",
+        "line1": "Pt2Line6_StreetNumberName[0]",
+        "city": "Pt2Line6_CityOrTown[0]",
+        "state": "Pt2Line6_State[0]",
+        "zip": "Pt2Line6_ZipCode[0]",
+        "province": "Pt2Line6_Province[0]",
+        "postal_code": "Pt2Line6_PostalCode[0]",
+        "country": "Pt2Line6_Country[0]",
+        "occupation": "Pt2Line7_Occupation[0]",
+        "from": "Pt2Line8a_DateFrom[0]",
+        "to": "Pt2Line8b_DateTo[0]",
+    },
+)
+I130A_EMPLOYER_UNIT_ROWS = (
+    ("Pt2Line2b_Unit[0]", "Pt2Line2b_Unit[1]", "Pt2Line2b_Unit[2]", "Pt2Line2b_AptSteFlrNumber[0]"),
+    ("Pt2Line6_Unit[0]", "Pt2Line6_Unit[1]", "Pt2Line6_Unit[2]", "Pt2Line6_AptSteFlrNumber[0]"),
+)
+I130A_PART7_SLOTS = tuple(
+    (f"Pt7Line{line}a_PageNumber[0]", f"Pt7Line{line}b_PartNumber[0]", f"Pt7Line{line}c_ItemNumber[0]", f"Pt7Line{line}d_AdditionalInfo[0]")
+    for line in range(3, 8)
+)
+# 10pt Courier in a 234 x 180 point box.
+I130A_PART7_WRAP_WIDTH = 38
+I130A_PART7_MAX_LINES = 14
+
+
+def _add_i130a_employment_history(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    raw = values.get("beneficiary_employment_history")
+    if isinstance(raw, list):
+        entries = [entry for entry in raw if isinstance(entry, dict) and _value_is_answered(entry)]
+        continuation = "\n".join(_employment_continuation_line(entry) for entry in entries[len(I130A_EMPLOYER_ROWS) :])
+    else:
+        entries = []
+        continuation = str(raw or "").strip()
+    if not entries and not continuation:
+        return
+    # Left unmapped when it does not fit, so the review screen reports the history that did not make it onto the form.
+    continuation_fields = fill_continuation_slots(
+        text_values=text_values,
+        slots=I130A_PART7_SLOTS,
+        page_number="2",
+        part_number="2",
+        item_number="1",
+        text=continuation,
+        wrap_width=I130A_PART7_WRAP_WIDTH,
+        max_lines=I130A_PART7_MAX_LINES,
+    )
+    if continuation_fields is None:
+        return
+    used_fields = list(continuation_fields)
+    for entry, row, unit_row in zip(entries, I130A_EMPLOYER_ROWS, I130A_EMPLOYER_UNIT_ROWS, strict=False):
+        # The questions about the current employer are more specific, so they win over the history's first row.
+        if row["name"] in text_values and str(entry.get("name") or "").strip() != text_values[row["name"]]:
+            continue
+        for source_key, field_name in row.items():
+            value = entry.get(source_key)
+            if not _value_is_answered(value) or field_name in text_values:
+                continue
+            if source_key in {"from", "to"}:
+                text_values[field_name] = _as_pdf_date(value)
+            elif source_key == "state":
+                text_values[field_name] = _normalize_us_state(value)
+            else:
+                text_values[field_name] = str(value).strip()
+            used_fields.append(field_name)
+        before = set(text_values) | set(checkbox_values)
+        _add_unit_fields(
+            text_values=text_values,
+            checkbox_values=checkbox_values,
+            value=entry.get("line2"),
+            apt_field=unit_row[0],
+            ste_field=unit_row[1],
+            flr_field=unit_row[2],
+            number_field=unit_row[3],
+            apt_appearance="/APT",
+            ste_appearance="/STE",
+            flr_appearance="/FLR",
+        )
+        used_fields.extend(sorted((set(text_values) | set(checkbox_values)) - before))
+    mapped_fields.append({"field_key": "beneficiary_employment_history", "pdf_fields": sorted(used_fields)})
+
+
 def build_i130_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
@@ -776,6 +884,12 @@ def build_i130a_pdf_field_payload(
         field_map=I130A_UNIT_FIELD_MAP,
     )
     _add_i130a_prior_address(
+        values=values,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
+    _add_i130a_employment_history(
         values=values,
         text_values=text_values,
         checkbox_values=checkbox_values,
@@ -871,6 +985,9 @@ def _generate_family_pdf_from_payload(
     ]
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    overlong = overlong_field_names(reader, payload.text_values)
+    if overlong:
+        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
 
     return GeneratedFamilyPdf(
         case_id=case_id,

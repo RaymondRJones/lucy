@@ -283,6 +283,13 @@ def _is_non_us_address(value: Any) -> bool:
     return bool(country and country not in US_COUNTRY_NAMES)
 
 
+def _count_above(value: Any, minimum: int) -> bool:
+    try:
+        return int(value) > minimum
+    except (TypeError, ValueError):
+        return False
+
+
 def _conditional_required_question_ids(answers: dict[str, Any]) -> set[str]:
     required_ids: set[str] = set()
     if answers.get("beneficiary_mailing_same_as_physical") is False:
@@ -295,6 +302,28 @@ def _conditional_required_question_ids(answers: dict[str, Any]) -> set[str]:
         required_ids.add("beneficiary_recent_foreign_address")
     if answers.get("received_means_tested_public_benefit") is True:
         required_ids.add("means_tested_benefit_history")
+    # The form's "if you answered Yes to Item N" follow-ups, and the details a Yes or count points to.
+    for question_id, follow_up in (
+        ("controlled_substance_family_benefit", "controlled_substance_family_benefit_knowledge"),
+        ("served_as_foreign_government_official", "religious_freedom_violations"),
+        ("trafficking_family_benefit", "trafficking_family_benefit_knowledge"),
+        ("j_exchange_two_year_rule", "j_foreign_residence_complied"),
+        ("unlawful_presence_after_1997", "unlawful_presence_due_to_trafficking"),
+        ("evaded_wartime_service", "status_before_evading_service"),
+        ("beneficiary_used_other_dob", "beneficiary_other_dates_of_birth"),
+        ("beneficiary_has_other_a_numbers", "beneficiary_other_a_numbers"),
+        ("organizations_membership", "organizations_details"),
+    ):
+        if answers.get(question_id) is True:
+            required_ids.add(follow_up)
+    if answers.get("j_exchange_two_year_rule") is True and answers.get("j_foreign_residence_complied") is False:
+        required_ids.add("j_waiver_granted")
+    if answers.get("highest_education") == "less_than_high_school":
+        required_ids.add("highest_grade_completed")
+    if _count_above(answers.get("children_count"), 0):
+        required_ids.add("children_details")
+    if _count_above(answers.get("beneficiary_marriage_count"), 1):
+        required_ids.add("beneficiary_prior_marriages")
     return required_ids
 
 

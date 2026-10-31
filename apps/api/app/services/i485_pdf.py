@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import re
 import textwrap
 from typing import Any
 from uuid import UUID
@@ -192,7 +193,11 @@ TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_height_feet": ("Pt7Line3_HeightFeet[0]",),
     "beneficiary_height_inches": ("Pt7Line3_HeightInches[0]",),
     "beneficiary_phone": ("Pt3Line3_DaytimePhoneNumber1[0]",),
+    "beneficiary_mobile_phone": ("Pt3Line4_MobileNumber1[0]",),
     "beneficiary_email": ("Pt3Line5_Email[0]",),
+    "petitioner_a_number": ("Pt6Line5_AlienNumber[0]",),
+    "highest_grade_completed": ("Pt9Line61_diploma[0]",),
+    "status_before_evading_service": ("Pt9Line86_Nationality[0]",),
 }
 
 DATE_QUESTION_IDS = {
@@ -210,6 +215,9 @@ DATE_QUESTION_IDS = {
     "marriage_date",
 }
 
+A_NUMBER_QUESTION_IDS = {"beneficiary_a_number", "petitioner_a_number"}
+PHONE_QUESTION_IDS = {"beneficiary_phone", "beneficiary_mobile_phone"}
+
 CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
     "beneficiary_used_other_dob": {True: ("Pt1Line3_YN[0]", "/Y"), False: ("Pt1Line3_YN[1]", "/N")},
     "beneficiary_has_a_number": {True: ("Pt1Line4_YN[0]", "/Y"), False: ("Pt1Line4_YN[1]", "/N")},
@@ -221,6 +229,14 @@ CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
     "i485_applicant_role": {
         "principal": ("Pt2Line2_CB[0]", "/1fA"),
         "derivative": ("Pt2Line2_CB[1]", "/1fB"),
+    },
+    "i485_i864_exemption": {
+        "40_quarters": ("Pt3Line1_CB[0]", "/0"),
+        "child_citizenship": ("Pt3Line1_CB[1]", "/1"),
+        "widow_i360": ("Pt3Line1_CB[2]", "/2"),
+        "vawa_self_petitioner": ("Pt3Line1_CB[3]", "/3"),
+        "not_required_by_statute": ("Pt3Line1_CB[4]", "/4"),
+        "not_requesting_exemption": ("Pt3Line1_CB[5]", "/5"),
     },
     "i485_family_category": {
         "spouse_us_citizen": ("Pt2Line3a_CB[0]", "/3a0"),
@@ -301,10 +317,20 @@ RETIRED_QUESTION_IDS = {
     "received_cash_benefits",
     "received_long_term_institutionalization",
     "public_charge_benefit_details",
+    # Combined questions split into one question per form item.
+    "controlled_substance_trafficking",
+    "prostitution_or_commercialized_vice",
+    "foreign_government_religious_freedom",
+    "human_trafficking",
+    "espionage_sabotage_export_overthrow",
+    "weapons_training_or_violence",
+    "military_police_armed_group",
+    "persecution_or_child_soldiers",
+    "illegal_reentry_after_unlawful_presence_or_removal",
+    "polygamy_child_custody_voting_tax_armed_forces",
 }
 
 NON_PDF_CONTROL_QUESTIONS = {
-    "i485_i864_exemption",
     "i485_employment_based_category",
     "i485_special_category",
     "petitioner_citizenship_status",
@@ -351,25 +377,57 @@ AUTO_BOOLEAN_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "voluntary_departure_failed": ("Pt8Line17_YesNo[0]", "Pt8Line17_YesNo[1]"),
     "relief_from_removal": ("Pt8Line23_YesNo[0]", "Pt8Line23_YesNo[1]"),
     "j_exchange_two_year_rule": ("Pt8Line24a_YesNo[0]", "Pt8Line24a_YesNo[1]"),
+    "j_foreign_residence_complied": ("Pt8Line24b_YesNo[0]", "Pt8Line24b_YesNo[1]"),
+    "j_waiver_granted": ("Pt8Line24c_YesNo[0]", "Pt8Line24c_YesNo[1]"),
     "ever_arrested_cited_charged_detained": ("Pt8Line22_YesNo[0]", "Pt8Line22_YesNo[1]"),
     "ever_committed_crime": ("Pt9Line23_YesNo[0]", "Pt9Line23_YesNo[1]"),
     "ever_pled_or_convicted": ("Pt9Line24_YesNo[0]", "Pt9Line24_YesNo[1]"),
     "ever_punished_by_judge": ("Pt8Line25_YesNo[0]", "Pt8Line25_YesNo[1]"),
     "controlled_substance_violation": ("Pt8Line26_YesNo[0]", "Pt8Line26_YesNo[1]"),
-    "controlled_substance_trafficking": ("Pt8Line27_YesNo[0]", "Pt8Line27_YesNo[1]", "Pt8Line28_YesNo[0]", "Pt8Line28_YesNo[1]", "Pt8Line29_YesNo[0]", "Pt8Line29_YesNo[1]"),
-    "prostitution_or_commercialized_vice": ("Pt8Line30_YesNo[0]", "Pt8Line30_YesNo[1]", "Pt8Line31_YesNo[0]", "Pt8Line31_YesNo[1]", "Pt8Line32_YesNo[0]", "Pt8Line32_YesNo[1]", "Pt8Line33_YesNo[0]", "Pt8Line33_YesNo[1]", "Pt8Line34_YesNo[0]", "Pt8Line34_YesNo[1]"),
-    "foreign_government_religious_freedom": ("Pt8Line35a_YesNo[0]", "Pt8Line35a_YesNo[1]", "Pt8Line35b_YesNo[0]", "Pt8Line35b_YesNo[1]"),
-    "human_trafficking": ("Pt8Line36_YesNo[0]", "Pt8Line36_YesNo[1]", "Pt8Line37_YesNo[0]", "Pt8Line37_YesNo[1]", "Pt8Line38_YesNo[0]", "Pt8Line38_YesNo[1]", "Pt9Line39_YesNo[0]", "Pt9Line39_YesNo[1]", "Pt8Line40_YesNo[0]", "Pt8Line40_YesNo[1]"),
+    "controlled_substance_trafficked": ("Pt8Line27_YesNo[0]", "Pt8Line27_YesNo[1]"),
+    "controlled_substance_family_benefit": ("Pt8Line28_YesNo[0]", "Pt8Line28_YesNo[1]"),
+    "controlled_substance_family_benefit_knowledge": ("Pt8Line29_YesNo[0]", "Pt8Line29_YesNo[1]"),
+    "prostitution_engaged": ("Pt8Line30_YesNo[0]", "Pt8Line30_YesNo[1]"),
+    "prostitution_procured": ("Pt8Line31_YesNo[0]", "Pt8Line31_YesNo[1]"),
+    "prostitution_proceeds": ("Pt8Line32_YesNo[0]", "Pt8Line32_YesNo[1]"),
+    "commercialized_vice_intent": ("Pt8Line33_YesNo[0]", "Pt8Line33_YesNo[1]"),
+    "exercised_criminal_immunity": ("Pt8Line34_YesNo[0]", "Pt8Line34_YesNo[1]"),
+    "served_as_foreign_government_official": ("Pt8Line35a_YesNo[0]", "Pt8Line35a_YesNo[1]"),
+    "religious_freedom_violations": ("Pt8Line35b_YesNo[0]", "Pt8Line35b_YesNo[1]"),
+    "sex_trafficking": ("Pt8Line36_YesNo[0]", "Pt8Line36_YesNo[1]"),
+    "labor_trafficking": ("Pt8Line37_YesNo[0]", "Pt8Line37_YesNo[1]"),
+    "aided_trafficking": ("Pt8Line38_YesNo[0]", "Pt8Line38_YesNo[1]"),
+    "trafficking_family_benefit": ("Pt9Line39_YesNo[0]", "Pt9Line39_YesNo[1]"),
+    "trafficking_family_benefit_knowledge": ("Pt8Line40_YesNo[0]", "Pt8Line40_YesNo[1]"),
     "money_laundering": ("Pt8Line41_YesNo[0]", "Pt8Line41_YesNo[1]"),
-    "espionage_sabotage_export_overthrow": ("a_YesNo[0]", "a_YesNo[1]", "b_YesNo[0]", "b_YesNo[1]", "Pt8Line42c_YesNo[0]", "Pt8Line42c_YesNo[1]", "Pt8Line42d_YesNo[0]", "Pt8Line42d_YesNo[1]"),
-    "weapons_training_or_violence": ("Pt8Line43a_YesNo[0]", "Pt8Line43a_YesNo[1]", "Pt8Line43b_YesNo[0]", "Pt8Line43b_YesNo[1]", "Pt8Line43c_YesNo[0]", "Pt8Line43c_YesNo[1]", "Pt8Line43d_YesNo[0]", "Pt8Line43d_YesNo[1]", "Pt8Line43e_YesNo[0]", "Pt8Line43e_YesNo[1]", "Pt8Line43fYesNo[0]", "Pt8Line43fYesNo[1]", "Pt8Line43g_YesNo[0]", "Pt8Line43g_YesNo[1]", "Pt8Line43h_YesNo[0]", "Pt8Line43h_YesNo[1]", "Pt8Line43i_YesNo[0]", "Pt8Line43i_YesNo[1]", "Pt8Line44_YesNo[0]", "Pt8Line44_YesNo[1]"),
+    "intends_espionage_sabotage": ("a_YesNo[0]", "a_YesNo[1]"),
+    "intends_export_violation": ("b_YesNo[0]", "b_YesNo[1]"),
+    "intends_overthrow": ("Pt8Line42c_YesNo[0]", "Pt8Line42c_YesNo[1]"),
+    "intends_other_unlawful_activity": ("Pt8Line42d_YesNo[0]", "Pt8Line42d_YesNo[1]"),
+    "weapons_training": ("Pt8Line43a_YesNo[0]", "Pt8Line43a_YesNo[1]"),
+    "kidnapping_or_hijacking": ("Pt8Line43b_YesNo[0]", "Pt8Line43b_YesNo[1]"),
+    "used_weapon_or_explosive": ("Pt8Line43c_YesNo[0]", "Pt8Line43c_YesNo[1]"),
+    "threatened_or_planned_violence": ("Pt8Line43d_YesNo[0]", "Pt8Line43d_YesNo[1]"),
+    "incited_violence": ("Pt8Line43e_YesNo[0]", "Pt8Line43e_YesNo[1]"),
+    "member_of_violent_group": ("Pt8Line43fYesNo[0]", "Pt8Line43fYesNo[1]"),
+    "recruited_for_violent_group": ("Pt8Line43g_YesNo[0]", "Pt8Line43g_YesNo[1]"),
+    "supported_violent_activity": ("Pt8Line43h_YesNo[0]", "Pt8Line43h_YesNo[1]"),
+    "supported_violent_group": ("Pt8Line43i_YesNo[0]", "Pt8Line43i_YesNo[1]"),
+    "intends_violent_activity": ("Pt8Line44_YesNo[0]", "Pt8Line44_YesNo[1]"),
     "endanger_us_security": ("Pt8Line45_YesNo[0]", "Pt8Line45_YesNo[1]"),
     "family_security_activity": ("Pt8Line46_YesNo[0]", "Pt8Line46_YesNo[1]"),
     "weapons_sales_or_transport": ("Pt8Line47_YesNo[0]", "Pt8Line47_YesNo[1]"),
     "detention_or_prison_service": ("Pt8Line48_YesNo[0]", "Pt8Line48_YesNo[1]"),
-    "military_police_armed_group": ("Pt8Line49_YesNo[0]", "Pt8Line49_YesNo[1]", "Pt8Line50_YesNo[0]", "Pt8Line50_YesNo[1]", "Pt8Line51_YesNo[0]", "Pt8Line51_YesNo[1]"),
+    "weapon_using_group": ("Pt8Line49_YesNo[0]", "Pt8Line49_YesNo[1]"),
+    "military_or_police_service": ("Pt8Line50_YesNo[0]", "Pt8Line50_YesNo[1]"),
+    "armed_group_service": ("Pt8Line51_YesNo[0]", "Pt8Line51_YesNo[1]"),
     "communist_totalitarian_party": ("Pt8Line52_YesNo[0]", "Pt8Line52_YesNo[1]"),
-    "persecution_or_child_soldiers": ("Pt8Line53a_YesNo[0]", "Pt8Line53a_YesNo[1]", "Pt8Line53b_YesNo[0]", "Pt8Line53b_YesNo[1]", "Pt8Line53c_YesNo[0]", "Pt8Line53c_YesNo[1]", "Pt8Line53d_YesNo[0]", "Pt8Line53d_YesNo[1]", "Pt8Line54_YesNo[0]", "Pt8Line54_YesNo[1]", "Pt8Line55_YesNo[0]", "Pt8Line55_YesNo[1]"),
+    "participated_in_torture": ("Pt8Line53a_YesNo[0]", "Pt8Line53a_YesNo[1]"),
+    "participated_in_genocide": ("Pt8Line53b_YesNo[0]", "Pt8Line53b_YesNo[1]"),
+    "participated_in_killing": ("Pt8Line53c_YesNo[0]", "Pt8Line53c_YesNo[1]"),
+    "participated_in_severe_injury": ("Pt8Line53d_YesNo[0]", "Pt8Line53d_YesNo[1]"),
+    "child_soldier_recruitment": ("Pt8Line54_YesNo[0]", "Pt8Line54_YesNo[1]"),
+    "child_soldier_use": ("Pt8Line55_YesNo[0]", "Pt8Line55_YesNo[1]"),
     "received_means_tested_public_benefit": ("Pt9Line63_YesNo[0]", "Pt9Line63_YesNo[1]"),
     "failed_to_attend_removal": ("Pt9Line67_YesNo[0]", "Pt9Line67_YesNo[1]"),
     "fraudulent_documents": ("Pt9Line68_YesNo[0]", "Pt9Line68_YesNo[1]"),
@@ -381,9 +439,172 @@ AUTO_BOOLEAN_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "deported_removed_or_departed_after_order": ("Pt9Line74_YesNo[0]", "Pt9Line74_YesNo[1]"),
     "entered_without_inspection": ("Pt9Line75_YesNo[0]", "Pt9Line75_YesNo[1]"),
     "unlawful_presence_after_1997": ("Pt9Line76_YesNo[0]", "Pt9Line76_YesNo[1]"),
-    "illegal_reentry_after_unlawful_presence_or_removal": ("Pt9Line78a_YesNo[0]", "Pt9Line78a_YesNo[1]", "Pt9Line78b_YesNo[0]", "Pt9Line78b_YesNo[1]"),
-    "polygamy_child_custody_voting_tax_armed_forces": ("Pt9Line79_YesNo[0]", "Pt9Line79_YesNo[1]", "Pt9Line80_YesNo[0]", "Pt9Line80_YesNo[1]", "Pt9Line81_YesNo[0]", "Pt9Line81_YesNo[1]", "Pt9Line82_YesNo[0]", "Pt9Line82_YesNo[1]", "Pt9Line83_YesNo[0]", "Pt9Line83_YesNo[1]", "Pt9Line84a_YesNo[0]", "Pt9Line84a_YesNo[1]", "Pt9Line84b_YesNo[0]", "Pt9Line84b_YesNo[1]", "Pt9Line84c_YesNo[0]", "Pt9Line84c_YesNo[1]", "Pt9Line85_YesNo[0]", "Pt9Line85_YesNo[1]"),
+    "unlawful_presence_due_to_trafficking": ("Pt9Line77_YesNo[0]", "Pt9Line77_YesNo[1]"),
+    "reentry_after_unlawful_presence": ("Pt9Line78a_YesNo[0]", "Pt9Line78a_YesNo[1]"),
+    "reentry_after_removal": ("Pt9Line78b_YesNo[0]", "Pt9Line78b_YesNo[1]"),
+    "intends_polygamy": ("Pt9Line79_YesNo[0]", "Pt9Line79_YesNo[1]"),
+    "accompanying_helpless_person": ("Pt9Line80_YesNo[0]", "Pt9Line80_YesNo[1]"),
+    "withheld_child_custody": ("Pt9Line81_YesNo[0]", "Pt9Line81_YesNo[1]"),
+    "unlawful_voting": ("Pt9Line82_YesNo[0]", "Pt9Line82_YesNo[1]"),
+    "renounced_citizenship_for_tax": ("Pt9Line83_YesNo[0]", "Pt9Line83_YesNo[1]"),
+    "armed_forces_exemption": ("Pt9Line84a_YesNo[0]", "Pt9Line84a_YesNo[1]"),
+    "armed_forces_discharge": ("Pt9Line84b_YesNo[0]", "Pt9Line84b_YesNo[1]"),
+    "desertion_conviction": ("Pt9Line84c_YesNo[0]", "Pt9Line84c_YesNo[1]"),
+    "evaded_wartime_service": ("Pt9Line85_YesNo[0]", "Pt9Line85_YesNo[1]"),
 }
+
+
+@dataclass(frozen=True)
+class EntryListMapping:
+    question_id: str
+    entry_label: str
+    # Where Part 14 says the continuation belongs.
+    page: str
+    part: str
+    item: str
+    rows: tuple[dict[str, str], ...]
+    # Character limits come from rendering the 09/18/26 template; longer text clips, so the entry moves to Part 14.
+    limits: dict[str, int]
+    choices: tuple[dict[str, dict[Any, tuple[str, str]]], ...] = ()
+
+
+NAME_LIMITS = {"family_name": 28, "given_name": 28, "middle_name": 25}
+PRIOR_SPOUSE_HOW_ENDED = {
+    "spouse_deceased": ("Pt6Line19_MaritalStatus[0]", "/3"),
+    "annulled": ("Pt6Line19_MaritalStatus[1]", "/1"),
+    "other": ("Pt6Line19_MaritalStatus[2]", "/4"),
+    "divorced": ("Pt6Line19_MaritalStatus[3]", "/2"),
+}
+
+
+def _child_row(line: int) -> dict[str, str]:
+    return {
+        "family_name": f"Pt7Line{line}_FamilyName[0]",
+        "given_name": f"Pt7Line{line}_GivenName[0]",
+        "middle_name": f"Pt7Line{line}_MiddleName[0]",
+        "a_number": f"Pt7Line{line}_AlienNumber[0]",
+        "date_of_birth": f"Pt7Line{line}_DateofBirth[0]",
+        "country_of_birth": f"Pt7Line{line}_Country[0]",
+        "relationship": f"Pt7Line{line}_Relationship[0]",
+    }
+
+
+def _child_choices(line: int) -> dict[str, dict[Any, tuple[str, str]]]:
+    return {"applying_separately": {False: (f"Pt7Line{line}_YN[0]", "/N"), True: (f"Pt7Line{line}_YN[1]", "/Y")}}
+
+
+ENTRY_LIST_MAPPINGS = (
+    EntryListMapping(
+        question_id="beneficiary_other_names",
+        entry_label="Other name",
+        page="1",
+        part="1",
+        item="2",
+        rows=(
+            {"family_name": "Pt1Line2_FamilyName[0]", "given_name": "Pt1Line2_GivenName[0]", "middle_name": "Pt1Line2_MiddleName[0]"},
+            {"family_name": "Pt1Line2a_FamilyName[0]", "given_name": "Pt1Line2a_GivenName[0]", "middle_name": "Pt1Line2a_MiddleName[0]"},
+        ),
+        limits=NAME_LIMITS,
+    ),
+    EntryListMapping(
+        question_id="beneficiary_other_dates_of_birth",
+        entry_label="Other date of birth",
+        page="1",
+        part="1",
+        item="3",
+        rows=({"date_of_birth": "Pt1Line3A_OtherDOB[0]"}, {"date_of_birth": "Pt1Line3B_OtherDOB[0]"}),
+        limits={},
+    ),
+    EntryListMapping(
+        question_id="beneficiary_other_a_numbers",
+        entry_label="Other A-Number",
+        page="2",
+        part="1",
+        item="5",
+        rows=({"a_number": "Pt1Line5A_ANumber[0]"}, {"a_number": "Pt1Line5B_ANumber[0]"}),
+        limits={"a_number": 9},
+    ),
+    EntryListMapping(
+        question_id="beneficiary_prior_marriages",
+        entry_label="Prior spouse",
+        page="11",
+        part="6",
+        item="11",
+        rows=(
+            {
+                "family_name": "Pt6Line12_FamilyName[0]",
+                "given_name": "Pt6Line12_GivenName[0]",
+                "middle_name": "Pt6Line12_MiddleName[0]",
+                "date_of_birth": "Pt5Line8_DateofBirth[3]",
+                "country_of_birth": "Pt6Line14_Country[0]",
+                "citizenship_country": "Pt6Line15_Country[0]",
+                "marriage_date": "Pt6Line16_DateofBirth[0]",
+                "marriage_city": "Pt6Line10_CityTownOfBirth[1]",
+                "marriage_state": "Pt6Line10_State[1]",
+                "marriage_country": "Pt6Line10_Country[1]",
+                "end_date": "Pt6Line16_DateofBirth[1]",
+                "end_city": "Pt6Line18_CityTownOfBirth[0]",
+                "end_state": "Pt6Line18_State[0]",
+                "end_country": "Pt6Line18_Country[0]",
+                "how_ended_other": "Pt6Line19_HowMarriageEndedOther[0]",
+            },
+        ),
+        limits={
+            **NAME_LIMITS,
+            "country_of_birth": 39,
+            "citizenship_country": 39,
+            "marriage_city": 41,
+            "marriage_state": 41,
+            "marriage_country": 41,
+            "end_city": 41,
+            "end_state": 41,
+            "end_country": 41,
+            "how_ended_other": 36,
+        },
+        choices=({"how_ended": PRIOR_SPOUSE_HOW_ENDED},),
+    ),
+    EntryListMapping(
+        question_id="children_details",
+        entry_label="Child",
+        page="12",
+        part="7",
+        item="3",
+        rows=(_child_row(2), _child_row(3)),
+        limits={**NAME_LIMITS, "a_number": 9, "country_of_birth": 41, "relationship": 34},
+        choices=(_child_choices(2), _child_choices(3)),
+    ),
+    EntryListMapping(
+        question_id="organizations_details",
+        entry_label="Organization",
+        page="14",
+        part="9",
+        item="9",
+        rows=(
+            {
+                "name": "Pt9Line2_Organization1[0]",
+                "city": "Pt9Line3_CityTownOfBirth[0]",
+                "state": "Pt9Line3_State[0]",
+                "country": "Pt9Line3_Country[0]",
+                "nature": "Pt9Line4_FamilyName[0]",
+                "involvement": "Pt9Line4_Involvement[0]",
+                "date_from": "Pt9Line5_DateFrom[0]",
+                "date_to": "Pt9Line5_DateTo[0]",
+            },
+            {
+                "name": "Pt9Line6_Organization2[0]",
+                "city": "Pt9Line7_CityTownOfBirth[0]",
+                "state": "Pt9Line7_State[0]",
+                "country": "Pt9Line7_Country[0]",
+                "nature": "Pt9Line8_FamilyName[0]",
+                "involvement": "Pt9Line8_Involvement[0]",
+                "date_from": "Pt9Line9_DateFrom[0]",
+                "date_to": "Pt9Line9_DateTo[0]",
+            },
+        ),
+        limits={"name": 56, "city": 41, "state": 41, "country": 41, "nature": 85, "involvement": 85},
+    ),
+)
+ENTRY_DATE_KEYS = {"date_of_birth", "marriage_date", "end_date", "date_from", "date_to"}
 
 
 @dataclass(frozen=True)
@@ -454,6 +675,10 @@ def _normalize_us_state(value: Any) -> str:
     return US_STATE_NAME_TO_CODE.get(normalized, raw)
 
 
+def _digits(value: Any) -> str:
+    return "".join(character for character in str(value) if character.isdigit())
+
+
 def _as_pdf_value(question_id: str, value: Any) -> str:
     if question_id == "beneficiary_class_of_admission":
         return _immigration_status_label(value)
@@ -462,7 +687,12 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     if question_id in DATE_QUESTION_IDS:
         return _as_pdf_date(value)
     if question_id == "beneficiary_ssn":
-        return "".join(character for character in str(value) if character.isdigit())[:9]
+        return _digits(value)[:9]
+    if question_id in A_NUMBER_QUESTION_IDS:
+        return _digits(value)
+    if question_id in PHONE_QUESTION_IDS:
+        digits = _digits(value)
+        return digits[1:] if len(digits) == 11 and digits.startswith("1") else digits
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
@@ -606,6 +836,7 @@ def _add_prior_address_fields(
     text_values: dict[str, str],
     checkbox_values: dict[str, str],
     mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
 ) -> None:
     raw = answers.get("beneficiary_prior_address_history")
     if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict):
@@ -644,15 +875,18 @@ def _add_prior_address_fields(
     )
     after = set(text_values) | set(checkbox_values)
     mapped_fields.extend(sorted(after - before))
-    for entry_index, entry in enumerate(entries[1:], start=2):
-        continuation_fields = _add_part14_continuation(
-            text_values=text_values,
-            page_number="4",
-            part_number="1",
-            item_number="18",
-            text=_address_continuation_text(entry, entry_index),
+    continuation_text = "\n".join(
+        _address_continuation_text(entry, entry_index) for entry_index, entry in enumerate(entries[1:], start=2)
+    )
+    if continuation_text and not _part14_has_room(text_values, continuation_text):
+        # Left unmapped so the review screen reports the addresses that did not make it onto the form.
+        return
+    mapped_fields.extend(
+        _add_part14_continuation(
+            text_values=text_values, page_number="4", part_number="1", item_number="18", text=continuation_text
         )
-        mapped_fields.extend(continuation_fields)
+    )
+    mapped_question_ids.add("beneficiary_prior_address_history")
     mapped_questions.append(
         {
             "question_id": "beneficiary_prior_address_history",
@@ -926,18 +1160,21 @@ def _add_employment_history_fields(
             )
 
     overflow_entries = entries[1:] if outside_entry is None else [entry for entry in entries[1:] if entry is not outside_entry]
-    if overflow_entries:
+    overflow_text = "\n".join(_employment_continuation_line(entry) for entry in overflow_entries)
+    overflow_fits = _part14_has_room(text_values, overflow_text)
+    if overflow_entries and overflow_fits:
         mapped_fields.extend(
             _add_part14_continuation(
                 text_values=text_values,
                 page_number="8",
                 part_number="4",
                 item_number="7",
-                text="\n".join(_employment_continuation_line(entry) for entry in overflow_entries),
+                text=overflow_text,
             )
         )
 
-    if entries:
+    # Left unmapped when it does not fit, so the review screen reports the jobs that did not make it onto the form.
+    if entries and overflow_fits:
         mapped_question_ids.add("beneficiary_employment_history")
         mapped_questions.append(
             {
@@ -1101,6 +1338,138 @@ def _record_mapped_question(
             "pdf_fields": sorted(set(fields)),
         }
     )
+
+
+def _entries_for_mapping(value: Any) -> list[dict[str, Any]]:
+    # Answers saved before these became structured lists are free text, so they can only be copied whole to Part 14.
+    raw_entries = value if isinstance(value, list) else [value]
+    entries = []
+    for raw in raw_entries:
+        if isinstance(raw, str) and raw.strip():
+            entries.append({"notes": raw.strip()})
+        elif isinstance(raw, dict) and any(
+            _value_is_answered(entry) and not isinstance(entry, bool) for entry in raw.values()
+        ):
+            entries.append(raw)
+    return entries
+
+
+def _entry_field_value(key: str, value: Any) -> str:
+    if key in ENTRY_DATE_KEYS:
+        return _as_pdf_date(value)
+    if key == "a_number":
+        return _digits(value)
+    return str(value).strip()
+
+
+def _entry_fits_row(mapping: EntryListMapping, entry: dict[str, Any], row_index: int) -> bool:
+    row = mapping.rows[row_index]
+    choices = mapping.choices[row_index] if mapping.choices else {}
+    for key, value in entry.items():
+        if not _value_is_answered(value):
+            continue
+        if key in choices:
+            if value not in choices[key]:
+                return False
+        elif key not in row or len(_entry_field_value(key, value)) > mapping.limits.get(key, len(str(value))):
+            return False
+    return True
+
+
+def _entry_continuation_text(mapping: EntryListMapping, entry: dict[str, Any]) -> str:
+    fields = {field["key"]: field for field in QUESTION_BY_ID[mapping.question_id].get("entry_fields", [])}
+    parts = []
+    for key, value in entry.items():
+        if not _value_is_answered(value):
+            continue
+        if key == "notes":
+            parts.append(str(value).strip())
+            continue
+        field = fields.get(key, {})
+        option_labels = {option["value"]: option["label"] for option in field.get("options", [])}
+        if isinstance(value, bool):
+            shown = "Yes" if value else "No"
+        else:
+            shown = option_labels.get(value) or _entry_field_value(key, value)
+        parts.append(f"{field.get('label', key)}: {shown}")
+    return f"{mapping.entry_label}: " + "; ".join(parts)
+
+
+def _add_entry_list_fields(
+    *,
+    answers: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
+) -> None:
+    for mapping in ENTRY_LIST_MAPPINGS:
+        entries = _entries_for_mapping(answers.get(mapping.question_id))
+        if not entries:
+            continue
+        placed: list[dict[str, Any]] = []
+        overflow: list[dict[str, Any]] = []
+        for entry in entries:
+            if len(placed) < len(mapping.rows) and _entry_fits_row(mapping, entry, len(placed)):
+                placed.append(entry)
+            else:
+                overflow.append(entry)
+        overflow_text = "\n".join(_entry_continuation_text(mapping, entry) for entry in overflow)
+        # Answers that do not fit stay unmapped so the review screen reports them instead of dropping them.
+        if overflow and not _part14_has_room(text_values, overflow_text):
+            continue
+        fields: list[str] = []
+        for row_index, entry in enumerate(placed):
+            row = mapping.rows[row_index]
+            for key, field_name in row.items():
+                if _value_is_answered(entry.get(key)):
+                    text_values[field_name] = _entry_field_value(key, entry[key])
+                    fields.append(field_name)
+            for key, choices in (mapping.choices[row_index] if mapping.choices else {}).items():
+                if key in entry and entry[key] in choices:
+                    field_name, appearance = choices[entry[key]]
+                    checkbox_values[field_name] = appearance
+                    fields.append(field_name)
+        if overflow:
+            if len(placed) < len(mapping.rows):
+                first_key, first_field = next(iter(mapping.rows[len(placed)].items()))
+                if mapping.limits.get(first_key, len(SEE_PART14)) >= len(SEE_PART14):
+                    text_values[first_field] = SEE_PART14
+                    fields.append(first_field)
+            fields.extend(
+                _add_part14_continuation(
+                    text_values=text_values,
+                    page_number=mapping.page,
+                    part_number=mapping.part,
+                    item_number=mapping.item,
+                    text=overflow_text,
+                )
+            )
+        _record_mapped_question(
+            question_id=mapping.question_id,
+            fields=fields,
+            mapped_questions=mapped_questions,
+            mapped_question_ids=mapped_question_ids,
+        )
+
+
+def _add_criminal_explanations(
+    *,
+    answers: dict[str, Any],
+    text_values: dict[str, str],
+    mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
+) -> None:
+    explanation = str(answers.get("criminal_explanations") or "").strip()
+    if explanation and _part14_has_room(text_values, explanation):
+        _record_mapped_question(
+            question_id="criminal_explanations",
+            fields=_add_part14_continuation(
+                text_values=text_values, page_number="15", part_number="9", item_number="22-41", text=explanation
+            ),
+            mapped_questions=mapped_questions,
+            mapped_question_ids=mapped_question_ids,
+        )
 
 
 def _family_status_text(answers: dict[str, Any]) -> str:
@@ -1491,14 +1860,28 @@ def build_i485_pdf_field_payload(
         text_values=text_values,
         checkbox_values=checkbox_values,
         mapped_questions=mapped_questions,
+        mapped_question_ids=mapped_question_ids,
     )
-    if _value_is_answered(normalized_answers.get("beneficiary_prior_address_history")):
-        mapped_question_ids.add("beneficiary_prior_address_history")
 
     _add_employment_history_fields(
         answers=normalized_answers,
         text_values=text_values,
         checkbox_values=checkbox_values,
+        mapped_questions=mapped_questions,
+        mapped_question_ids=mapped_question_ids,
+    )
+
+    _add_entry_list_fields(
+        answers=normalized_answers,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_questions=mapped_questions,
+        mapped_question_ids=mapped_question_ids,
+    )
+
+    _add_criminal_explanations(
+        answers=normalized_answers,
+        text_values=text_values,
         mapped_questions=mapped_questions,
         mapped_question_ids=mapped_question_ids,
     )
@@ -1656,6 +2039,63 @@ def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
             )
 
 
+def fill_continuation_slots(
+    *,
+    text_values: dict[str, str],
+    slots: tuple[tuple[str, str, str, str], ...],
+    page_number: str,
+    part_number: str,
+    item_number: str,
+    text: str,
+    wrap_width: int,
+    max_lines: int,
+) -> list[str] | None:
+    """Writes text to a form's additional-information slots; None means it does not fit and nothing was written."""
+    # Saved appearances do not wrap on their own, so line breaks must be in the value.
+    lines = textwrap.wrap(text, width=wrap_width, break_long_words=True, replace_whitespace=False) if text else []
+    chunks = ["\n".join(lines[index : index + max_lines]) for index in range(0, len(lines), max_lines)]
+    open_slots = [slot for slot in slots if slot[3] not in text_values]
+    if len(chunks) > len(open_slots):
+        return None
+    fields: list[str] = []
+    for chunk, (page_field, part_field, item_field, info_field) in zip(chunks, open_slots, strict=False):
+        text_values[page_field] = page_number
+        text_values[part_field] = part_number
+        text_values[item_field] = item_number
+        text_values[info_field] = chunk
+        fields.extend([page_field, part_field, item_field, info_field])
+    return fields
+
+
+FIELD_MULTILINE_FLAG = 1 << 12
+
+
+def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list[str]:
+    """Fields over the template's length limit or the box width; a printed form clips overflow without any sign."""
+    overlong: set[str] = set()
+    for page in reader.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            field_name = str(annotation.get("/T") or "")
+            value = text_values.get(field_name) or text_values.get(_annotation_full_name(annotation) or "")
+            if not value:
+                continue
+            max_chars = annotation.get("/MaxLen")
+            if max_chars is None:
+                font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
+                if int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG or not font_size or not float(font_size.group(1)):
+                    continue
+                left, _, right, _ = (float(number) for number in annotation["/Rect"])
+                # Template fields use Courier, whose characters are 0.6 em wide.
+                max_chars = int((right - left - 4) / (0.6 * float(font_size.group(1))))
+            if len(value) > int(max_chars):
+                overlong.add(field_name)
+    return sorted(overlong)
+
+
+OVERLONG_WARNING = "Longer than the form's box allows and may print cut off. Check the printed page, and shorten these or use the additional information section: "
+
+
 def _use_saved_appearances(writer: PdfWriter) -> None:
     # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
     writer.set_need_appearances_writer(False)
@@ -1736,6 +2176,9 @@ def generate_i485_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    overlong = overlong_field_names(reader, payload.text_values)
+    if overlong:
+        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
 
     return GeneratedI485Pdf(
         case_id=case_id,

@@ -181,6 +181,25 @@ It is intentionally separate from persisted packet QA:
   `received_cash_benefits`, `received_long_term_institutionalization`, and `public_charge_benefit_details` questions
   are retained but never carried over, so existing cases show Item 63 as missing until it is answered. Text too long
   for a form field moves to Part 14, and text that does not fit in Part 14 is reported as an unmapped answer.
+- Each Part 9 yes/no question answers exactly one form item (`apps/api/tests/test_i485_form_mapping.py` matches every
+  question's item number against the template's own field wording). Answers saved to the earlier combined questions, such
+  as `human_trafficking` or `weapons_training_or_violence`, are retained but never carried over, because a combined "no"
+  would attest to items the applicant was not asked. Existing cases show the individual items as missing until answered.
+- The form's follow-ups are required only when they apply: Items 29, 35.b, 40, 20, 21, 75 and 84, other dates of birth and
+  A-Numbers, grade completed, children, prior marriages, and organizations.
+- Part 3 ticks one box from `i485_i864_exemption`. Other names, other dates of birth, other A-Numbers, prior marriages,
+  children, and organizations are structured `entry_list` answers that fill their form rows. An entry that is extra or too
+  long moves whole to Part 14, and free text saved before these were structured is copied to Part 14 unchanged.
+  `criminal_explanations` is filed in Part 14 against Items 22-41.
+- If Part 14 cannot hold prior addresses, employment history, or these lists, the answer is reported as unmapped instead of
+  being dropped. Text fields too long for their box are named in the generation warnings on I-485, I-130, I-130A, I-765,
+  I-131, I-864, and G-1145.
+- I-765 Items 2-4 and I-131 Part 2 Item 2 take other names as "Family name, Given name Middle name", one per line. Lines
+  without a comma go to the additional information section as written, since the family name cannot be identified.
+- I-130A employment history fills Employer 1 and 2 when structured and otherwise goes to Part 7. The more specific current
+  employer answers win over the history's first row.
+- Not yet on the generated forms: I-485 Parts 11-12 interpreter and preparer details, and I-130A Part 3 employment outside
+  the United States.
 - `form_i130` is supported as a partial validator for petitioner citizenship, core relationship facts,
   first-marriage scope, adjustment-of-status path selection, tracked citizenship/marriage supporting evidence,
   and source-dated core question metadata; blank I-130 PDFs are auto-detected from `blank-immigration-documents/`

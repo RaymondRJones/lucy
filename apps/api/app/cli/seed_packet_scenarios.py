@@ -129,7 +129,15 @@ SCENARIOS = [
         annual_income=86000,
         extra_answers={
             "beneficiary_marriage_count": 2,
-            "beneficiary_prior_marriages": "One prior marriage ended by final divorce decree in 2021.",
+            "beneficiary_prior_marriages": [
+                {
+                    "family_name": "Example",
+                    "given_name": "Former",
+                    "marriage_date": "2015-06-01",
+                    "end_date": "2021-03-15",
+                    "how_ended": "divorced",
+                }
+            ],
             "beneficiary_prior_marriage_termination_date": "2021-08-20",
             "i131_travel_purpose": "Short family visit for a parent's scheduled medical procedure.",
             "i131_countries_to_visit": "Mexico",

@@ -384,7 +384,7 @@ I765_QUESTIONNAIRE: list[dict[str, Any]] = [
                     {"value": "renewal", "label": "Renewal of permission to accept employment"},
                 ],
             ),
-            q("beneficiary_other_names", "Other names ever used, if any", "textarea", required=False, pdf_ref="Part 2, Items 2-4", db_path="intake.beneficiary_other_names"),
+            q("beneficiary_other_names", "Other names ever used, if any (one per line: Family name, Given name Middle name)", "textarea", required=False, pdf_ref="Part 2, Items 2-4", db_path="intake.beneficiary_other_names"),
         ],
     },
     {
@@ -525,7 +525,7 @@ I131_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Applicant family name", "text", pdf_ref="Part 2, Item 1.a", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Applicant given name", "text", pdf_ref="Part 2, Item 1.b", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Applicant middle name", "text", required=False, pdf_ref="Part 2, Item 1.c", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_other_names", "Other names ever used, if any", "textarea", required=False, pdf_ref="Part 2, Item 2", db_path="intake.beneficiary_other_names"),
+            q("beneficiary_other_names", "Other names ever used, if any (one per line: Family name, Given name Middle name)", "textarea", required=False, pdf_ref="Part 2, Item 2", db_path="intake.beneficiary_other_names"),
         ],
     },
     {

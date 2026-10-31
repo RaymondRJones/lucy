@@ -45,7 +45,7 @@
 
 - `GET /content/i485-questionnaire`
   - return the source-backed, versioned 14-page I-485 question map, including PDF references, DB mapping metadata,
-    and plain-language help fields backed by official USCIS Form I-485 source metadata verified on `2026-05-05`
+    and plain-language help fields backed by official USCIS Form I-485 source metadata verified on `2026-10-30`
 - `GET /cases/{case_id}/i485-ingestion`
   - return saved I-485 page answers, completion summaries, mapped fields, and risk/outside-niche flags
 - `POST /cases/{case_id}/i485-ingestion/page`
