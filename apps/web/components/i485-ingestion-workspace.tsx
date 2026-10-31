@@ -240,6 +240,21 @@ function RepeatableHistoryControl({
                 </button>
               ) : null}
             </div>
+            {typeof entry.notes === "string" && entry.notes.trim() && !fields.some((field) => field.key === "notes") ? (
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <p>
+                  <span className="font-semibold">Saved earlier as free text, and prints in {question.overflow_pdf_ref ?? "additional information"}:</span>{" "}
+                  {entry.notes}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => updateEntry(index, "notes", "")}
+                  className="shrink-0 rounded-lg border border-amber-300 px-3 py-1 font-semibold"
+                >
+                  Remove note
+                </button>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
               {fields.map((field) => {
                 const fieldLabel = `${field.label}${field.required ? " *" : ""}`;

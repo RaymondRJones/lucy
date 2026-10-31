@@ -908,7 +908,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Current legal family name", "text", pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Current legal given name", "text", pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Current legal middle name", "text", required=False, pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_other_names", "All other names ever used", "entry_list", required=False, pdf_ref="Part 1, Item 2", entry_fields=OTHER_NAME_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
+            q("beneficiary_other_names", "All other names ever used", "entry_list", required=False, pdf_ref="Part 1, Item 2", db_path="intake.beneficiary_other_names", entry_fields=OTHER_NAME_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
             q("beneficiary_date_of_birth", "Date of birth", "date", pdf_ref="Part 1, Item 3", db_path="intake.beneficiary_date_of_birth"),
             q("beneficiary_used_other_dob", "Has the applicant ever used another date of birth?", "boolean", pdf_ref="Part 1, Item 3", ideal_answer=False, risk_when=True, risk_code="identity_inconsistencies"),
             q("beneficiary_other_dates_of_birth", "Other dates of birth used", "entry_list", required=False, pdf_ref="Part 1, Item 3", entry_fields=OTHER_DOB_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),

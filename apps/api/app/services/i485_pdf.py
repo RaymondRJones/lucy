@@ -1377,11 +1377,14 @@ def _entries_for_mapping(value: Any) -> list[dict[str, Any]]:
     for raw in raw_entries:
         if isinstance(raw, str) and raw.strip():
             entries.append({"notes": raw.strip()})
-        elif isinstance(raw, dict) and any(
-            _value_is_answered(entry) and not isinstance(entry, bool) for entry in raw.values()
-        ):
+        elif isinstance(raw, dict) and _entry_has_content(raw):
             entries.append(raw)
     return entries
+
+
+def _entry_has_content(entry: dict[str, Any]) -> bool:
+    # A false checkbox alone is only the form control's default, not an answer.
+    return any(_value_is_answered(value) and not isinstance(value, bool) for value in entry.values())
 
 
 def _entry_field_value(key: str, value: Any) -> str:
@@ -1440,6 +1443,11 @@ def _add_entry_list_fields(
         placed: list[dict[str, Any]] = []
         overflow: list[dict[str, Any]] = []
         for entry in entries:
+            # Free text from before the list was structured has no box, so it must not keep the row off the form.
+            fields_only = {key: value for key, value in entry.items() if key != "notes"}
+            if _value_is_answered(entry.get("notes")) and _entry_has_content(fields_only):
+                overflow.append({"notes": entry["notes"]})
+                entry = fields_only
             if len(placed) < len(mapping.rows) and _entry_fits_row(mapping, entry, len(placed)):
                 placed.append(entry)
             else:

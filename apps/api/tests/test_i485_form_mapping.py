@@ -10,7 +10,7 @@ import pytest
 
 from app.content.i485_questionnaire import all_i485_questions
 from app.content.i485_sample import SAMPLE_I485_ANSWERS
-from app.services.i485 import conditional_required_i485_question_ids
+from app.services.i485 import build_i485_intake_projection, conditional_required_i485_question_ids
 from app.services.i485_pdf import (
     AUTO_BOOLEAN_FIELD_MAP,
     CHECKBOX_FIELD_MAP,
@@ -343,3 +343,23 @@ def test_overlong_values_are_named_in_the_warnings(tmp_path: Path) -> None:
     assert not any(warning.startswith(OVERLONG_WARNING) for warning in generate_i485_pdf_from_answers(
         case_id=uuid4(), answers=SAMPLE_I485_ANSWERS, output_path=tmp_path / "clean.pdf"
     ).warnings)
+
+
+def test_a_note_left_on_a_completed_entry_does_not_keep_it_off_the_form() -> None:
+    payload = _payload(
+        {
+            "beneficiary_prior_marriages": [
+                {"family_name": "Doe", "given_name": "Sam", "how_ended": "divorced", "notes": "Ended by final decree in 2021."}
+            ]
+        }
+    )
+
+    assert payload.text_values["Pt6Line12_FamilyName[0]"] == "Doe"
+    assert payload.checkbox_values["Pt6Line19_MaritalStatus[3]"] == "/2"
+    assert "Ended by final decree in 2021." in _part14_text(payload.text_values).replace("\n", " ")
+
+
+def test_other_names_are_shared_with_the_other_forms() -> None:
+    projection = build_i485_intake_projection({"beneficiary_other_names": [{"family_name": "Rivera", "given_name": "Ana"}]})
+
+    assert projection["beneficiary_other_names"] == [{"family_name": "Rivera", "given_name": "Ana"}]

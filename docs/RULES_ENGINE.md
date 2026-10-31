@@ -198,6 +198,11 @@ It is intentionally separate from persisted packet QA:
   without a comma go to the additional information section as written, since the family name cannot be identified.
 - I-130A employment history fills Employer 1 and 2 when structured and otherwise goes to Part 7. The more specific current
   employer answers win over the history's first row.
+- Missing required I-485 answers are a blocking QA issue, so a case with a started I-485 cannot read as ready to print. The
+  stored readiness label updates the next time QA runs.
+- Other names entered on the I-485 are shared through intake and proposed to the I-765 and I-131 as one name per line.
+- Free text saved on a list entry before it was structured is shown on the entry and prints in Part 14, without keeping the
+  entry's structured fields off the form.
 - Not yet on the generated forms: I-485 Parts 11-12 interpreter and preparer details, and I-130A Part 3 employment outside
   the United States.
 - `form_i130` is supported as a partial validator for petitioner citizenship, core relationship facts,

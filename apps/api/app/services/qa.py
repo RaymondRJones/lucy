@@ -15,7 +15,7 @@ from app.models.entities import (
     QAIssue,
     UploadedDocument,
 )
-from app.services.i485 import evaluate_i485_answers, get_i485_state
+from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
 from app.services.intake import derive_case_facts, get_merged_case_intake, normalize_country
 from app.services.rules.qa import QARuleContext, QARuleDependencies, QARuleEngine
 from app.services.upload_links import satisfied_checklist_codes_for_upload
@@ -574,6 +574,19 @@ def _i485_ingestion_issues(session: Session, case_id: UUID) -> list[QAIssue]:
                 code,
                 title,
                 description,
+                "form_i485",
+            )
+        )
+    missing = build_i485_form_fill_preview(session, case_id)["missing_required"]
+    if missing:
+        issues.append(
+            _build_issue(
+                case_id,
+                "blocking",
+                "i485_missing_required_answers",
+                f"{len(missing)} required I-485 answers are missing",
+                "The I-485 is incomplete until these are answered, so it cannot be treated as packet-ready. "
+                "Open the I-485 ingestion page to see the list.",
                 "form_i485",
             )
         )
