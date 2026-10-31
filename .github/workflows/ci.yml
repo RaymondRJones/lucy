@@ -46,6 +46,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - run: npm audit --audit-level=moderate
+      # What ships is held to a stricter bar than developer tooling, which only processes our own code.
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm audit --audit-level=high
       - run: pip install pip-audit
       - run: pip-audit -r apps/api/requirements-dev.lock --no-deps --disable-pip
