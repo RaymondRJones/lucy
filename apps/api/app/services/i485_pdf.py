@@ -13,6 +13,7 @@ from sqlmodel import Session
 
 from app.content.admission_classes import normalize_class_of_admission
 from app.content.i485_questionnaire import all_i485_questions
+from app.core.config import settings
 from app.services.i485 import (
     build_i485_form_fill_preview,
     conditional_required_i485_question_ids,
@@ -22,7 +23,7 @@ from app.services.i485 import (
 
 
 DEFAULT_I485_TEMPLATE_PATH = Path("blank-immigration-documents/i-485.pdf")
-DEFAULT_I485_OUTPUT_DIR = Path("storage/generated")
+DEFAULT_I485_OUTPUT_DIR = settings.generated_dir
 PART14_ADDITIONAL_INFO_FIELDS = {
     "P14_Line2_AdditionalInfo[0]",
     "P14_Line3_AdditionalInfo[0]",

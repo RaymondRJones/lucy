@@ -9,6 +9,7 @@ from uuid import UUID
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject
 
+from app.core.config import settings
 from app.services.i485_pdf import (
     _add_unit_fields,
     _set_checkbox_values,
@@ -18,7 +19,7 @@ from app.services.i485_pdf import (
 )
 
 
-DEFAULT_FAMILY_OUTPUT_DIR = Path("storage/generated")
+DEFAULT_FAMILY_OUTPUT_DIR = settings.generated_dir
 DEFAULT_FAMILY_TEMPLATE_PATHS = {
     "g1145": Path("blank-immigration-documents/g-1145.pdf"),
     "i130": Path("blank-immigration-documents/i-130.pdf"),

@@ -131,7 +131,7 @@ from app.services.qa import get_qa_results, run_qa
 
 
 router = APIRouter()
-GENERATED_PDF_DIR = Path("storage/generated").resolve()
+GENERATED_PDF_DIR = settings.generated_dir.resolve()
 ALLOWED_UPLOAD_TYPES = {
     "application/pdf",
     "image/jpeg",
@@ -827,7 +827,7 @@ def generate_case_i485_pdf(
             case_id=case_id,
             template_path=Path(payload.template_path) if payload.template_path else DEFAULT_I485_TEMPLATE_PATH,
             output_path=Path(payload.output_path) if payload.output_path else None,
-            output_dir=Path(payload.output_dir) if payload.output_dir else Path("storage/generated"),
+            output_dir=Path(payload.output_dir) if payload.output_dir else settings.generated_dir,
             allow_incomplete=payload.allow_incomplete,
         )
     except ValueError as exc:
@@ -956,7 +956,7 @@ def generate_case_form_pdf(
             form_key=form_key,
             template_path=Path(payload.template_path) if payload.template_path else None,
             output_path=Path(payload.output_path) if payload.output_path else None,
-            output_dir=Path(payload.output_dir) if payload.output_dir else Path("storage/generated"),
+            output_dir=Path(payload.output_dir) if payload.output_dir else settings.generated_dir,
             allow_incomplete=payload.allow_incomplete,
         )
     except ValueError as exc:

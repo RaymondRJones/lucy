@@ -44,7 +44,7 @@ from app.services.i485_pdf import generate_i485_pdf
 from app.services.intake import derive_case_facts, get_merged_case_intake
 
 
-PACKET_OUTPUT_DIR = Path("storage/generated")
+PACKET_OUTPUT_DIR = settings.generated_dir
 DEFAULT_PACKET_FORMS = I485_PACKET_GENERATED_FORMS
 GENERIC_FORM_WARNINGS = {
     "Review every generated value against the source documents before filing.",

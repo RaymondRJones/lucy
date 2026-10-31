@@ -4,7 +4,6 @@ import argparse
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from pypdf import PdfReader
@@ -12,6 +11,7 @@ from sqlmodel import Session, select
 
 from app.cli.seed_happy_path import _sample_answers, _seed_i485, _seed_supplemental_form
 from app.cli.seed_placeholder_pdf import packet_section_for_checklist_code, write_seed_placeholder_pdf
+from app.core.config import settings
 from app.db.session import create_db_and_tables, engine
 from app.models.entities import (
     CaseChecklistItem,
@@ -355,7 +355,7 @@ def _create_case(session: Session, scenario: PacketScenario, answers: dict[str, 
 
 
 def _seed_valid_uploads(session: Session, case: CaseRecord, scenario: PacketScenario) -> int:
-    upload_dir = Path("storage/uploads")
+    upload_dir = settings.upload_dir
     upload_dir.mkdir(parents=True, exist_ok=True)
     items = list(
         session.exec(

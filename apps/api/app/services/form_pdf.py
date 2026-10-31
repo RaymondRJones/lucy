@@ -12,6 +12,7 @@ from sqlmodel import Session
 
 from app.content.admission_classes import normalize_class_of_admission
 from app.content.supplemental_forms import all_supplemental_form_questions, get_supplemental_form_config
+from app.core.config import settings
 from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_field_payload, build_i130a_pdf_field_payload
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
@@ -30,7 +31,7 @@ from app.services.i485_pdf import (
 )
 
 
-DEFAULT_FORM_OUTPUT_DIR = Path("storage/generated")
+DEFAULT_FORM_OUTPUT_DIR = settings.generated_dir
 
 DATE_QUESTION_IDS = {
     "beneficiary_date_of_birth",
