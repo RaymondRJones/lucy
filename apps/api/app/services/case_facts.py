@@ -175,6 +175,27 @@ def _derive_happy_path_fields(values: dict[str, Any]) -> None:
             values["beneficiary_country_of_residence"] = "United States"
 
 
+def _copy_current_employment_entry(values: dict[str, Any]) -> None:
+    history = values.get("beneficiary_employment_history")
+    if not isinstance(history, list):
+        return
+    # The I-485 history marks the current activity with a blank end date.
+    current = next((entry for entry in history if isinstance(entry, dict) and not value_is_answered(entry.get("to"))), None)
+    if current is None:
+        return
+    for target, source_key in {
+        "beneficiary_current_employer_address_line1": "line1",
+        "beneficiary_current_employer_address_line2": "line2",
+        "beneficiary_current_employer_city": "city",
+        "beneficiary_current_employer_state": "state",
+        "beneficiary_current_employer_zip": "zip",
+        "beneficiary_current_employer_country": "country",
+        "beneficiary_current_employment_from": "from",
+    }.items():
+        if not value_is_answered(values.get(target)) and value_is_answered(current.get(source_key)):
+            values[target] = current[source_key]
+
+
 def enrich_case_fact_aliases(values: dict[str, Any]) -> dict[str, Any]:
     """Return a copy with semantically equivalent case-field variants populated."""
     enriched = dict(values)
@@ -196,6 +217,8 @@ def enrich_case_fact_aliases(values: dict[str, Any]) -> dict[str, Any]:
         ("petitioner_current_country", "petitioner_current_address_country"),
     ):
         _mirror_pair(enriched, first, second)
+
+    _copy_current_employment_entry(enriched)
 
     recent_foreign_address = enriched.get("beneficiary_recent_foreign_address")
     if isinstance(recent_foreign_address, dict) and not value_is_answered(enriched.get("beneficiary_state_province_of_birth")):

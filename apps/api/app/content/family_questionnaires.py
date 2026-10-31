@@ -397,7 +397,8 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_current_zip", "Current ZIP code", "text", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_current_zip"),
             q("beneficiary_current_country", "Current country", "country", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_current_country"),
             q("beneficiary_address_since", "Date current address began", "date", pdf_ref="Part 1, Item 5", db_path="intake.beneficiary_address_since"),
-            q("beneficiary_prior_address_history", "Prior addresses for the last five years", "address_list", required=False, pdf_ref="Part 1, Items 6-8", db_path="intake.beneficiary_prior_address_history"),
+            q("beneficiary_prior_address_history", "Prior addresses for the last five years", "address_list", required=False, pdf_ref="Part 1, Items 6-7", db_path="intake.beneficiary_prior_address_history"),
+            q("beneficiary_recent_foreign_address", "Last address outside the United States of more than one year", "address", required=False, pdf_ref="Part 1, Items 8-9", db_path="intake.beneficiary_recent_foreign_address"),
         ],
     },
     {
@@ -433,6 +434,12 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
         "local_pdf_pages": [2, 3],
         "questions": [
             q("beneficiary_current_employer_or_school", "Current employer, company, or school", "text", pdf_ref="Part 2, Item 1", db_path="intake.beneficiary_current_employer_or_school"),
+            q("beneficiary_current_employer_address_line1", "Current employer or school street address", "text", required=False, pdf_ref="Part 2, Item 2.a", db_path="intake.beneficiary_current_employer_address_line1"),
+            q("beneficiary_current_employer_address_line2", "Current employer or school apartment, suite, or floor", "text", required=False, pdf_ref="Part 2, Item 2.b", db_path="intake.beneficiary_current_employer_address_line2"),
+            q("beneficiary_current_employer_city", "Current employer or school city", "text", required=False, pdf_ref="Part 2, Item 2.c", db_path="intake.beneficiary_current_employer_city"),
+            q("beneficiary_current_employer_state", "Current employer or school state", "text", required=False, pdf_ref="Part 2, Item 2.d", db_path="intake.beneficiary_current_employer_state"),
+            q("beneficiary_current_employer_zip", "Current employer or school ZIP code", "text", required=False, pdf_ref="Part 2, Item 2.e", db_path="intake.beneficiary_current_employer_zip"),
+            q("beneficiary_current_employer_country", "Current employer or school country", "country", required=False, pdf_ref="Part 2, Item 2.h", db_path="intake.beneficiary_current_employer_country"),
             q("beneficiary_current_occupation", "Current occupation", "text", required=False, pdf_ref="Part 2, Item 3", db_path="intake.beneficiary_current_occupation"),
             q("beneficiary_current_employment_from", "Date current employment or school began", "date", required=False, pdf_ref="Part 2, Item 4.a", db_path="intake.beneficiary_current_employment_from"),
             q("beneficiary_employment_history", "Employment, unemployment, retirement, or school history for the last five years", "textarea", pdf_ref="Part 2, Items 1-10", db_path="intake.beneficiary_employment_history"),

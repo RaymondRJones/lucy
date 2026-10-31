@@ -12,8 +12,10 @@ from pypdf.generic import NameObject
 from app.content.admission_classes import normalize_class_of_admission
 from app.services.i485_pdf import (
     _add_unit_fields,
+    _field_length_warning,
     _normalize_us_state,
     _set_checkbox_values,
+    _unprintable_character_warning,
     _use_saved_appearances,
     _set_text_values,
     _template_field_names,
@@ -446,6 +448,11 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_address_since": ("Pt1Line5a_DateFrom[0]",),
     "beneficiary_current_address_since": ("Pt1Line5a_DateFrom[0]",),
     "beneficiary_current_employer_or_school": ("Pt2Line1_EmployerOrCompName[0]",),
+    "beneficiary_current_employer_address_line1": ("Pt2Line2a_StreetNumberName[0]",),
+    "beneficiary_current_employer_city": ("Pt2Line2c_CityOrTown[0]",),
+    "beneficiary_current_employer_state": ("Pt2Line2d_State[0]",),
+    "beneficiary_current_employer_zip": ("Pt2Line2e_ZipCode[0]",),
+    "beneficiary_current_employer_country": ("Pt2Line2h_Country[0]",),
     "beneficiary_current_occupation": ("Pt2Line3_Occupation[0]",),
     "beneficiary_current_employment_from": ("Pt2Line4a_DateFrom[0]",),
     "beneficiary_current_employment_to": ("Pt2Line4b_DateTo[0]",),
@@ -472,6 +479,12 @@ I130A_UNIT_FIELD_MAP: dict[str, tuple[str, str, str, str]] = {
         "Pt1Line4b_Unit[2]",
         "Pt1Line4b_AptSteFlrNumber[0]",
     ),
+    "beneficiary_current_employer_address_line2": (
+        "Pt2Line2b_Unit[0]",
+        "Pt2Line2b_Unit[1]",
+        "Pt2Line2b_Unit[2]",
+        "Pt2Line2b_AptSteFlrNumber[0]",
+    ),
 }
 
 I130A_PRIOR_ADDRESS_FIELD_MAP = {
@@ -484,6 +497,17 @@ I130A_PRIOR_ADDRESS_FIELD_MAP = {
     "country": "Pt1Line6h_Country[0]",
     "from": "Pt1Line7a_DateFrom[0]",
     "to": "Pt1Line7b_DateTo[0]",
+}
+
+# Items 8 and 9 of edition 04/01/24: last address outside the United States of more than one year.
+I130A_FOREIGN_ADDRESS_FIELD_MAP = {
+    "line1": "Pt1Line8a_StreetNumberName[0]",
+    "city": "Pt1Line8c_CityOrTown[0]",
+    "province": "Pt1Line8d_Province[0]",
+    "postal_code": "Pt1Line8e_PostalCode[0]",
+    "country": "Pt1Line8f_Country[0]",
+    "from": "Pt1Line9a_DateFrom[0]",
+    "to": "Pt1Line9b_DateTo[0]",
 }
 
 G1145_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
@@ -731,6 +755,35 @@ def _add_i130a_prior_address(
         )
 
 
+def _add_i130a_foreign_address(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    address = values.get("beneficiary_recent_foreign_address")
+    if not isinstance(address, dict):
+        return
+    before = set(text_values) | set(checkbox_values)
+    _add_unit_fields(
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        value=address.get("line2"),
+        apt_field="Pt1Line8b_Unit[0]",
+        ste_field="Pt1Line8b_Unit[1]",
+        flr_field="Pt1Line8b_Unit[2]",
+        number_field="Pt1Line8b_AptSteFlrNumber[0]",
+    )
+    for source_key, field_name in I130A_FOREIGN_ADDRESS_FIELD_MAP.items():
+        value = address.get(source_key)
+        if _value_is_answered(value):
+            text_values[field_name] = _as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+    used_fields = sorted((set(text_values) | set(checkbox_values)) - before)
+    if used_fields:
+        mapped_fields.append({"field_key": "beneficiary_recent_foreign_address", "pdf_fields": used_fields})
+
+
 def build_i130_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
@@ -804,6 +857,12 @@ def build_i130a_pdf_field_payload(
         field_map=I130A_UNIT_FIELD_MAP,
     )
     _add_i130a_prior_address(
+        values=values,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
+    _add_i130a_foreign_address(
         values=values,
         text_values=text_values,
         checkbox_values=checkbox_values,
@@ -899,6 +958,8 @@ def _generate_family_pdf_from_payload(
     ]
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
 
     return GeneratedFamilyPdf(
         case_id=case_id,

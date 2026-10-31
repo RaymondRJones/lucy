@@ -33,7 +33,7 @@ from app.services.family_pdf import (
     G1145_TEXT_FIELD_MAP,
     generate_g1145_pdf,
 )
-from app.services.form_ingestion import build_form_fill_preview, save_form_page_answers
+from app.services.form_ingestion import build_form_fill_preview, import_form_answers_from_case_data, save_form_page_answers
 from app.services.form_pdf import (
     CHECKBOX_FIELD_MAP,
     TEXT_FIELD_MAP,
@@ -422,6 +422,7 @@ def expected_i130(p: Profile) -> Expected:
 
 def expected_i130a(p: Profile) -> Expected:
     prior = p["beneficiary_prior_address_history"][0]
+    foreign = p["beneficiary_recent_foreign_address"]
     expected = Expected(
         text={
             "Pt1Line1_AlienNumber[0]": p["beneficiary_a_number"],
@@ -456,8 +457,21 @@ def expected_i130a(p: Profile) -> Expected:
             "Pt1Line19_CountryofBirth[0]": p["parent2_country_of_birth"],
             "Pt1Line20_CityTownVillageofRes[0]": p["parent2_city_of_residence"],
             "Pt1Line21_CountryofResidence[0]": p["parent2_country_of_residence"],
+            "Pt1Line8a_StreetNumberName[0]": foreign["line1"],
+            "Pt1Line8c_CityOrTown[0]": foreign["city"],
+            "Pt1Line8d_Province[0]": foreign["province"],
+            "Pt1Line8e_PostalCode[0]": foreign["postal_code"],
+            "Pt1Line8f_Country[0]": foreign["country"],
+            "Pt1Line9a_DateFrom[0]": _mdy(foreign["from"]),
+            "Pt1Line9b_DateTo[0]": _mdy(foreign["to"]),
             "Pt2Line1_EmployerOrCompName[0]": p["beneficiary_current_employer_or_school"],
+            "Pt2Line2a_StreetNumberName[0]": p["beneficiary_current_employer_address_line1"],
+            "Pt2Line2c_CityOrTown[0]": p["beneficiary_current_employer_city"],
+            "Pt2Line2d_State[0]": p["beneficiary_current_employer_state"],
+            "Pt2Line2e_ZipCode[0]": p["beneficiary_current_employer_zip"],
+            "Pt2Line2h_Country[0]": p["beneficiary_current_employer_country"],
             "Pt2Line3_Occupation[0]": p["beneficiary_current_occupation"],
+            "Pt2Line4a_DateFrom[0]": _mdy(p["beneficiary_current_employment_from"]),
             "Pt4Line3_DaytimePhoneNumber1[0]": p["beneficiary_phone"],
             "Pt4Line5_Email[0]": p["beneficiary_email"],
         },
@@ -1010,6 +1024,10 @@ def test_forms_prefill_from_the_i485_profile_without_form_pages(tmp_path: Path, 
     assert i864["P2_Line2_AptSteFlrNumber[0]"] == profile.beneficiary_unit[1]
     i130 = form_values("i130")
     assert i130["PtLine20a_FamilyName[0]"] == profile["beneficiary_last_name"]
+    assert i130a["Pt1Line8a_StreetNumberName[0]"] == profile["beneficiary_recent_foreign_address"]["line1"]
+    history_entry = profile["beneficiary_employment_history"][0]
+    assert i130a["Pt2Line2a_StreetNumberName[0]"] == history_entry["line1"]
+    assert i130a["Pt2Line4a_DateFrom[0]"] == _mdy(history_entry["from"])
     assert form_values("i765")["Line1a_FamilyName[0]"] == profile["beneficiary_last_name"]
     assert form_values("i131")["Part2_Line3_ZipCode[0]"] == profile["beneficiary_current_zip"]
 
@@ -1040,23 +1058,84 @@ def test_i130a_prints_parents_for_a_case_saved_before_parents_were_projected(tmp
     assert _matching_widgets(widgets, "Pt1Line10_GivenName[0]")[0].value == profile["parent1_first_name"]
 
 
-# --- Known gaps: USCIS lines the generators do not fill yet. Strict, so filling one forces this list to shrink.
-
-
-@pytest.mark.xfail(strict=True, reason="I-130A Part 2 employer address has no question or field mapping yet.")
-def test_i130a_prints_the_current_employer_address(generated_forms):
+def test_importing_case_data_clears_i130a_parents_for_a_case_saved_before_they_were_projected():
     profile = build_profile(1)
-    widgets = generated_forms[1]["i130a"].widgets
+    with _session() as session:
+        case = CaseRecord(case_name="Stored before the I-130A parent fields", workflow_type="marriage_concurrent")
+        session.add(case)
+        session.commit()
+        session.refresh(case)
+        for page in I485_QUESTIONNAIRE:
+            save_i485_page_answers(
+                session,
+                case.id,
+                page["id"],
+                {question["id"]: profile[question["id"]] for question in page["questions"] if question["id"] in profile.answers},
+            )
+        for step in session.exec(select(IntakeResponse).where(IntakeResponse.case_id == case.id)):
+            if step.step_key == I485_PROJECTION_STEP:
+                step.payload = {key: value for key, value in step.payload.items() if not key.startswith(("parent1_", "parent2_"))}
+                session.add(step)
+        session.commit()
 
-    assert _matching_widgets(widgets, "Pt2Line2a_StreetNumberName[0]")[0].value == profile["beneficiary_current_employer_address_line1"]
+        missing_before = {field["question_id"] for field in build_form_fill_preview(session, case.id, "i130a")["missing_required"]}
+        import_form_answers_from_case_data(session, case.id, "i130a")
+        session.commit()
+        missing_after = {field["question_id"] for field in build_form_fill_preview(session, case.id, "i130a")["missing_required"]}
+
+    assert "parent1_first_name" in missing_before
+    assert not {question_id for question_id in missing_after if question_id.startswith("parent")}
 
 
-@pytest.mark.xfail(strict=True, reason="I-130A Part 1 Item 8 last foreign address has no field mapping yet.")
-def test_i130a_prints_the_last_foreign_address(generated_forms):
+# --- Answers too long for their USCIS field.
+
+
+def test_answer_longer_than_its_field_warns_on_every_generator(tmp_path: Path):
+    long_email = f"{'very.long.address.' * 3}@example.org"
     profile = build_profile(1)
-    widgets = generated_forms[1]["i130a"].widgets
+    answers = {**profile.answers, "beneficiary_email": long_email}
+    with _session() as session:
+        case = _seed_profile_case(session, Profile(**{**profile.__dict__, "answers": answers}))
+        results = [
+            _generate_questionnaire_form(session, case.id, form_key, tmp_path / f"{form_key}.pdf")
+            for form_key in ("i485", "i765", "i130a")
+        ]
 
-    assert _matching_widgets(widgets, "Pt1Line8a_StreetNumberName[0]")[0].value == profile["beneficiary_recent_foreign_address"]["line1"]
+    for result in results:
+        assert any("may be cut off" in warning and long_email in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("seed", PROFILE_SEEDS)
+@pytest.mark.parametrize("form_key", QUESTIONNAIRE_FORMS)
+def test_answers_that_fit_do_not_warn_about_length(generated_forms, seed: int, form_key: str):
+    assert not any("may be cut off" in warning for warning in generated_forms[seed][form_key].result.warnings)
+
+
+# --- Characters the form fonts cannot draw.
+
+
+def test_characters_the_form_font_cannot_draw_warn_instead_of_printing_silently(tmp_path: Path):
+    path = tmp_path / "i765.pdf"
+
+    result = generate_form_pdf_from_answers(
+        case_id=uuid4(), form_key="i765", answers={"beneficiary_last_name": "Łukasiewicz"}, output_path=path
+    )
+
+    assert any("cannot print" in warning and "Łukasiewicz" in warning for warning in result.warnings)
+
+
+def test_family_form_warns_about_characters_the_font_cannot_draw(tmp_path: Path):
+    result = generate_g1145_pdf(
+        case_id=uuid4(), values={"beneficiary_last_name": "Łukasiewicz"}, output_path=tmp_path / "g1145.pdf"
+    )
+
+    assert any("cannot print" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("seed", PROFILE_SEEDS)
+@pytest.mark.parametrize("form_key", QUESTIONNAIRE_FORMS)
+def test_accented_latin_names_print_without_a_warning(generated_forms, seed: int, form_key: str):
+    assert not any("cannot print" in warning for warning in generated_forms[seed][form_key].result.warnings)
 
 
 # --- Readiness gate.

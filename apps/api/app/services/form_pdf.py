@@ -16,6 +16,7 @@ from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
     build_form_fill_preview,
+    FORMS_USING_I485_ANSWERS,
     get_form_state,
     normalize_form_key,
 )
@@ -23,7 +24,9 @@ from app.services.i485 import build_i485_intake_projection, get_i485_state
 from app.services.intake import get_merged_case_intake
 from app.services.i485_pdf import (
     _add_unit_fields,
+    _field_length_warning,
     _set_checkbox_values,
+    _unprintable_character_warning,
     _use_saved_appearances,
     _set_text_values,
     _template_field_names,
@@ -852,6 +855,8 @@ def generate_form_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
 
     return GeneratedFormPdf(
         case_id=case_id,
@@ -890,7 +895,7 @@ def generate_form_pdf(
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
     merged = get_merged_case_intake(session, case_id)
-    if normalize_form_key(form_key) in {"i765", "i131", "i130a"}:
+    if normalize_form_key(form_key) in FORMS_USING_I485_ANSWERS:
         i485_projection = build_i485_intake_projection(get_i485_state(session, case_id)["answers"])
         merged = {**merged, **i485_projection}
     for proposal in build_form_answer_proposals_from_case_data(form_key, merged):

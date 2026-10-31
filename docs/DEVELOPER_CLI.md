@@ -243,7 +243,8 @@ readiness flow, and reads each generated I-485, I-765, I-131, I-864, I-130, I-13
   `P4_Line7_CityofBirth[0]` is the printed Item 7 Country of Birth.
 - Every filled field must print: checkbox states must exist in the template, dropdown values must be options,
   text must fit `/MaxLen` and have a drawn appearance, and dates must be MM/DD/YYYY.
-- Lines Lucy does not fill yet are recorded as strict `xfail` tests, so closing a gap forces the list to shrink.
+- Answers longer than a field's `/MaxLen` add a "may be cut off" warning to the generated form and packet, and
+  characters the form fonts cannot draw (such as `Ł`, which prints as `?`) add a "cannot print" warning.
 
 When adding a form or field, add it to the matching `expected_*` function and to the profile builder. A mapped
 question that no seed reaches fails the coverage test until a seed fills it or it is listed as conditional.

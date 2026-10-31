@@ -591,6 +591,7 @@ UNIT_APPEARANCE_BY_FIELD = {
             "Pt1Line18_PriorAddress_Unit",
             "P4Line7_Unit",
             "P4Line8_Unit",
+            "Pt2Line2b_Unit",
             "Pt2Line41_Unit",
             "Pt2Line45_Unit",
             "Pt4Line11_Unit",
@@ -1670,6 +1671,46 @@ def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
             )
 
 
+def _field_length_warning(reader: PdfReader, values: dict[str, str]) -> list[str]:
+    too_long: dict[str, str] = {}
+    for page in reader.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            max_length = annotation.get("/MaxLen")
+            if not field_name or max_length is None:
+                continue
+            full_name = _annotation_full_name(annotation)
+            value = values.get(full_name) if full_name in values else values.get(str(field_name))
+            if value is not None and len(value) > int(max_length):
+                too_long[str(field_name)] = f"{value!r} ({len(value)} characters, the form allows {int(max_length)})"
+    if not too_long:
+        return []
+    return ["These answers may be cut off when printed: " + "; ".join(too_long.values()) + "."]
+
+
+def _unprintable_character_warning(writer: PdfWriter) -> list[str]:
+    # The form fonts cannot draw every character: the field keeps "Łukasz" but prints "?ukasz".
+    unprintable: set[str] = set()
+    for page in writer.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            value = annotation.get("/V")
+            normal_appearance = (annotation.get("/AP") or {}).get("/N")
+            if not isinstance(value, str) or value.isascii() or normal_appearance is None:
+                continue
+            stream = normal_appearance.get_object()
+            if hasattr(stream, "get_data") and stream.get_data().count(b"?") > value.count("?"):
+                unprintable.add(value)
+    if not unprintable:
+        return []
+    return [
+        "These answers contain characters the form cannot print and will show a question mark: "
+        + "; ".join(sorted(unprintable))
+        + ". Enter them as they should appear on the filing, using the Latin spelling on the passport where one is shown."
+    ]
+
+
 def _use_saved_appearances(writer: PdfWriter) -> None:
     # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
     try:
@@ -1757,6 +1798,8 @@ def generate_i485_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
 
     return GeneratedI485Pdf(
         case_id=case_id,
