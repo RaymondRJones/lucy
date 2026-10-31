@@ -337,7 +337,7 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
                 allow_incomplete=False,
             ).output_path
         )
-    except Exception as exc:  # pragma: no cover - dev convenience output
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - dev convenience output
         generated["i485"] = f"skipped: {exc}"
 
     for form_key in ("i765", "i131", "i864"):
@@ -351,7 +351,7 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
                     allow_incomplete=False,
                 ).output_path
             )
-        except Exception as exc:  # pragma: no cover - dev convenience output
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - dev convenience output
             generated[form_key] = f"skipped: {exc}"
     return generated
 

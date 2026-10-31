@@ -46,7 +46,7 @@ def _digits(value: str) -> str:
 
 def _routing_checksum_is_valid(routing_number: str) -> bool:
     weights = (3, 7, 1) * 3
-    return sum(weight * int(digit) for weight, digit in zip(weights, routing_number)) % 10 == 0
+    return sum(weight * int(digit) for weight, digit in zip(weights, routing_number, strict=True)) % 10 == 0
 
 
 def validate_g1650_payload(payload: dict[str, Any]) -> None:

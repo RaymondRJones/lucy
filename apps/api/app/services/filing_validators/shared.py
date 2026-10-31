@@ -222,7 +222,7 @@ def _template_field_names(template_path: Path) -> tuple[set[str], str | None]:
     try:
         reader = PdfReader(template_path)
         fields = reader.get_fields() or {}
-    except Exception as exc:  # pragma: no cover - defensive around malformed local PDFs
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive around malformed local PDFs
         return set(), f"Template PDF could not be read: {exc}"
     names: set[str] = set()
     for name, field in fields.items():
@@ -247,7 +247,7 @@ def _template_metadata(template_path: Path) -> dict[str, Any]:
         content = template_path.read_bytes()
         reader = PdfReader(template_path)
         fields = reader.get_fields() or {}
-    except Exception as exc:  # pragma: no cover - defensive around malformed local PDFs
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive around malformed local PDFs
         return {
             "path": str(template_path),
             "exists": True,

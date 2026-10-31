@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
+import pytest
 from pypdf import PdfReader, PdfWriter
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -776,3 +778,35 @@ def test_packet_assembly_can_generate_forms_only_without_supporting_evidence(tmp
     manifest = json.loads(result.manifest_path.read_text())
     assert manifest["include_supporting_evidence"] is False
     assert all(document["source_type"] != "upload" for document in manifest["included_documents"])
+
+
+def _append_generated_form_with_error(monkeypatch, error: Exception) -> list[dict]:
+    def fail(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(packet_assembly, "_generate_packet_form", fail)
+    skipped: list[dict] = []
+    packet_assembly._append_generated_form_document(
+        writer=PdfWriter(),
+        session=None,
+        case_id=uuid4(),
+        values={},
+        form_key="i485",
+        section="I-485 section",
+        allow_incomplete=False,
+        included_documents=[],
+        skipped_documents=skipped,
+        warnings=[],
+    )
+    return skipped
+
+
+def test_expected_form_generation_failure_is_reported_as_skipped(monkeypatch) -> None:
+    skipped = _append_generated_form_with_error(monkeypatch, ValueError("I-485 PDF template not found"))
+
+    assert skipped[0]["reason"] == "I-485 PDF template not found"
+
+
+def test_code_bug_in_form_generation_fails_instead_of_omitting_the_form(monkeypatch) -> None:
+    with pytest.raises(AttributeError):
+        _append_generated_form_with_error(monkeypatch, AttributeError("bug"))

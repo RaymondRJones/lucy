@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.errors import PyPdfError
 from sqlmodel import Session, select
 
 from app.content.fee_schedule import G1450_FORM_FEES
@@ -276,11 +277,11 @@ def _normalize_pdf_for_merge(source_path: Path, output_dir: Path, upload_id: UUI
 def _append_upload_pdf_pages(writer: PdfWriter, path: Path, output_dir: Path, upload_id: UUID) -> int:
     try:
         return _append_pdf_pages(writer, path)
-    except Exception as original_exc:
+    except Exception as original_exc:  # noqa: BLE001 - pypdf raises many types on malformed user PDFs
         try:
             normalized_path = _normalize_pdf_for_merge(path, output_dir, upload_id)
             return _append_pdf_pages(writer, normalized_path)
-        except Exception as normalized_exc:
+        except Exception as normalized_exc:  # noqa: BLE001 - same as above
             raise ValueError(f"{original_exc}; normalization also failed: {normalized_exc}") from normalized_exc
 
 
@@ -353,7 +354,7 @@ def _safe_upload_path(upload: UploadedDocument) -> Path | None:
 def _has_answered_form_state(session: Session, case_id: UUID, form_key: str) -> bool:
     try:
         state = get_form_state(session, case_id, form_key)
-    except Exception:
+    except KeyError:
         return False
     return any(value not in (None, "", [], {}) for value in state.get("answers", {}).values())
 
@@ -575,7 +576,7 @@ def _append_payment_forms(
     for code, path in sorted(payment_paths, key=lambda item: payment_order.get(item[0], 999)):
         try:
             page_count = _append_pdf_pages(writer, path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - reported as a skipped document; the file may be user-supplied
             skipped_documents.append(
                 _skipped_entry(
                     label=_payment_label(code, payment_form),
@@ -691,7 +692,8 @@ def _append_generated_form_document(
             )
         )
         warnings.extend(_relevant_form_warnings(label, form_warnings))
-    except Exception as exc:
+    # Expected failures only: a code bug should fail the packet, not silently omit a required form.
+    except (ValueError, OSError, PyPdfError) as exc:
         skipped_documents.append(
             _skipped_entry(
                 label=f"Form {form_key.upper()}",
@@ -774,7 +776,7 @@ def _append_upload_document(
         return
     try:
         page_count = _append_upload_pdf_pages(writer, path, output_dir, upload.id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - reported as a skipped document; malformed uploads raise many types
         skipped_documents.append(
             _skipped_entry(
                 label=label,

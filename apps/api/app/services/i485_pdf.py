@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import BooleanObject, DictionaryObject, NameObject, TextStringObject
+from pypdf.generic import NameObject, TextStringObject
 from sqlmodel import Session
 
 from app.content.admission_classes import normalize_class_of_admission
@@ -1158,7 +1158,7 @@ def _add_public_charge_fields(
         overflow_text = "; ".join(overflow)
         if not overflow or _part14_has_room(text_values, overflow_text):
             fields = list(SKILL_ROW_FIELDS[: len(row_skills)])
-            for field_name, skill in zip(SKILL_ROW_FIELDS, row_skills):
+            for field_name, skill in zip(SKILL_ROW_FIELDS, row_skills, strict=False):
                 text_values[field_name] = skill
             if overflow:
                 fields.extend(
@@ -1644,14 +1644,7 @@ def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
 
 def _use_saved_appearances(writer: PdfWriter) -> None:
     # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
-    try:
-        writer.set_need_appearances_writer(False)
-    except Exception:
-        acroform = writer._root_object.get("/AcroForm")
-        if acroform is None:
-            writer._root_object.update({NameObject("/AcroForm"): DictionaryObject()})
-            acroform = writer._root_object["/AcroForm"]
-        acroform.update({NameObject("/NeedAppearances"): BooleanObject(False)})
+    writer.set_need_appearances_writer(False)
 
 
 def _preview_from_answers(case_id: UUID, answers: dict[str, Any]) -> dict[str, Any]:

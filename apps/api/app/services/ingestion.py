@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import shutil
 from dataclasses import dataclass
@@ -20,6 +21,9 @@ from app.services.i485 import import_i485_answers_from_upload
 from app.services.intake import apply_case_projection, get_merged_case_intake, normalize_country
 from app.services.qa import run_qa
 from app.services.upload_links import infer_satisfied_checklist_codes
+
+
+logger = logging.getLogger(__name__)
 
 
 DATE_RE = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
@@ -86,14 +90,14 @@ def _pdf_text(path: Path) -> str:
     if reader.is_encrypted:
         try:
             reader.decrypt("")
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - unreadable uploads should still scan as empty text
+            logger.warning("Could not decrypt PDF during scan: %s", type(exc).__name__)
     parts: list[str] = []
-    for page in reader.pages:
+    for page_number, page in enumerate(reader.pages, start=1):
         try:
             parts.append(page.extract_text() or "")
-        except Exception:
-            continue
+        except Exception as exc:  # noqa: BLE001 - one malformed page should not fail the whole document
+            logger.warning("Skipped unreadable PDF page %d during scan: %s", page_number, type(exc).__name__)
     return "\n".join(parts)
 
 

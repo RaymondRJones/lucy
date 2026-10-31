@@ -12,7 +12,6 @@ from app.services.filing_validators.i485 import I485FilingValidator
 from app.services.filing_validators.i765 import I765FilingValidator
 from app.services.filing_validators.i864 import I864FilingValidator
 from app.services.filing_validators.shared import (
-    DEFAULT_TEMPLATE_PATHS,
     DEFAULT_VALIDATION_SCOPE,
     ROADMAP_FORM_CODES,
     SUPPORTED_FORM_CODES,

@@ -158,7 +158,8 @@ def test_checklist_requires_petitioner_photos_only_before_i130_is_filed():
     )
     session.commit()
 
-    applicability = lambda case: {item.code: item.applicability for item in generate_checklist(session, case.id)[0]}
+    def applicability(case):
+        return {item.code: item.applicability for item in generate_checklist(session, case.id)[0]}
 
     assert applicability(not_filed)["petitioner_passport_photos"] != "not_applicable"
     assert applicability(pending)["petitioner_passport_photos"] == "not_applicable"
