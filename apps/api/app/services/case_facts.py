@@ -149,6 +149,7 @@ def _derive_happy_path_fields(values: dict[str, Any]) -> None:
             ("beneficiary_spouse1_last_name", "petitioner_last_name"),
             ("beneficiary_spouse1_first_name", "petitioner_first_name"),
             ("beneficiary_spouse1_middle_name", "petitioner_middle_name"),
+            ("petitioner_spouse1_last_name", "beneficiary_last_name"),
             ("petitioner_spouse1_first_name", "beneficiary_first_name"),
             ("petitioner_spouse1_middle_name", "beneficiary_middle_name"),
         ):

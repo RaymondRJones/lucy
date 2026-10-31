@@ -11,7 +11,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, DictionaryObject, NameObject, TextStringObject
 from sqlmodel import Session
 
-from app.content.admission_classes import normalize_class_of_admission
+from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, normalize_class_of_admission
 from app.content.i485_questionnaire import all_i485_questions
 from app.services.i485 import (
     build_i485_form_fill_preview,
@@ -469,26 +469,34 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     return str(value).strip()
 
 
+# Part 1, Items 12 and 14 of edition 09/18/26 hold 20 characters.
+I485_STATUS_FIELD_LENGTH = 20
+
+
 def _immigration_status_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return ""
-    normalized = normalize_class_of_admission(raw)
+    # Dropdown answers can carry a description, such as "B-1 visitor for business".
+    normalized = normalize_class_of_admission(raw.split()[0])
     if normalized == "B-2" or raw.strip().lower() in {"visitor", "b2 visitor", "b-2 visitor"}:
         return "B-2 Visitor"
     if normalized == "B-1":
-        return "B-1 Visitor for Business"
+        return "B-1 Business Visitor"
     if normalized in {"F-1", "F-2", "J-1", "J-2", "M-1", "M-2"}:
         labels = {
             "F-1": "F-1 Student",
             "F-2": "F-2 Dependent",
             "J-1": "J-1 Exchange Visitor",
             "J-2": "J-2 Dependent",
-            "M-1": "M-1 Vocational Student",
+            "M-1": "M-1 Student",
             "M-2": "M-2 Dependent",
         }
         return labels[normalized]
-    return raw if " " in raw else normalized
+    if " " not in raw:
+        return normalized
+    is_known_class = any(option["value"] == normalized for option in CLASS_OF_ADMISSION_OPTIONS)
+    return normalized if is_known_class and len(raw) > I485_STATUS_FIELD_LENGTH else raw
 
 
 def _parse_pdf_date(value: Any) -> datetime | None:
@@ -574,6 +582,27 @@ def _unit_kind_and_number(value: Any) -> tuple[str, str]:
     return "apt", raw
 
 
+# USCIS templates name these on-states inconsistently, so a default would leave the box unchecked in print.
+# Read from the blank PDFs in blank-immigration-documents/ on 2026-10-30.
+UNIT_APPEARANCE_BY_FIELD = {
+    **{
+        f"{prefix}[{index}]": appearance
+        for prefix in (
+            "Pt1Line18_PriorAddress_Unit",
+            "P4Line7_Unit",
+            "P4Line8_Unit",
+            "Pt2Line41_Unit",
+            "Pt2Line45_Unit",
+            "Pt4Line11_Unit",
+        )
+        for index, appearance in enumerate(("/APT", "/STE", "/FLR"))
+    },
+    "Pt2Line10_Unit[0]": "/APT ",
+    "Pt2Line10_Unit[1]": "/STE",
+    "Pt2Line10_Unit[2]": "/FLR",
+}
+
+
 def _add_unit_fields(
     *,
     text_values: dict[str, str],
@@ -592,11 +621,11 @@ def _add_unit_fields(
         return
     text_values[number_field] = unit_number
     if unit_kind == "apt":
-        checkbox_values[apt_field] = apt_appearance
+        checkbox_values[apt_field] = UNIT_APPEARANCE_BY_FIELD.get(apt_field, apt_appearance)
     elif unit_kind == "ste":
-        checkbox_values[ste_field] = ste_appearance
+        checkbox_values[ste_field] = UNIT_APPEARANCE_BY_FIELD.get(ste_field, ste_appearance)
     elif unit_kind == "flr":
-        checkbox_values[flr_field] = flr_appearance
+        checkbox_values[flr_field] = UNIT_APPEARANCE_BY_FIELD.get(flr_field, flr_appearance)
 
 
 def _add_prior_address_fields(

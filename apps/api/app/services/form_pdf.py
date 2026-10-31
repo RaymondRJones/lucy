@@ -34,6 +34,7 @@ DEFAULT_FORM_OUTPUT_DIR = Path("storage/generated")
 
 DATE_QUESTION_IDS = {
     "beneficiary_date_of_birth",
+    "beneficiary_i94_expiration",
     "beneficiary_last_arrival_date",
     "beneficiary_passport_expiration",
     "petitioner_date_of_birth",
@@ -56,6 +57,14 @@ NON_PDF_CONTROL_QUESTIONS = {
     "interpreter_used",
     "preparer_used",
     "additional_information_needed",
+    # Saved by older cases: I-864 Item 7 asks for country of birth, and I-130A Part 1 has no self-identity items.
+    "petitioner_city_of_birth",
+    "beneficiary_date_of_birth",
+    "beneficiary_sex",
+    "beneficiary_city_of_birth",
+    "beneficiary_country_of_birth",
+    "beneficiary_country_of_citizenship",
+    "beneficiary_country_of_residence",
 }
 
 US_STATE_NAME_TO_CODE = {
@@ -183,7 +192,8 @@ TEXT_FIELD_MAP: dict[str, dict[str, tuple[str, ...]]] = {
         "petitioner_current_zip": ("P4_Line2g_ZipCode[0]",),
         "petitioner_country_of_domicile": ("P4_Line5_CountryOfDomicile[0]",),
         "petitioner_date_of_birth": ("P4_Line6_DateOfBirth[0]",),
-        "petitioner_city_of_birth": ("P4_Line7_CityofBirth[0]",),
+        # The template names this field CityofBirth, but edition 08/24/26 prints Item 7 as Country of Birth.
+        "petitioner_country_of_birth": ("P4_Line7_CityofBirth[0]",),
         "petitioner_social_security_number": ("P4_Line10_SocialSecurityNumber[0]",),
         "beneficiary_last_name": ("P2_Line1a_FamilyName[0]",),
         "beneficiary_first_name": ("P2_Line1b_GivenName[0]",),
@@ -880,7 +890,7 @@ def generate_form_pdf(
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
     merged = get_merged_case_intake(session, case_id)
-    if normalize_form_key(form_key) in {"i765", "i131"}:
+    if normalize_form_key(form_key) in {"i765", "i131", "i130a"}:
         i485_projection = build_i485_intake_projection(get_i485_state(session, case_id)["answers"])
         merged = {**merged, **i485_projection}
     for proposal in build_form_answer_proposals_from_case_data(form_key, merged):

@@ -904,6 +904,14 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
             "beneficiary_current_address": "123 Sample Street, Example City, CA 90000",
             "beneficiary_address_since": "2020-01-01",
             "beneficiary_marriage_count": 1,
+            "parent1_last_name": "Garcia",
+            "parent1_first_name": "Rosa",
+            "parent1_date_of_birth": "1972-03-03",
+            "parent1_country_of_birth": "Colombia",
+            "parent2_last_name": "Garcia",
+            "parent2_first_name": "Carlos",
+            "parent2_date_of_birth": "1970-11-20",
+            "parent2_country_of_birth": "Colombia",
         },
     )
     session.commit()
@@ -911,8 +919,8 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
     report = validate_case_filings(session, case.id, form_codes=["form_i130a"])
 
     assert report["summary"]["status"] == "passed"
-    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
-    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
+    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
+    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
     assert report["forms"][0]["metadata"]["mapped_pdf_field_count"] > 0
     assert report["forms"][0]["metadata"]["missing_template_fields"] == []
 

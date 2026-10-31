@@ -9,8 +9,10 @@ from uuid import UUID
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject
 
+from app.content.admission_classes import normalize_class_of_admission
 from app.services.i485_pdf import (
     _add_unit_fields,
+    _normalize_us_state,
     _set_checkbox_values,
     _use_saved_appearances,
     _set_text_values,
@@ -56,7 +58,8 @@ I130_DATE_FIELD_KEYS = {
 }
 
 I130A_DATE_FIELD_KEYS = {
-    "beneficiary_date_of_birth",
+    "parent1_date_of_birth",
+    "parent2_date_of_birth",
     "beneficiary_address_since",
     "beneficiary_current_address_since",
     "beneficiary_current_employment_from",
@@ -107,6 +110,8 @@ I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "petitioner_email": ("Pt6Line5_Email[0]",),
     "petitioner_marriage_count": ("Pt2Line16_NumberofMarriages[0]",),
     "marriage_date": ("Pt2Line18_DateOfMarriage[0]", "Pt4Line19_DateOfMarriage[0]"),
+    # USCIS names this template field without the "2" used by the rest of Part 2.
+    "petitioner_spouse1_last_name": ("PtLine20a_FamilyName[0]",),
     "petitioner_spouse1_first_name": ("Pt2Line20b_GivenName[0]",),
     "petitioner_spouse1_middle_name": ("Pt2Line20c_MiddleName[0]",),
     "petitioner_spouse1_marriage_ended": ("Pt2Line21_DateMarriageEnded[0]",),
@@ -416,11 +421,23 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_last_name": ("Pt1Line3a_FamilyName[0]",),
     "beneficiary_first_name": ("Pt1Line3b_GivenName[0]",),
     "beneficiary_middle_name": ("Pt1Line3c_MiddleName[0]",),
-    "beneficiary_date_of_birth": ("Pt1Line11_DateofBirth[0]",),
-    "beneficiary_city_of_birth": ("Pt1Line12CityTownOfBirth[0]",),
-    "beneficiary_country_of_birth": ("Pt1Line13_CountryofBirth[0]",),
-    "beneficiary_country_of_citizenship": ("Pt1Line14_CountryofBirth[0]",),
-    "beneficiary_country_of_residence": ("Pt1Line15_CountryofResidence[0]",),
+    # Items 10-23 of edition 04/01/24 describe the beneficiary's parents, despite the template's field names.
+    "parent1_last_name": ("Pt1Line10_FamilyName[0]",),
+    "parent1_first_name": ("Pt1Line10_GivenName[0]",),
+    "parent1_middle_name": ("Pt1Line10_MiddleName[0]",),
+    "parent1_date_of_birth": ("Pt1Line11_DateofBirth[0]",),
+    "parent1_city_of_birth": ("Pt1Line12CityTownOfBirth[0]",),
+    "parent1_country_of_birth": ("Pt1Line13_CountryofBirth[0]",),
+    "parent1_city_of_residence": ("Pt1Line14_CountryofBirth[0]",),
+    "parent1_country_of_residence": ("Pt1Line15_CountryofResidence[0]",),
+    "parent2_last_name": ("Pt1Line16_FamilyName[0]",),
+    "parent2_first_name": ("Pt1Line16_GivenName[0]",),
+    "parent2_middle_name": ("Pt1Line16_MiddleName[0]",),
+    "parent2_date_of_birth": ("Pt1Line17_DateofBirth[0]",),
+    "parent2_city_of_birth": ("Pt1Line18_CityTownOfBirth[0]",),
+    "parent2_country_of_birth": ("Pt1Line19_CountryofBirth[0]",),
+    "parent2_city_of_residence": ("Pt1Line20_CityTownVillageofRes[0]",),
+    "parent2_country_of_residence": ("Pt1Line21_CountryofResidence[0]",),
     "beneficiary_current_address_line1": ("Pt1Line4a_StreetNumberName[0]",),
     "beneficiary_current_city": ("Pt1Line4c_CityOrTown[0]",),
     "beneficiary_current_state": ("Pt1Line4d_State[0]",),
@@ -438,9 +455,13 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
 }
 
 I130A_CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
-    "beneficiary_sex": {
+    "parent1_sex": {
         "male": ("Pt1Line12_Male[0]", "/Y"),
         "female": ("Pt1Line12_Female[0]", "/Y"),
+    },
+    "parent2_sex": {
+        "male": ("Pt1Line19_Male[0]", "/Y"),
+        "female": ("Pt1Line19_Female[0]", "/Y"),
     },
 }
 
@@ -535,6 +556,9 @@ def _as_pdf_date(value: Any) -> str:
 def _as_pdf_value(field_key: str, value: Any, date_field_keys: set[str]) -> str:
     if field_key in date_field_keys:
         return _as_pdf_date(value)
+    # State fields on these forms are dropdowns of two-letter codes.
+    if field_key.endswith("_state"):
+        return _normalize_us_state(value)
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
@@ -558,6 +582,11 @@ def _without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
 
 def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
     normalized = _without_zip_postal_aliases(values)
+    # Item 21.a is a dropdown whose USCIS options drop the hyphen, for example B2.
+    if _value_is_answered(normalized.get("beneficiary_class_of_admission")):
+        normalized["beneficiary_class_of_admission"] = normalize_class_of_admission(
+            normalized["beneficiary_class_of_admission"]
+        ).replace("-", "")
     if normalized.get("first_marriage_for_both") is True:
         normalized.setdefault("petitioner_marriage_count", _first_marriage_count())
         normalized.setdefault("beneficiary_marriage_count", _first_marriage_count())
