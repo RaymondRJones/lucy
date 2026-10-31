@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from app.content.fee_schedule import G1450_FORM_FEES, G1450_PAYMENT_NOTE
 from app.models.entities import CaseChecklistItem, CaseRecord
 from app.services.intake import get_merged_case_intake
+from app.services.i485_pdf import _defined_appearance
 
 CARD_TYPE_APPEARANCES = {
     "visa": ("CreditCardTypeChBx[0]", NameObject("/V")),
@@ -182,10 +183,11 @@ def _set_checkbox(writer: PdfWriter, field_name: str, appearance: NameObject) ->
         for annotation_ref in page.get("/Annots", []):
             annotation = annotation_ref.get_object()
             if annotation.get("/T") == field_name:
+                defined = _defined_appearance(annotation, appearance)
                 annotation.update(
                     {
-                        NameObject("/V"): appearance,
-                        NameObject("/AS"): appearance,
+                        NameObject("/V"): defined,
+                        NameObject("/AS"): defined,
                     }
                 )
 

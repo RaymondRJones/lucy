@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 FEE_SCHEDULE_VERIFIED_ON = "2026-10-30"
+# Current editions listed at https://www.uscis.gov/g-1450 and https://www.uscis.gov/g-1650, verified 2026-10-30.
+G1450_FORM_EDITION = "02/06/26"
+G1650_FORM_EDITION = "06/03/25"
 FEE_SCHEDULE_EDITION = "10/26/26"
 FEE_SCHEDULE_SOURCE_URL = "https://www.uscis.gov/sites/default/files/document/forms/g-1055.pdf"
 FILING_FEES_SOURCE_URL = "https://www.uscis.gov/forms/filing-fees"
+FILING_FEES_SOURCE_LAST_REVIEWED = "2026-02-12"
 
 G1450_FORM_FEES = {
     "form_i130": {

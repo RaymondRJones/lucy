@@ -12,6 +12,7 @@ from uuid import UUID
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.errors import PyPdfError
+from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 from sqlmodel import Session, select
 
 from app.content.fee_schedule import G1450_FORM_FEES
@@ -233,6 +234,93 @@ def _append_pdf_pages(writer: PdfWriter, path: Path) -> int:
     for page in staged_writer.pages:
         writer.add_page(page)
     return page_count
+
+
+def _normal_appearance(widget: DictionaryObject) -> Any | None:
+    appearance = widget.get("/AP")
+    normal = appearance.get_object().get("/N") if appearance else None
+    if normal is None:
+        return None
+    normal = normal.get_object()
+    if "/Subtype" in normal:
+        return normal
+    # Checkboxes keep one appearance per state.
+    state = normal.get(widget.get("/AS", "/Off"))
+    return state.get_object() if state is not None else None
+
+
+def _appearance_placement(widget: DictionaryObject, stream: Any) -> tuple[float, float, float, float] | None:
+    # PDF 32000-1 12.5.5: scale the appearance's transformed bounding box onto the widget's rectangle.
+    left, bottom, right, top = (float(value) for value in stream["/BBox"])
+    a, b, c, d, e, f = (float(value) for value in stream.get("/Matrix", (1, 0, 0, 1, 0, 0)))
+    corners = [(left, bottom), (left, top), (right, bottom), (right, top)]
+    xs = [a * x + c * y + e for x, y in corners]
+    ys = [b * x + d * y + f for x, y in corners]
+    rect_x = sorted(float(widget["/Rect"][index]) for index in (0, 2))
+    rect_y = sorted(float(widget["/Rect"][index]) for index in (1, 3))
+    if max(xs) == min(xs) or max(ys) == min(ys):
+        return None
+    scale_x = (rect_x[1] - rect_x[0]) / (max(xs) - min(xs))
+    scale_y = (rect_y[1] - rect_y[0]) / (max(ys) - min(ys))
+    return scale_x, scale_y, rect_x[0] - min(xs) * scale_x, rect_y[0] - min(ys) * scale_y
+
+
+def _content_stream(writer: PdfWriter, data: bytes) -> Any:
+    stream = DecodedStreamObject()
+    stream.set_data(data)
+    return writer._add_object(stream)
+
+
+def _flatten_form_fields(writer: PdfWriter) -> int:
+    """Draw filled fields into the page so answers and barcodes print in every viewer.
+
+    Merged pages lose the AcroForm that some renderers, including pdfium, need before they draw form widgets.
+    Returns the number of filled fields that have no saved appearance and so could not be drawn.
+    """
+    missing_appearances = 0
+    appearance_number = 0
+    for page in writer.pages:
+        annotations = page.get("/Annots")
+        if not annotations:
+            continue
+        kept = ArrayObject()
+        draws: list[bytes] = []
+        resources = page["/Resources"].get_object()
+        xobjects = resources.get("/XObject")
+        xobjects = xobjects.get_object() if xobjects is not None else DictionaryObject()
+        for reference in annotations.get_object():
+            widget = reference.get_object()
+            if widget.get("/Subtype") != "/Widget":
+                kept.append(reference)
+                continue
+            stream = _normal_appearance(widget)
+            if stream is None:
+                # A checkbox's off state has nothing to draw, so only fields with no appearance at all count.
+                missing_appearances += 1 if "/AP" not in widget and widget.get("/V") not in (None, "") else 0
+                continue
+            # Bit 3 is Print and bit 2 is Hidden. A viewer's print output honors these flags.
+            flags = int(widget.get("/F", 0))
+            placement = _appearance_placement(widget, stream) if flags & 4 and not flags & 2 else None
+            if placement is None:
+                continue
+            appearance_number += 1
+            name = f"/LucyField{appearance_number}"
+            xobjects[NameObject(name)] = stream.indirect_reference
+            scale_x, scale_y, move_x, move_y = placement
+            draws.append(f"q {scale_x:.6f} 0 0 {scale_y:.6f} {move_x:.6f} {move_y:.6f} cm {name} Do Q\n".encode())
+        resources[NameObject("/XObject")] = xobjects
+        if draws:
+            contents = page["/Contents"].get_object()
+            existing = list(contents) if isinstance(contents, ArrayObject) else [page.raw_get("/Contents")]
+            # Save and restore state so changes left by the original content cannot shift the drawn fields.
+            page[NameObject("/Contents")] = ArrayObject(
+                [_content_stream(writer, b"q\n"), *existing, _content_stream(writer, b"Q\n" + b"".join(draws))]
+            )
+        if kept:
+            page[NameObject("/Annots")] = kept
+        else:
+            del page["/Annots"]
+    return missing_appearances
 
 
 def _insert_pdf_pages(writer: PdfWriter, path: Path, page_index: int) -> int:
@@ -1284,6 +1372,12 @@ def assemble_packet_pdf(
         )
         warnings.extend(cover_letter.warnings)
 
+    unprintable_fields = _flatten_form_fields(body_writer)
+    if unprintable_fields:
+        warnings.append(
+            f"{unprintable_fields} filled form field(s) in uploaded PDFs have no saved appearance and will not print. "
+            "Re-save those PDFs from a PDF editor and upload them again."
+        )
     output_path = output_dir / f"{case_id}-full-packet.pdf"
     with output_path.open("wb") as handle:
         body_writer.write(handle)

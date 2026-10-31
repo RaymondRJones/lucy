@@ -82,6 +82,7 @@
 
 - `POST /cases/{case_id}/packet-assembly/generate`
   - generate available form review-draft PDFs, merge them with confirmed uploaded PDFs, write `storage/generated/{case_id}-full-packet.pdf`, and save `storage/generated/{case_id}-full-packet-manifest.json`
+  - form fields are flattened into the packet's pages so answers and barcodes print in every PDF viewer, which makes the packet non-editable; generate standalone form PDFs for editing
   - request body:
     - `state_code`: optional U.S. state or territory code used for family-based USCIS lockbox routing
     - `carrier`: `usps` or `private`; private maps to FedEx/UPS/DHL delivery addresses

@@ -46,6 +46,12 @@ def pdf_field_appearance_states(path: Path) -> dict[str, set[str]]:
     return values
 
 
+def _same_state(expected: object, actual: set[str]) -> bool:
+    # Generation writes the spelling each template defines, such as "/APT " for a requested "/ APT ".
+    wanted = str(expected).replace("/", "").strip()
+    return any(state.replace("/", "").strip() == wanted for state in actual)
+
+
 def assert_pdf_field_values(
     path: Path,
     *,
@@ -59,12 +65,14 @@ def assert_pdf_field_values(
     mismatched = {
         field_name: sorted(actual[field_name])
         for field_name, expected_value in expected.items()
-        if field_name in actual and str(expected_value) not in actual[field_name]
+        if field_name in actual
+        and str(expected_value) not in actual[field_name]
+        and not (field_name in checkbox_values and _same_state(expected_value, actual[field_name]))
     }
     mismatched_appearances = {
         field_name: sorted(appearances.get(field_name, set()))
         for field_name, expected_value in checkbox_values.items()
-        if str(expected_value) not in appearances.get(field_name, set())
+        if not _same_state(expected_value, appearances.get(field_name, set()))
     }
 
     assert missing == []

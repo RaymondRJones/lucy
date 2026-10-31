@@ -1622,6 +1622,20 @@ def _set_text_values(writer: PdfWriter, values: dict[str, str]) -> None:
             writer.update_page_form_field_values(page, page_values, auto_regenerate=False)
 
 
+def _defined_appearance(annotation: Any, requested: str) -> NameObject:
+    # USCIS templates spell unit states inconsistently ("/ APT ", "/APT ", "/STE"), even within one form.
+    # A state the widget does not define does not print, so match on the state's letters.
+    appearance = annotation.get("/AP")
+    normal = appearance.get_object().get("/N") if appearance else None
+    if normal is None or requested in normal.get_object():
+        return NameObject(requested)
+    wanted = requested.replace("/", "").strip()
+    for state in normal.get_object():
+        if state.replace("/", "").strip() == wanted:
+            return NameObject(state)
+    return NameObject(requested)
+
+
 def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
     for page in writer.pages:
         for annotation_ref in page.get("/Annots", []) or []:
@@ -1633,7 +1647,7 @@ def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
             selected_name = full_name if full_name in values else str(field_name)
             if selected_name not in values:
                 continue
-            appearance = NameObject(values[selected_name])
+            appearance = _defined_appearance(annotation, values[selected_name])
             annotation.update(
                 {
                     NameObject("/V"): appearance,
