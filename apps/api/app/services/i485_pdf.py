@@ -12,7 +12,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, TextStringObject
 from sqlmodel import Session
 
-from app.content.admission_classes import normalize_class_of_admission
+from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, normalize_class_of_admission
 from app.content.i485_questionnaire import all_i485_questions
 from app.core.config import settings
 from app.services.i485 import (
@@ -700,26 +700,34 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     return str(value).strip()
 
 
+# Part 1, Items 12 and 14 of edition 09/18/26 hold 20 characters.
+I485_STATUS_FIELD_LENGTH = 20
+
+
 def _immigration_status_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return ""
-    normalized = normalize_class_of_admission(raw)
+    # Dropdown answers can carry a description, such as "B-1 visitor for business".
+    normalized = normalize_class_of_admission(raw.split()[0])
     if normalized == "B-2" or raw.strip().lower() in {"visitor", "b2 visitor", "b-2 visitor"}:
         return "B-2 Visitor"
     if normalized == "B-1":
-        return "B-1 Visitor for Business"
+        return "B-1 Business Visitor"
     if normalized in {"F-1", "F-2", "J-1", "J-2", "M-1", "M-2"}:
         labels = {
             "F-1": "F-1 Student",
             "F-2": "F-2 Dependent",
             "J-1": "J-1 Exchange Visitor",
             "J-2": "J-2 Dependent",
-            "M-1": "M-1 Vocational Student",
+            "M-1": "M-1 Student",
             "M-2": "M-2 Dependent",
         }
         return labels[normalized]
-    return raw if " " in raw else normalized
+    if " " not in raw:
+        return normalized
+    is_known_class = any(option["value"] == normalized for option in CLASS_OF_ADMISSION_OPTIONS)
+    return normalized if is_known_class and len(raw) > I485_STATUS_FIELD_LENGTH else raw
 
 
 def _parse_pdf_date(value: Any) -> datetime | None:
@@ -805,6 +813,28 @@ def _unit_kind_and_number(value: Any) -> tuple[str, str]:
     return "apt", raw
 
 
+# USCIS templates name these on-states inconsistently, so a default would leave the box unchecked in print.
+# Read from the blank PDFs in blank-immigration-documents/ on 2026-10-30.
+UNIT_APPEARANCE_BY_FIELD = {
+    **{
+        f"{prefix}[{index}]": appearance
+        for prefix in (
+            "Pt1Line18_PriorAddress_Unit",
+            "P4Line7_Unit",
+            "P4Line8_Unit",
+            "Pt2Line2b_Unit",
+            "Pt2Line41_Unit",
+            "Pt2Line45_Unit",
+            "Pt4Line11_Unit",
+        )
+        for index, appearance in enumerate(("/APT", "/STE", "/FLR"))
+    },
+    "Pt2Line10_Unit[0]": "/APT ",
+    "Pt2Line10_Unit[1]": "/STE",
+    "Pt2Line10_Unit[2]": "/FLR",
+}
+
+
 def _add_unit_fields(
     *,
     text_values: dict[str, str],
@@ -823,11 +853,11 @@ def _add_unit_fields(
         return
     text_values[number_field] = unit_number
     if unit_kind == "apt":
-        checkbox_values[apt_field] = apt_appearance
+        checkbox_values[apt_field] = UNIT_APPEARANCE_BY_FIELD.get(apt_field, apt_appearance)
     elif unit_kind == "ste":
-        checkbox_values[ste_field] = ste_appearance
+        checkbox_values[ste_field] = UNIT_APPEARANCE_BY_FIELD.get(ste_field, ste_appearance)
     elif unit_kind == "flr":
-        checkbox_values[flr_field] = flr_appearance
+        checkbox_values[flr_field] = UNIT_APPEARANCE_BY_FIELD.get(flr_field, flr_appearance)
 
 
 def _add_prior_address_fields(
@@ -2071,7 +2101,7 @@ FIELD_MULTILINE_FLAG = 1 << 12
 
 
 def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list[str]:
-    """Fields over the template's length limit or the box width; a printed form clips overflow without any sign."""
+    """Fields wider than their box; a printed form clips the overflow. `_field_length_warning` covers template limits."""
     overlong: set[str] = set()
     for page in reader.pages:
         for annotation_ref in page.get("/Annots", []) or []:
@@ -2080,20 +2110,62 @@ def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list
             value = text_values.get(field_name) or text_values.get(_annotation_full_name(annotation) or "")
             if not value:
                 continue
-            max_chars = annotation.get("/MaxLen")
-            if max_chars is None:
-                font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
-                if int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG or not font_size or not float(font_size.group(1)):
-                    continue
-                left, _, right, _ = (float(number) for number in annotation["/Rect"])
-                # Template fields use Courier, whose characters are 0.6 em wide.
-                max_chars = int((right - left - 4) / (0.6 * float(font_size.group(1))))
-            if len(value) > int(max_chars):
+            font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
+            if (
+                annotation.get("/MaxLen") is not None
+                or int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG
+                or not font_size
+                or not float(font_size.group(1))
+            ):
+                continue
+            left, _, right, _ = (float(number) for number in annotation["/Rect"])
+            # Template fields use Courier, whose characters are 0.6 em wide.
+            if len(value) > int((right - left - 4) / (0.6 * float(font_size.group(1)))):
                 overlong.add(field_name)
     return sorted(overlong)
 
 
 OVERLONG_WARNING = "Longer than the form's box allows and may print cut off. Check the printed page, and shorten these or use the additional information section: "
+
+
+def _field_length_warning(reader: PdfReader, values: dict[str, str]) -> list[str]:
+    too_long: dict[str, str] = {}
+    for page in reader.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            max_length = annotation.get("/MaxLen")
+            if not field_name or max_length is None:
+                continue
+            full_name = _annotation_full_name(annotation)
+            value = values.get(full_name) if full_name in values else values.get(str(field_name))
+            if value is not None and len(value) > int(max_length):
+                too_long[str(field_name)] = f"{value!r} ({len(value)} characters, the form allows {int(max_length)})"
+    if not too_long:
+        return []
+    return ["These answers may be cut off when printed: " + "; ".join(too_long.values()) + "."]
+
+
+def _unprintable_character_warning(writer: PdfWriter) -> list[str]:
+    # The form fonts cannot draw every character: the field keeps "Łukasz" but prints "?ukasz".
+    unprintable: set[str] = set()
+    for page in writer.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            value = annotation.get("/V")
+            normal_appearance = (annotation.get("/AP") or {}).get("/N")
+            if not isinstance(value, str) or value.isascii() or normal_appearance is None:
+                continue
+            stream = normal_appearance.get_object()
+            if hasattr(stream, "get_data") and stream.get_data().count(b"?") > value.count("?"):
+                unprintable.add(value)
+    if not unprintable:
+        return []
+    return [
+        "These answers contain characters the form cannot print and will show a question mark: "
+        + "; ".join(sorted(unprintable))
+        + ". Enter them as they should appear on the filing, using the Latin spelling on the passport where one is shown."
+    ]
 
 
 def _use_saved_appearances(writer: PdfWriter) -> None:
@@ -2176,9 +2248,11 @@ def generate_i485_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    overlong = overlong_field_names(reader, payload.text_values)
-    if overlong:
-        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
+    overflowing = overlong_field_names(reader, payload.text_values)
+    if overflowing:
+        warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
 
     return GeneratedI485Pdf(
         case_id=case_id,
