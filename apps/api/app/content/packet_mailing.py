@@ -16,6 +16,14 @@ I485_FILING_ADDRESS_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
     "direct-filing-addresses-for-form-i-485-application-to-register-permanent-residence-or-adjust-status"
 )
+# "Last Reviewed/Updated" on each address page, verified 2026-10-30. A change means addresses need rechecking.
+ADDRESS_SOURCES_LAST_REVIEWED = {
+    PACKET_MAILING_SOURCE_URL: PACKET_MAILING_SOURCE_LAST_REVIEWED,
+    I130_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I765_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I131_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I485_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+}
 
 LOCATION_LABELS = {
     "AL": "Alabama",

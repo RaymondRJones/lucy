@@ -66,6 +66,8 @@ npm run build:web
 Notes:
 
 - `npm run lint:api` runs Ruff. CI (`.github/workflows/ci.yml`) runs all of these on every pull request, plus a dependency audit.
+- `npm run check:uscis` compares stored editions, fee and address review dates, and blank templates with live USCIS pages. `.github/workflows/uscis-updates.yml` runs it daily and opens an issue on any difference.
+- `apps/api/tests/test_print_output.py` renders generated forms at print resolution and decodes every PDF417 barcode. Run it after changing PDF generation or replacing a template.
 - Tests write to a temporary directory set up in `apps/api/tests/conftest.py`, never to `storage/`.
 - After changing Python dependencies in `apps/api/pyproject.toml`, regenerate `apps/api/requirements-dev.lock` with `uv pip compile apps/api/pyproject.toml --extra dev --universal --python-version 3.13 --no-header --no-annotate -o apps/api/requirements-dev.lock`.
 - `npm run build:web` is the main confidence check for frontend integration issues.

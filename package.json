@@ -15,6 +15,7 @@
     "generate:g1450": "./.venv313/bin/python -m app.cli.generate_g1450",
     "generate:i485": "./.venv313/bin/python -m app.cli.generate_i485",
     "seed:i485-sample": "./.venv313/bin/python -m app.cli.seed_i485_sample",
+    "check:uscis": "./.venv313/bin/python -m app.cli.check_uscis_updates",
     "test:api": "./.venv313/bin/pytest apps/api/tests",
     "lint:api": "./.venv313/bin/ruff check apps/api",
     "test:postman": "npx --yes newman@6 run test-postman-collection.json --working-dir .",

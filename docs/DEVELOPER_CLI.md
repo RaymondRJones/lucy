@@ -287,3 +287,13 @@ These rows are intentionally centralized so filing amounts are not duplicated ar
 - `I-765`: `$260.00`, paper filing with a paid Form I-485 filed on or after April 1, 2024 and pending.
 - `I-131`: `$630.00`, paper-filed advance parole document for individuals inside the United States with pending Form I-485.
 - `I-130A`, `I-864`, `I-693`, and `G-1145`: tracked as `$0.00`, so packet mode reports them as skipped rather than generating payment forms.
+
+## USCIS update check
+
+```bash
+npm run check:uscis
+```
+
+Compares stored form editions, fee and address page review dates, and blank templates with live USCIS pages. Exit code `0` means no differences, `1` means something changed, and `2` means a source could not be read. A daily workflow, `.github/workflows/uscis-updates.yml`, runs the same command and opens an issue on any change.
+
+A difference means a person should review the page. Update the stored value only after checking the content it covers.
