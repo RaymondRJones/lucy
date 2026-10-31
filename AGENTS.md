@@ -57,6 +57,7 @@ Run the smallest relevant set for the files you changed. For broad or risky chan
 
 ```bash
 npm run test:api
+npm run lint:api
 npm run lint:web
 npm run typecheck:web
 npm run build:web
@@ -64,7 +65,9 @@ npm run build:web
 
 Notes:
 
-- There is currently no dedicated backend lint command wired at the repo root.
+- `npm run lint:api` runs Ruff. CI (`.github/workflows/ci.yml`) runs all of these on every pull request, plus a dependency audit.
+- Tests write to a temporary directory set up in `apps/api/tests/conftest.py`, never to `storage/`.
+- After changing Python dependencies in `apps/api/pyproject.toml`, regenerate `apps/api/requirements-dev.lock` with `uv pip compile apps/api/pyproject.toml --extra dev --universal --python-version 3.13 --no-header --no-annotate -o apps/api/requirements-dev.lock`.
 - `npm run build:web` is the main confidence check for frontend integration issues.
 - If you change ingestion, checklist, QA, or USCIS content behavior, run `npm run test:api`.
 
