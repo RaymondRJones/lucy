@@ -179,10 +179,23 @@ def _copy_current_employment_entry(values: dict[str, Any]) -> None:
     history = values.get("beneficiary_employment_history")
     if not isinstance(history, list):
         return
-    # The I-485 history marks the current activity with a blank end date.
-    current = next((entry for entry in history if isinstance(entry, dict) and not value_is_answered(entry.get("to"))), None)
+    # The I-485 history marks the current activity with a blank end date, but that date is optional on past jobs too.
+    # So the entry must name the current employer, or be the only open entry when no current employer was given.
+    open_entries = [
+        entry
+        for entry in history
+        if isinstance(entry, dict) and value_is_answered(entry.get("name")) and not value_is_answered(entry.get("to"))
+    ]
+    current_name = values.get("beneficiary_current_employer_or_school")
+    if value_is_answered(current_name):
+        wanted = str(current_name).strip().casefold()
+        current = next((entry for entry in open_entries if str(entry["name"]).strip().casefold() == wanted), None)
+    else:
+        current = open_entries[0] if len(open_entries) == 1 else None
     if current is None:
         return
+    if not value_is_answered(current_name):
+        values["beneficiary_current_employer_or_school"] = current["name"]
     for target, source_key in {
         "beneficiary_current_employer_address_line1": "line1",
         "beneficiary_current_employer_address_line2": "line2",

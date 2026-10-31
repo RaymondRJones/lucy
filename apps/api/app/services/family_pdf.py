@@ -9,17 +9,19 @@ from uuid import UUID
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject
 
-from app.content.admission_classes import normalize_class_of_admission
+from app.content.admission_classes import i130_class_of_admission_code
 from app.core.config import settings
 from app.services.i485_pdf import (
     OVERLONG_WARNING,
     _add_unit_fields,
     _employment_continuation_line,
+    _entry_has_content,
     _field_length_warning,
     _normalize_us_state,
     _set_checkbox_values,
     _unprintable_character_warning,
     _use_saved_appearances,
+    _without_notes,
     _set_text_values,
     _template_field_names,
     fill_continuation_slots,
@@ -609,13 +611,24 @@ def _without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+I130_CLASS_NOT_OFFERED_WARNING = (
+    "Part 4, Item 21.a was left blank because the class of admission answer does not match an option on the form. "
+    "Choose the matching option by hand before filing."
+)
+
+
+def i130_class_of_admission_not_offered(values: dict[str, Any]) -> bool:
+    answer = values.get("beneficiary_class_of_admission")
+    return _value_is_answered(answer) and not i130_class_of_admission_code(answer)
+
+
 def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
     normalized = _without_zip_postal_aliases(values)
-    # Item 21.a is a dropdown whose USCIS options drop the hyphen, for example B2.
+    # Item 21.a is a dropdown that accepts only its USCIS options, for example B2.
     if _value_is_answered(normalized.get("beneficiary_class_of_admission")):
-        normalized["beneficiary_class_of_admission"] = normalize_class_of_admission(
+        normalized["beneficiary_class_of_admission"] = i130_class_of_admission_code(
             normalized["beneficiary_class_of_admission"]
-        ).replace("-", "")
+        )
     if normalized.get("first_marriage_for_both") is True:
         normalized.setdefault("petitioner_marriage_count", _first_marriage_count())
         normalized.setdefault("beneficiary_marriage_count", _first_marriage_count())
@@ -830,6 +843,10 @@ I130A_PART7_WRAP_WIDTH = 38
 I130A_PART7_MAX_LINES = 14
 
 
+def _same_employer(entry: dict[str, Any], name: str) -> bool:
+    return str(entry.get("name") or "").strip().casefold() == name.strip().casefold()
+
+
 def _add_i130a_employment_history(
     *,
     values: dict[str, Any],
@@ -839,8 +856,20 @@ def _add_i130a_employment_history(
 ) -> None:
     raw = values.get("beneficiary_employment_history")
     if isinstance(raw, list):
-        entries = [entry for entry in raw if isinstance(entry, dict) and _value_is_answered(entry)]
-        continuation = "\n".join(_employment_continuation_line(entry) for entry in entries[len(I130A_EMPLOYER_ROWS) :])
+        answered = [entry for entry in raw if isinstance(entry, dict) and _value_is_answered(entry)]
+        # Free text saved before the list was structured has no row, so it continues in Part 7.
+        note_only = [entry for entry in answered if not _entry_has_content(_without_notes(entry))]
+        entries = [entry for entry in answered if _entry_has_content(_without_notes(entry))]
+        # The questions about the current employer are more specific, so they take the first row and
+        # the history's entry for that employer only fills its gaps. Every other job keeps a place.
+        current_name = text_values.get(I130A_EMPLOYER_ROWS[0]["name"], "")
+        if current_name:
+            matching = [entry for entry in entries if _same_employer(entry, current_name)]
+            first = matching[0] if matching else {}
+            entries = [first, *[entry for entry in entries if entry is not first]]
+        continuation = "\n".join(
+            _employment_continuation_line(entry) for entry in [*entries[len(I130A_EMPLOYER_ROWS) :], *note_only]
+        )
     else:
         entries = []
         continuation = str(raw or "").strip()
@@ -861,9 +890,6 @@ def _add_i130a_employment_history(
         return
     used_fields = list(continuation_fields)
     for entry, row, unit_row in zip(entries, I130A_EMPLOYER_ROWS, I130A_EMPLOYER_UNIT_ROWS, strict=False):
-        # The questions about the current employer are more specific, so they win over the history's first row.
-        if row["name"] in text_values and str(entry.get("name") or "").strip() != text_values[row["name"]]:
-            continue
         for source_key, field_name in row.items():
             value = entry.get(source_key)
             if not _value_is_answered(value) or field_name in text_values:
@@ -875,6 +901,9 @@ def _add_i130a_employment_history(
             else:
                 text_values[field_name] = str(value).strip()
             used_fields.append(field_name)
+        # An answered current-employer unit already chose a box and number. A second call would check another box.
+        if unit_row[3] in text_values:
+            continue
         before = set(text_values) | set(checkbox_values)
         _add_unit_fields(
             text_values=text_values,
@@ -884,9 +913,6 @@ def _add_i130a_employment_history(
             ste_field=unit_row[1],
             flr_field=unit_row[2],
             number_field=unit_row[3],
-            apt_appearance="/APT",
-            ste_appearance="/STE",
-            flr_appearance="/FLR",
         )
         used_fields.extend(sorted((set(text_values) | set(checkbox_values)) - before))
     mapped_fields.append({"field_key": "beneficiary_employment_history", "pdf_fields": sorted(used_fields)})
@@ -1051,6 +1077,7 @@ def _generate_family_pdf_from_payload(
     template_path: Path,
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
+    extra_warnings: tuple[str, ...] = (),
 ) -> GeneratedFamilyPdf:
     if not template_path.exists():
         raise ValueError(f"{payload.form_code} PDF template not found: {template_path}")
@@ -1077,6 +1104,7 @@ def _generate_family_pdf_from_payload(
     overflowing = overlong_field_names(reader, payload.text_values)
     if overflowing:
         warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
+    warnings.extend(extra_warnings)
 
     return GeneratedFamilyPdf(
         case_id=case_id,
@@ -1113,6 +1141,7 @@ def generate_i130_pdf(
         template_path=final_template_path,
         output_path=output_path,
         output_dir=output_dir,
+        extra_warnings=(I130_CLASS_NOT_OFFERED_WARNING,) if i130_class_of_admission_not_offered(values) else (),
     )
 
 

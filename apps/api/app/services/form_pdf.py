@@ -17,12 +17,10 @@ from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
     build_form_fill_preview,
-    FORMS_USING_I485_ANSWERS,
+    get_form_case_intake,
     get_form_state,
     normalize_form_key,
 )
-from app.services.i485 import build_i485_intake_projection, get_i485_state
-from app.services.intake import get_merged_case_intake
 from app.services.i485_pdf import (
     OVERLONG_WARNING,
     _add_unit_fields,
@@ -999,11 +997,7 @@ def generate_form_pdf(
     preview = build_form_fill_preview(session, case_id, form_key)
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
-    merged = get_merged_case_intake(session, case_id)
-    if normalize_form_key(form_key) in FORMS_USING_I485_ANSWERS:
-        i485_projection = build_i485_intake_projection(get_i485_state(session, case_id)["answers"])
-        merged = {**merged, **i485_projection}
-    for proposal in build_form_answer_proposals_from_case_data(form_key, merged):
+    for proposal in build_form_answer_proposals_from_case_data(form_key, get_form_case_intake(session, case_id, form_key)):
         if not _value_is_answered(answers.get(proposal["question_id"])):
             answers[proposal["question_id"]] = proposal["value"]
     return generate_form_pdf_from_answers(

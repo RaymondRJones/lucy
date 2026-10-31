@@ -23,6 +23,7 @@ from app.services.i485_pdf import (
     RETIRED_QUESTION_IDS,
     SEE_PART14,
     TEXT_FIELD_MAP,
+    _immigration_status_label,
     _template_button_choices,
     _template_field_names,
     build_i485_pdf_field_payload,
@@ -363,3 +364,85 @@ def test_other_names_are_shared_with_the_other_forms() -> None:
     projection = build_i485_intake_projection({"beneficiary_other_names": [{"family_name": "Rivera", "given_name": "Ana"}]})
 
     assert projection["beneficiary_other_names"] == [{"family_name": "Rivera", "given_name": "Ana"}]
+
+
+def test_a_note_on_a_placed_entry_does_not_write_a_phantom_next_row() -> None:
+    payload = build_i485_pdf_field_payload(
+        {
+            "beneficiary_other_names": [{"family_name": "Rivera", "given_name": "Ana", "notes": "Maiden name"}],
+            "beneficiary_other_dates_of_birth": [{"date_of_birth": "1990-01-01", "notes": "Typo on visa"}],
+        }
+    )
+
+    assert payload.text_values["Pt1Line2_FamilyName[0]"] == "Rivera"
+    assert "Pt1Line2a_FamilyName[0]" not in payload.text_values
+    assert "Pt1Line3B_OtherDOB[0]" not in payload.text_values
+    part14 = _part14_text(payload.text_values)
+    assert "Family name (last name): Rivera; Given name (first name): Ana; Note: Maiden name" in " ".join(part14.split())
+    assert "Typo on visa" in part14
+
+
+def test_an_entry_moved_to_part14_still_gets_the_pointer_in_its_row() -> None:
+    payload = build_i485_pdf_field_payload({"beneficiary_other_names": ["Free text name from an older save"]})
+
+    assert payload.text_values["Pt1Line2_FamilyName[0]"] == SEE_PART14
+    assert "Free text name from an older save" in " ".join(_part14_text(payload.text_values).split())
+
+
+def test_a_note_that_does_not_fit_keeps_the_row_and_reports_the_question() -> None:
+    payload = build_i485_pdf_field_payload(
+        {"beneficiary_other_names": [{"family_name": "Rivera", "given_name": "Ana", "notes": "Long note. " * 2000}]}
+    )
+
+    assert payload.text_values["Pt1Line2_FamilyName[0]"] == "Rivera"
+    assert payload.text_values["Pt1Line2_GivenName[0]"] == "Ana"
+    assert "beneficiary_other_names" in {entry["question_id"] for entry in payload.unmapped_answered_questions}
+
+
+@pytest.mark.parametrize(
+    "question_id",
+    [
+        question["id"]
+        for question in all_i485_questions()
+        if question["entry_fields"]
+        and question["answer_type"] in {"address_list", "employment_history_list", "benefit_history_list", "entry_list"}
+    ],
+)
+def test_every_list_question_prints_a_note_or_reports_it(question_id: str) -> None:
+    # The workspace tells the user a saved free-text note prints in Part 14, so that must hold for each list it shows.
+    payload = build_i485_pdf_field_payload({question_id: [{"notes": "Legacy free text answer"}]})
+
+    assert "Legacy free text answer" in " ".join(_part14_text(payload.text_values).split())
+    assert question_id in {entry["question_id"] for entry in payload.mapped_questions}
+
+
+def test_a_note_does_not_take_the_row_from_a_real_employer() -> None:
+    payload = build_i485_pdf_field_payload(
+        {
+            "beneficiary_employment_history": [
+                {"notes": "Legacy job text"},
+                {"name": "Acme", "occupation": "Analyst", "notes": "Second job"},
+            ]
+        }
+    )
+
+    assert payload.text_values["Pt4Line7_EmployerName[2]"] == "Acme"
+    part14 = " ".join(_part14_text(payload.text_values).split())
+    assert "Legacy job text" in part14
+    assert "Acme | Analyst | Second job" in part14
+
+
+@pytest.mark.parametrize(
+    ("answer", "printed"),
+    [
+        ("B 2", "B-2 Visitor"),
+        ("F 1", "F-1 Student"),
+        ("J 1", "J-1 Exchange Visitor"),
+        ("F-1 OPT", "F-1 OPT"),
+        ("B-1 visitor for business", "B-1 Business Visitor"),
+        ("F1", "F-1 Student"),
+        ("F-1 student", "F-1 Student"),
+    ],
+)
+def test_immigration_status_label_keeps_what_was_entered(answer: str, printed: str) -> None:
+    assert _immigration_status_label(answer) == printed

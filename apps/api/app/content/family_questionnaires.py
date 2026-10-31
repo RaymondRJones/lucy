@@ -81,6 +81,7 @@ def q(
     risk_when: Any = None,
     risk_code: str | None = None,
     help_text: str | None = None,
+    entry_fields: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": question_id,
@@ -94,7 +95,20 @@ def q(
         "risk_when": risk_when,
         "risk_code": risk_code,
         "help_text": help_text,
+        "entry_fields": entry_fields or [],
     }
+
+
+FOREIGN_ADDRESS_FIELDS: list[dict[str, Any]] = [
+    {"key": "line1", "label": "Street address", "type": "text"},
+    {"key": "line2", "label": "Apartment, suite, or floor", "type": "text"},
+    {"key": "city", "label": "City or town", "type": "text"},
+    {"key": "province", "label": "Province", "type": "text"},
+    {"key": "postal_code", "label": "Postal code", "type": "text"},
+    {"key": "country", "label": "Country", "type": "text"},
+    {"key": "from", "label": "Date from", "type": "date"},
+    {"key": "to", "label": "Date to", "type": "date"},
+]
 
 
 I130_QUESTIONNAIRE: list[dict[str, Any]] = [
@@ -398,7 +412,7 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_current_country", "Current country", "country", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_current_country"),
             q("beneficiary_address_since", "Date current address began", "date", pdf_ref="Part 1, Item 5", db_path="intake.beneficiary_address_since"),
             q("beneficiary_prior_address_history", "Prior addresses for the last five years", "address_list", required=False, pdf_ref="Part 1, Items 6-7", db_path="intake.beneficiary_prior_address_history"),
-            q("beneficiary_recent_foreign_address", "Last address outside the United States of more than one year", "address", required=False, pdf_ref="Part 1, Items 8-9", db_path="intake.beneficiary_recent_foreign_address"),
+            q("beneficiary_recent_foreign_address", "Last address outside the United States of more than one year", "address", required=False, pdf_ref="Part 1, Items 8-9", db_path="intake.beneficiary_recent_foreign_address", entry_fields=FOREIGN_ADDRESS_FIELDS),
         ],
     },
     {

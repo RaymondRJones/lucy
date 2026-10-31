@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { CaseSelector } from "@/components/case-selector";
+import { StructuredAddressControl } from "@/components/i485-ingestion-workspace";
 import {
   apiUrl,
   generateFormPdf,
@@ -425,6 +426,10 @@ function QuestionControl({
         className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
       />
     );
+  }
+
+  if (question.answer_type === "address" && question.entry_fields?.length) {
+    return <StructuredAddressControl question={question} value={value} onChange={onChange} />;
   }
 
   if (["textarea", "address", "address_list"].includes(question.answer_type)) {

@@ -340,7 +340,7 @@ def test_i485_pdf_payload_maps_known_questionnaire_answers():
     assert payload.text_values["Part6Line8_StreetName[0]"] == "222 Spouse Street"
     assert payload.text_values["P6Line8_State[0]"] == "CA"
     assert payload.text_values["P6Line8_Number[0]"] == "9"
-    assert payload.checkbox_values["P6Line8_Unit[0]"] == "/APT"
+    assert payload.checkbox_values["P6Line8_Unit[0]"] == "/ APT "
     assert payload.checkbox_values["Pt7Line5_Eyecolor[2]"] == "/BN"
     assert payload.checkbox_values["Pt7Line6_Haircolor[1]"] == "/BL"
     assert any(entry["question_id"] == "ever_committed_crime" for entry in payload.unmapped_answered_questions)

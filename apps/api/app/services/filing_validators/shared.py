@@ -41,8 +41,13 @@ from app.content.i864_poverty_guidelines import (
 from app.content.supplemental_forms import get_supplemental_form_config
 from app.content.uscis_requirements import USCIS_REQUIREMENTS, VERIFIED_ON
 from app.models.entities import UploadedDocument
-from app.services.family_pdf import build_i130_pdf_field_payload, build_i130a_pdf_field_payload
-from app.services.form_ingestion import build_form_fill_preview, get_form_state
+from app.services.family_pdf import (
+    I130_CLASS_NOT_OFFERED_WARNING,
+    build_i130_pdf_field_payload,
+    build_i130a_pdf_field_payload,
+    i130_class_of_admission_not_offered,
+)
+from app.services.form_ingestion import build_form_fill_preview, get_form_case_intake, get_form_state
 from app.services.form_pdf import build_form_pdf_field_payload
 from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
 from app.services.i485_pdf import build_i485_pdf_field_payload
@@ -264,6 +269,14 @@ def _template_metadata(template_path: Path) -> dict[str, Any]:
         "sha256": hashlib.sha256(content).hexdigest(),
         "error": None,
     }
+
+
+def _intake_with_form_gaps_filled(session: Session, case_id: UUID, form_key: str) -> dict[str, Any]:
+    # Import and generation can find facts only in saved I-485 answers, so those must not read as missing.
+    # Facts already in intake stay as they are, so the cross-form checks can still compare them with the I-485.
+    merged = get_merged_case_intake(session, case_id)
+    form_intake = get_form_case_intake(session, case_id, form_key)
+    return {**merged, **{key: value for key, value in form_intake.items() if not _value_is_answered(merged.get(key))}}
 
 
 def _issue(

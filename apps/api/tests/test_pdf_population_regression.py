@@ -897,7 +897,9 @@ def test_every_mapped_unit_box_is_labeled_for_its_unit_type(form_key: str):
             widget = widgets[field_name]
             if tooltip_word not in widget.tooltip.lower():
                 problems[field_name] = f"expected {tooltip_word}: {widget.tooltip[-50:]}"
-            if checkbox_values.get(field_name) not in widget.on_states:
+            # Generation resolves the requested state to the template's spelling by its letters.
+            requested = str(checkbox_values.get(field_name)).replace("/", "").strip()
+            if requested not in {state.replace("/", "").strip() for state in widget.on_states}:
                 problems[field_name] = (checkbox_values.get(field_name), sorted(widget.on_states))
 
     assert problems == {}

@@ -330,7 +330,7 @@ function RepeatableHistoryControl({
   );
 }
 
-function StructuredAddressControl({
+export function StructuredAddressControl({
   question,
   value,
   onChange,

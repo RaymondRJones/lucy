@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from pypdf import PdfReader
 import pytest
 
+from app.content.admission_classes import I130_CLASS_OF_ADMISSION_CODES
 from app.content.family_questionnaires import all_i130_questions, all_i130a_questions
 from app.content.supplemental_forms import all_supplemental_form_questions
-from app.services.family_pdf import build_i130a_pdf_field_payload
+from app.services.case_facts import enrich_case_fact_aliases
+from app.services.family_pdf import (
+    I130_CLASS_NOT_OFFERED_WARNING,
+    I130A_FOREIGN_ADDRESS_FIELD_MAP,
+    build_i130_pdf_field_payload,
+    build_i130a_pdf_field_payload,
+    generate_i130_pdf,
+)
 from app.services.form_ingestion import build_form_answer_proposals_from_case_data
 from app.services.form_pdf import NON_PDF_CONTROL_QUESTIONS, OTHER_NAME_MAPPINGS, build_form_pdf_field_payload
 from app.services.i485_pdf import _template_field_names
@@ -77,10 +87,10 @@ def test_i130a_structured_employment_fills_both_employers_then_part7() -> None:
     assert payload.text_values["Pt2Line1_EmployerOrCompName[0]"] == "Acme"
     assert payload.text_values["Pt2Line2d_State[0]"] == "TX"
     assert payload.text_values["Pt2Line2b_AptSteFlrNumber[0]"] == "2"
-    assert payload.checkbox_values["Pt2Line2b_Unit[0]"] == "/APT"
+    assert payload.checkbox_values["Pt2Line2b_Unit[0]"] == "/ APT "
     assert payload.text_values["Pt2Line5_EmployerOrCompName[0]"] == "Beta"
     assert payload.text_values["Pt2Line8b_DateTo[0]"] == "12/31/2021"
-    assert payload.checkbox_values["Pt2Line6_Unit[1]"] == "/STE"
+    assert payload.checkbox_values["Pt2Line6_Unit[1]"] == "/ STE "
     assert "Gamma" in payload.text_values["Pt7Line3d_AdditionalInfo[0]"]
     assert payload.missing_template_fields == []
 
@@ -147,3 +157,123 @@ def test_answers_reach_the_form_or_are_reported(form_key: str) -> None:
             assert not payload.missing_template_fields, question_id
 
     assert silent == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "code"),
+    [
+        ("B-2", "B2"),
+        ("B-1 visitor for business", "B1"),
+        ("parolee", "PAR"),
+        ("H-1B", "H1B"),
+        ("DT", "DT"),
+    ],
+)
+def test_i130_class_of_admission_prints_an_option_of_the_dropdown(answer: str, code: str) -> None:
+    payload = build_i130_pdf_field_payload({"beneficiary_class_of_admission": answer}, _available("i-130"))
+
+    assert payload.text_values["Pt4Line21a_ClassOfAdmission[0]"] == code
+
+
+@pytest.mark.parametrize("answer", ["TN", "L-2S", "E-1S", "E-2S", "E-3S", "Visa Waiver", "in parole"])
+def test_i130_class_of_admission_stays_blank_and_warns_when_no_option_matches(answer: str, tmp_path) -> None:
+    values = {"beneficiary_class_of_admission": answer}
+
+    assert "Pt4Line21a_ClassOfAdmission[0]" not in build_i130_pdf_field_payload(values, _available("i-130")).text_values
+    generated = generate_i130_pdf(case_id=uuid4(), values=values, output_dir=tmp_path)
+    assert I130_CLASS_NOT_OFFERED_WARNING in generated.warnings
+
+
+def test_i130_class_of_admission_codes_match_the_blank_form() -> None:
+    field = PdfReader("blank-immigration-documents/i-130.pdf").get_fields()["form1[0].#subform[6].Pt4Line21a_ClassOfAdmission[0]"]
+    options = {option[0] if isinstance(option, list) else option for option in field["/Opt"]}
+
+    assert options - {""} == I130_CLASS_OF_ADMISSION_CODES
+
+
+def test_i130a_prints_every_job_when_the_current_employer_is_not_first_in_the_history() -> None:
+    payload = build_i130a_pdf_field_payload(
+        {
+            "beneficiary_current_employer_or_school": "New Co",
+            "beneficiary_employment_history": [
+                {"name": "Old Co", "line1": "1 Old St", "to": "2021-01-01"},
+                {"name": "New Co", "line1": "9 New Ave", "from": "2021-01-02"},
+            ],
+        },
+        _available("i-130a"),
+    )
+
+    assert payload.text_values["Pt2Line1_EmployerOrCompName[0]"] == "New Co"
+    assert payload.text_values["Pt2Line2a_StreetNumberName[0]"] == "9 New Ave"
+    assert payload.text_values["Pt2Line5_EmployerOrCompName[0]"] == "Old Co"
+    assert payload.text_values["Pt2Line6_StreetNumberName[0]"] == "1 Old St"
+
+
+def test_i130a_keeps_a_past_job_address_off_the_current_employer() -> None:
+    values = enrich_case_fact_aliases(
+        {
+            "beneficiary_current_employer_or_school": "Laney College",
+            "beneficiary_employment_history": [{"name": "Old Co", "line1": "1 Old St"}],
+        }
+    )
+
+    assert "beneficiary_current_employer_address_line1" not in values
+
+
+def test_only_open_history_entry_supplies_a_missing_current_employer() -> None:
+    values = enrich_case_fact_aliases(
+        {
+            "beneficiary_employment_history": [
+                {"name": "Old Co", "line1": "1 Old St", "to": "2021-01-01"},
+                {"name": "New Co", "line1": "9 New Ave", "from": "2021-01-02"},
+            ],
+        }
+    )
+    payload = build_i130a_pdf_field_payload(values, _available("i-130a"))
+
+    assert payload.text_values["Pt2Line1_EmployerOrCompName[0]"] == "New Co"
+    assert payload.text_values["Pt2Line2a_StreetNumberName[0]"] == "9 New Ave"
+    assert payload.text_values["Pt2Line4a_DateFrom[0]"] == "01/02/2021"
+    assert payload.text_values["Pt2Line5_EmployerOrCompName[0]"] == "Old Co"
+
+
+def test_two_open_history_entries_do_not_guess_the_current_employer() -> None:
+    values = enrich_case_fact_aliases(
+        {"beneficiary_employment_history": [{"name": "A Co", "line1": "1 A St"}, {"name": "B Co", "line1": "2 B St"}]}
+    )
+
+    assert "beneficiary_current_employer_or_school" not in values
+    assert "beneficiary_current_employer_address_line1" not in values
+
+
+def test_i130a_checks_one_unit_box_when_the_answer_and_history_differ() -> None:
+    payload = build_i130a_pdf_field_payload(
+        {
+            "beneficiary_current_employer_or_school": "Acme",
+            "beneficiary_current_employer_address_line2": "Apt 4",
+            "beneficiary_employment_history": [{"name": "Acme", "line1": "1 A St", "line2": "Ste 200"}],
+        },
+        _available("i-130a"),
+    )
+
+    assert payload.text_values["Pt2Line2b_AptSteFlrNumber[0]"] == "4"
+    assert "Pt2Line2b_Unit[0]" in payload.checkbox_values
+    assert "Pt2Line2b_Unit[1]" not in payload.checkbox_values
+
+
+def test_i130a_note_only_employment_continues_in_part7() -> None:
+    payload = build_i130a_pdf_field_payload(
+        {"beneficiary_employment_history": [{"notes": "Legacy job text"}, {"name": "Acme"}]}, _available("i-130a")
+    )
+
+    assert payload.text_values["Pt2Line1_EmployerOrCompName[0]"] == "Acme"
+    assert "Legacy job text" in payload.text_values["Pt7Line3d_AdditionalInfo[0]"]
+
+
+def test_i130a_foreign_address_question_offers_structured_fields_the_pdf_reads() -> None:
+    question = next(item for item in all_i130a_questions() if item["id"] == "beneficiary_recent_foreign_address")
+    keys = {field["key"] for field in question["entry_fields"]}
+
+    assert question["answer_type"] == "address"
+    assert set(I130A_FOREIGN_ADDRESS_FIELD_MAP) <= keys
+    assert "line2" in keys
