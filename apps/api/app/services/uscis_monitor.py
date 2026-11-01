@@ -1,3 +1,5 @@
+"""Checks live USCIS pages for form, fee, and address changes."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -48,6 +50,7 @@ class MonitorReport:
 
 
 def fetch_url(url: str) -> bytes:
+    """Returns the bytes at a URL."""
     for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
             with urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=FETCH_TIMEOUT_SECONDS) as response:
@@ -65,12 +68,14 @@ def _page_text(content: bytes) -> str:
 
 
 def parse_edition_date(content: bytes) -> str | None:
+    """Returns the edition date stated on a USCIS page, if any."""
     # USCIS's labelled "Edition Date" section. Alerts about old editions read "edition date:" and do not match.
     match = re.search(r"Edition Date\s+(\d{2}/\d{2}/\d{2})", _page_text(content))
     return match.group(1) if match else None
 
 
 def parse_last_reviewed(content: bytes) -> str | None:
+    """Returns the last-reviewed date on a USCIS page, if any."""
     match = re.search(r"Last Reviewed/Updated:\s*(\d{2}/\d{2}/\d{4})", _page_text(content))
     return datetime.strptime(match.group(1), "%m/%d/%Y").strftime("%Y-%m-%d") if match else None
 
@@ -124,6 +129,7 @@ def _check_template(report: MonitorReport, fetch: Fetch, template: Path) -> None
 
 
 def check_uscis_updates(fetch: Fetch = fetch_url, templates_dir: Path = BLANK_FORMS_DIR) -> MonitorReport:
+    """Returns the differences between stored data and live USCIS pages."""
     report = MonitorReport(changes=[], unreadable=[], checked=0)
     for url, (label, edition) in _expected_editions().items():
         _check_page(report, fetch, parse_edition_date, "edition", label, url, edition)
@@ -152,6 +158,7 @@ KIND_GUIDANCE = {
 
 
 def render_report(report: MonitorReport) -> str:
+    """Returns the differences as a readable report."""
     lines = [f"Checked {report.checked} USCIS sources.", ""]
     if report.changes:
         lines.append("## Changes")

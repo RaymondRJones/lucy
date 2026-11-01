@@ -7,13 +7,12 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.content.i485_sample import build_sample_i485_answers
 from app.content.i485_questionnaire import I485_PART_GUIDANCE, I485_QUESTIONNAIRE, I485_VERIFIED_ON, all_i485_questions
-
+from app.content.i485_sample import build_sample_i485_answers
 from app.models.entities import CaseRecord, IntakeResponse, UploadedDocument
 from app.services.i485 import (
-    build_i485_form_fill_preview,
     build_i485_answer_proposals_from_case_data,
+    build_i485_form_fill_preview,
     build_i485_intake_projection,
     evaluate_i485_answers,
     import_i485_answers_from_case_data,

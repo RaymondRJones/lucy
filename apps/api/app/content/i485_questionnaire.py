@@ -1,9 +1,10 @@
+"""Question definitions and sources for Form I-485."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, I94_INFO_SOURCE
-
 
 I485_QUESTIONNAIRE_VERSION = "i485-09-18-26-marriage-v2"
 I485_VERIFIED_ON = "2026-10-30"

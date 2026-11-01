@@ -1,3 +1,5 @@
+"""Compares stored form editions, fees, and templates with live USCIS pages."""
+
 from __future__ import annotations
 
 import argparse

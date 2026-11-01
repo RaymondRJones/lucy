@@ -1,12 +1,14 @@
+"""Scans evidence documents and imports supported form data."""
+
 from __future__ import annotations
 
-import hashlib
-import logging
-import re
-import shutil
 from dataclasses import dataclass
 from datetime import date
+import hashlib
+import logging
 from pathlib import Path
+import re
+import shutil
 from typing import Any
 from uuid import UUID
 
@@ -21,7 +23,6 @@ from app.services.i485 import import_i485_answers_from_upload
 from app.services.intake import apply_case_projection, get_merged_case_intake, normalize_country
 from app.services.qa import run_qa
 from app.services.upload_links import infer_satisfied_checklist_codes
-
 
 logger = logging.getLogger(__name__)
 
@@ -518,6 +519,7 @@ def _extract_document_fields(path: Path, text: str, checklist_item_code: str | N
 
 
 def scan_document(path: Path) -> InferredDocument:
+    """Returns the type and extracted facts of one evidence file."""
     text = _pdf_text(path) if path.suffix.lower() == ".pdf" else ""
     checklist_item_code, document_type, has_translation = _infer_mapping(path, text)
     document_language = _infer_language(path, text)
@@ -708,6 +710,7 @@ def _link_translation_pairs(documents: list[InferredDocument]) -> None:
 
 
 def upsert_ingested_intake(session: Session, case_id: UUID, payload: dict[str, Any]) -> None:
+    """Saves facts extracted from evidence as an intake step."""
     existing = session.exec(
         select(IntakeResponse).where(
             IntakeResponse.case_id == case_id,
@@ -721,6 +724,7 @@ def upsert_ingested_intake(session: Session, case_id: UUID, payload: dict[str, A
 
 
 def create_or_get_case(session: Session, case_id: UUID | None, case_name: str | None) -> CaseRecord:
+    """Returns the case with this ID, or creates one with this name when no ID is given."""
     if case_id:
         existing = session.get(CaseRecord, case_id)
         if not existing:
@@ -740,6 +744,7 @@ def ingest_evidence_directory(
     case_id: UUID | None = None,
     case_name: str | None = None,
 ) -> dict[str, Any]:
+    """Imports an evidence folder into a case and recalculates readiness."""
     repo_root = settings.upload_dir.parents[1]
     case = create_or_get_case(session, case_id, case_name)
     pdf_paths = sorted(path for path in directory.rglob("*.pdf") if path.is_file())

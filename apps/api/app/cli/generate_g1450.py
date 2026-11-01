@@ -1,3 +1,5 @@
+"""Generates a G-1450 from a local JSON payload."""
+
 from __future__ import annotations
 
 import argparse

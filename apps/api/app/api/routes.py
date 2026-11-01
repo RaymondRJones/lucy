@@ -1,7 +1,7 @@
+"""FastAPI routes. Business rules live in app.services."""
+
 from __future__ import annotations
 
-import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -37,6 +37,7 @@ from app.models.entities import (
     QAIssue,
     UploadedDocument,
     UploadStatus,
+    utcnow,
 )
 from app.schemas.common import (
     CaseCreateRequest,
@@ -51,7 +52,6 @@ from app.schemas.common import (
     FilingValidationRequest,
     FilingValidationResponseRead,
     FormCaseDataImportRequest,
-    G1650GenerateRequest,
     FormCaseDataImportResponseRead,
     FormFillPreviewRead,
     FormIngestionStateRead,
@@ -59,15 +59,16 @@ from app.schemas.common import (
     FormPdfGenerateRequest,
     FormPdfGenerateResponseRead,
     FormQuestionnaireRead,
+    G1450GeneratedPdfRead,
     G1450GenerateRequest,
     G1450GenerateResponseRead,
-    G1450GeneratedPdfRead,
     G1450PaymentOptionRead,
     G1450PaymentOptionsRead,
+    G1650GenerateRequest,
     I485CaseDataImportRequest,
     I485CaseDataImportResponseRead,
-    I485IngestionStateRead,
     I485FormFillPreviewRead,
+    I485IngestionStateRead,
     I485PageAnswersWrite,
     I485PdfGenerateRequest,
     I485PdfGenerateResponseRead,
@@ -87,8 +88,8 @@ from app.schemas.common import (
     PrescreenAnswersWrite,
     PrescreenQuestionnaireRead,
     PrescreenStateRead,
-    QAResultsRead,
     QAIssueRead,
+    QAResultsRead,
     QASummaryRead,
     UploadConfirmRequest,
     UploadedDocumentRead,
@@ -97,6 +98,8 @@ from app.schemas.common import (
     USCISRequirementRead,
     USCISRequirementsPayloadRead,
 )
+from app.services import uploads as uploads_service
+from app.services.audit import log_action
 from app.services.checklist import generate_checklist, get_checklist
 from app.services.filing_validation import get_filing_validation_capabilities, validate_case_filings
 from app.services.form_ingestion import (
@@ -107,6 +110,7 @@ from app.services.form_ingestion import (
 )
 from app.services.form_pdf import generate_form_pdf
 from app.services.g1450 import generate_case_g1450_packet_from_payload, get_case_g1450_payment_options
+from app.services.g1650 import generate_case_g1650_packet_from_payload, validate_g1650_payload
 from app.services.i485 import (
     build_i485_form_fill_preview,
     get_i485_state,
@@ -124,37 +128,20 @@ from app.services.intake import (
     normalize_country,
     upsert_intake_step,
 )
-from app.services.g1650 import generate_case_g1650_packet_from_payload, validate_g1650_payload
 from app.services.packet_assembly import assemble_packet_pdf
 from app.services.prescreen import get_prescreen_state, save_prescreen_answers
 from app.services.qa import get_qa_results, run_qa
-
+from app.services.uploads import ALLOWED_UPLOAD_TYPES, create_upload_request, list_case_uploads, save_upload_binary
 
 router = APIRouter()
 GENERATED_PDF_DIR = settings.generated_dir.resolve()
-ALLOWED_UPLOAD_TYPES = {
-    "application/pdf",
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-}
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def _safe_filename(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]", "-", name)
-
-
 def _generated_pdf_download_url(case_id: UUID, path: Path) -> str:
-    version = int(path.stat().st_mtime) if path.exists() else int(_utcnow().timestamp())
+    version = int(path.stat().st_mtime) if path.exists() else int(utcnow().timestamp())
     return f"/api/v1/cases/{case_id}/generated-pdfs/{path.name}?v={version}"
 
 
 def _packet_manifest_download_url(case_id: UUID, path: Path) -> str:
-    version = int(path.stat().st_mtime) if path.exists() else int(_utcnow().timestamp())
+    version = int(path.stat().st_mtime) if path.exists() else int(utcnow().timestamp())
     return f"/api/v1/cases/{case_id}/packet-assembly/manifests/{path.name}?v={version}"
 
 
@@ -163,10 +150,6 @@ def _supplemental_form_config_or_404(form_key: str) -> dict[str, Any]:
         return get_supplemental_form_config(form_key)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supported form not found") from exc
-
-
-def _log(session: Session, case_id: UUID | None, action: str, details: dict[str, Any]) -> None:
-    session.add(AuditLog(case_id=case_id, action=action, details=details))
 
 
 def _get_case_or_404(session: Session, case_id: UUID) -> CaseRecord:
@@ -225,7 +208,7 @@ def create_case(payload: CaseCreateRequest, session: Session = Depends(get_sessi
     session.add(PersonRecord(case_id=case.id, role="petitioner", email=payload.petitioner_email))
     session.add(PersonRecord(case_id=case.id, role="beneficiary", email=payload.beneficiary_email))
     session.add(MarriageRecord(case_id=case.id))
-    _log(session, case.id, "case.created", payload.model_dump())
+    log_action(session, case.id, "case.created", payload.model_dump())
     session.commit()
     session.refresh(case)
     return _serialize_case(session, case)
@@ -248,9 +231,9 @@ def update_case(case_id: UUID, payload: CaseUpdateRequest, session: Session = De
     case = _get_case_or_404(session, case_id)
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(case, field, normalize_country(value) if field == "country_of_focus" else value)
-    case.updated_at = _utcnow()
+    case.updated_at = utcnow()
     session.add(case)
-    _log(session, case.id, "case.updated", payload.model_dump(exclude_none=True))
+    log_action(session, case.id, "case.updated", payload.model_dump(exclude_none=True))
     session.commit()
     session.refresh(case)
     return _serialize_case(session, case)
@@ -265,7 +248,7 @@ def invite_collaborator(
     _get_case_or_404(session, case_id)
     invitation = Invitation(case_id=case_id, email=payload.email, role=payload.role)
     session.add(invitation)
-    _log(session, case_id, "case.invited", payload.model_dump())
+    log_action(session, case_id, "case.invited", payload.model_dump())
     session.commit()
     session.refresh(invitation)
     return InvitationRead.model_validate(invitation)
@@ -315,9 +298,9 @@ def submit_intake(case_id: UUID, session: Session = Depends(get_session)):
         )
     items, facts = generate_checklist(session, case_id)
     case.status = "checklist_ready"
-    case.updated_at = _utcnow()
+    case.updated_at = utcnow()
     session.add(case)
-    _log(session, case_id, "intake.submitted", {"facts": facts})
+    log_action(session, case_id, "intake.submitted", {"facts": facts})
     session.commit()
     return IntakeSubmitResponse(
         case_id=case_id,
@@ -352,7 +335,7 @@ def save_case_prescreen(
 ):
     _get_case_or_404(session, case_id)
     state = save_prescreen_answers(session, case_id, payload.answers)
-    _log(session, case_id, "prescreen.saved", {"answered": len(payload.answers)})
+    log_action(session, case_id, "prescreen.saved", {"answered": len(payload.answers)})
     session.commit()
     return PrescreenStateRead(**state)
 
@@ -361,7 +344,7 @@ def save_case_prescreen(
 def generate_case_checklist(case_id: UUID, session: Session = Depends(get_session)):
     _get_case_or_404(session, case_id)
     items, facts = generate_checklist(session, case_id)
-    _log(session, case_id, "checklist.generated", {"item_count": len(items)})
+    log_action(session, case_id, "checklist.generated", {"item_count": len(items)})
     session.commit()
     return ChecklistResponse(
         case_id=case_id,
@@ -392,9 +375,9 @@ def update_checklist_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
     if payload.completion_status is not None:
         item.completion_status = payload.completion_status
-    item.updated_at = _utcnow()
+    item.updated_at = utcnow()
     session.add(item)
-    _log(session, item.case_id, "checklist.updated", {"item_id": str(item.id), **payload.model_dump(exclude_none=True)})
+    log_action(session, item.case_id, "checklist.updated", {"item_id": str(item.id), **payload.model_dump(exclude_none=True)})
     session.commit()
     session.refresh(item)
     return ChecklistItemRead.model_validate(item)
@@ -407,30 +390,7 @@ def request_upload(
     session: Session = Depends(get_session),
 ):
     _get_case_or_404(session, case_id)
-    existing_versions = list(
-        session.exec(
-            select(UploadedDocument).where(
-                UploadedDocument.case_id == case_id,
-                UploadedDocument.checklist_item_code == payload.checklist_item_code,
-            )
-        )
-    )
-    requires_translation = payload.document_language.lower() not in {"english", "en", "unknown"}
-    upload = UploadedDocument(
-        case_id=case_id,
-        checklist_item_code=payload.checklist_item_code,
-        original_filename=payload.original_filename,
-        mime_type=payload.mime_type,
-        document_language=payload.document_language,
-        requires_translation=requires_translation,
-        has_translation=payload.has_translation,
-        extracted_fields=payload.extracted_fields,
-        version=len(existing_versions) + 1,
-    )
-    session.add(upload)
-    _log(session, case_id, "upload.requested", payload.model_dump())
-    session.commit()
-    session.refresh(upload)
+    upload = create_upload_request(session, case_id, payload)
     return UploadRequestRead(
         upload_id=upload.id,
         upload_url=f"{settings.api_prefix}/uploads/{upload.id}/binary",
@@ -461,19 +421,7 @@ async def upload_binary(
             detail=f"File exceeds the {settings.max_upload_size_mb} MB upload limit.",
         )
 
-    stored_filename = f"{upload.id}-{_safe_filename(file.filename or upload.original_filename)}"
-    destination = settings.upload_dir / stored_filename
-    destination.write_bytes(content)
-
-    upload.stored_filename = stored_filename
-    upload.file_size = len(content)
-    upload.mime_type = file.content_type
-    upload.upload_status = UploadStatus.uploaded.value
-    upload.updated_at = _utcnow()
-    session.add(upload)
-    _log(session, upload.case_id, "upload.binary_saved", {"upload_id": str(upload.id), "path": str(destination)})
-    session.commit()
-    session.refresh(upload)
+    upload = save_upload_binary(session, upload, content, file.content_type, file.filename)
     return UploadedDocumentRead.model_validate(upload)
 
 
@@ -492,40 +440,14 @@ def confirm_upload(
             detail="Upload binary is still missing. Send the file before confirming.",
         )
 
-    if payload.document_type is not None:
-        upload.document_type = payload.document_type
-    if payload.document_language is not None:
-        upload.document_language = payload.document_language
-        upload.requires_translation = payload.document_language.lower() not in {"english", "en", "unknown"}
-    if payload.has_translation is not None:
-        upload.has_translation = payload.has_translation
-    if payload.extracted_fields is not None:
-        merged_fields = dict(upload.extracted_fields)
-        merged_fields.update(payload.extracted_fields)
-        upload.extracted_fields = merged_fields
-    if payload.extraction_confidence is not None:
-        upload.extraction_confidence = payload.extraction_confidence
-
-    upload.upload_status = UploadStatus.confirmed.value
-    upload.updated_at = _utcnow()
-    session.add(upload)
-    _log(session, upload.case_id, "upload.confirmed", {"upload_id": str(upload.id)})
-    session.commit()
-    session.refresh(upload)
+    upload = uploads_service.confirm_upload(session, upload, payload)
     return UploadedDocumentRead.model_validate(upload)
 
 
 @router.get("/cases/{case_id}/uploads", response_model=list[UploadedDocumentRead])
 def list_uploads(case_id: UUID, session: Session = Depends(get_session)):
     _get_case_or_404(session, case_id)
-    uploads = list(
-        session.exec(
-            select(UploadedDocument)
-            .where(UploadedDocument.case_id == case_id)
-            .order_by(UploadedDocument.created_at.desc())
-        )
-    )
-    return [UploadedDocumentRead.model_validate(upload) for upload in uploads]
+    return [UploadedDocumentRead.model_validate(upload) for upload in list_case_uploads(session, case_id)]
 
 
 @router.delete("/uploads/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -533,14 +455,7 @@ def delete_upload(upload_id: UUID, session: Session = Depends(get_session)):
     upload = session.get(UploadedDocument, upload_id)
     if not upload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    if upload.stored_filename:
-        path = Path(settings.upload_dir / upload.stored_filename)
-        if path.exists():
-            path.unlink()
-    case_id = upload.case_id
-    _log(session, case_id, "upload.deleted", {"upload_id": str(upload.id)})
-    session.delete(upload)
-    session.commit()
+    uploads_service.delete_upload(session, upload)
 
 
 @router.post("/cases/{case_id}/qa/run", response_model=QAResultsRead)
@@ -630,7 +545,7 @@ def generate_case_g1450_pdfs(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         "g1450.generated",
@@ -679,7 +594,7 @@ def generate_case_g1650_pdfs(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         "g1650.generated",
@@ -740,7 +655,7 @@ def save_case_i485_page(
         state = save_i485_page_answers(session, case_id, payload.page_id, payload.answers, payload.manual_flags)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         "i485_ingestion.page_saved",
@@ -766,7 +681,7 @@ def import_case_i485_from_upload(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         "i485_ingestion.imported_from_upload",
@@ -793,7 +708,7 @@ def import_case_i485_from_case_data(
         case_id,
         overwrite=payload.overwrite,
     )
-    _log(
+    log_action(
         session,
         case_id,
         "i485_ingestion.imported_from_case",
@@ -832,7 +747,7 @@ def generate_case_i485_pdf(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         "i485_pdf.generated",
@@ -893,7 +808,7 @@ def save_case_form_page(
         state = save_form_page_answers(session, case_id, form_key, payload.page_id, payload.answers, payload.manual_flags)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         f"{config['form_key']}_ingestion.page_saved",
@@ -918,7 +833,7 @@ def import_case_form_from_case_data(
         form_key,
         overwrite=payload.overwrite,
     )
-    _log(
+    log_action(
         session,
         case_id,
         f"{config['form_key']}_ingestion.imported_from_case",
@@ -961,7 +876,7 @@ def generate_case_form_pdf(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _log(
+    log_action(
         session,
         case_id,
         f"{config['form_key']}_pdf.generated",
@@ -1026,7 +941,7 @@ def generate_case_packet_pdf(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    _log(
+    log_action(
         session,
         case_id,
         "packet_assembly.generated",
@@ -1115,13 +1030,7 @@ def get_case_debug(case_id: UUID, session: Session = Depends(get_session)):
             .order_by(CaseChecklistItem.sort_order.asc())
         )
     )
-    uploads = list(
-        session.exec(
-            select(UploadedDocument)
-            .where(UploadedDocument.case_id == case_id)
-            .order_by(UploadedDocument.created_at.desc())
-        )
-    )
+    uploads = list_case_uploads(session, case_id)
     issues = list(
         session.exec(select(QAIssue).where(QAIssue.case_id == case_id).order_by(QAIssue.created_at.asc()))
     )

@@ -37,14 +37,13 @@ line-length = 130
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "B", "BLE", "S110", "S112"]
+select = ["E4", "E7", "E9", "F", "B", "BLE", "I", "S110", "S112"]
 # B008 flags FastAPI's standard Depends()/File() defaults.
 ignore = ["B008"]
 
-[tool.ruff.lint.per-file-ignores]
-# Validators share helpers through a star import of shared.py, so its imports look unused.
-"app/services/filing_validators/*.py" = ["F403", "F405"]
-"app/services/filing_validators/shared.py" = ["F401"]
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["app"]
 
 [tool.setuptools.packages.find]
 where = ["."]

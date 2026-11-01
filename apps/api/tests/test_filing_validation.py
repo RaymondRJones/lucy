@@ -12,12 +12,11 @@ from app.content.i485_questionnaire import I485_VERIFIED_ON
 from app.db.session import get_session
 from app.main import app
 from app.models.entities import CaseRecord, QAIssue, UploadedDocument
-from app.services.filing_validation import validate_case_filings
 from app.services.family_pdf import build_i130_pdf_field_payload, build_i130a_pdf_field_payload
+from app.services.filing_validation import validate_case_filings
 from app.services.form_ingestion import save_form_page_answers
 from app.services.i485 import import_i485_answers_from_upload, save_i485_page_answers
 from app.services.intake import upsert_intake_step
-
 
 I130_TEMPLATE_PATH = Path("blank-immigration-documents/i-130.pdf")
 I130A_TEMPLATE_PATH = Path("blank-immigration-documents/i-130a.pdf")

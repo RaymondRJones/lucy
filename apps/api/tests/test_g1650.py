@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
+from pdf_form_assertions import pdf_field_appearance_states, pdf_field_values
 from pydantic import ValidationError
 from pypdf import PdfReader
+import pytest
 from sqlmodel import select
+from test_packet_assembly import add_checklist_item, create_case, make_session
 
 from app.content.fee_schedule import FEE_SCHEDULE_EDITION, G1450_FORM_FEES
 from app.content.packet_mailing import LOCKBOX_BY_LOCATION, mailing_recommendation_for_location
@@ -15,9 +17,6 @@ from app.schemas.common import G1650BankDetailsWrite, PacketAssemblyGenerateRequ
 from app.services.g1650 import generate_g1650_pdf_from_payload, validate_g1650_payload
 from app.services.intake import upsert_intake_step
 from app.services.packet_assembly import assemble_packet_pdf
-from pdf_form_assertions import pdf_field_appearance_states, pdf_field_values
-from test_packet_assembly import add_checklist_item, create_case, make_session
-
 
 TEMPLATE = Path("blank-immigration-documents/g-1650.pdf")
 APPLICANT = "form1[0].PG1[0].sfApplicantPetitionerName[0]"

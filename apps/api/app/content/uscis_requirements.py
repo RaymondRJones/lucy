@@ -1,3 +1,5 @@
+"""USCIS requirement metadata with sources and verification dates."""
+
 from __future__ import annotations
 
 VERIFIED_ON = "2026-04-27"

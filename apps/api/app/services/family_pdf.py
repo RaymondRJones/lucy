@@ -1,7 +1,8 @@
+"""Builds and generates Forms I-130, I-130A, and G-1145."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -11,23 +12,24 @@ from pypdf.generic import NameObject
 
 from app.content.admission_classes import i130_class_of_admission_code
 from app.core.config import settings
-from app.services.i485_pdf import (
+from app.services.case_facts import value_is_answered
+from app.services.pdf_fields import (
     OVERLONG_WARNING,
-    _add_unit_fields,
-    _employment_continuation_line,
-    _entry_has_content,
-    _field_length_warning,
-    _normalize_us_state,
-    _set_checkbox_values,
-    _unprintable_character_warning,
-    _use_saved_appearances,
-    _without_notes,
-    _set_text_values,
-    _template_field_names,
+    add_unit_fields,
+    as_pdf_date,
+    employment_continuation_line,
+    entry_has_content,
+    field_length_warning,
     fill_continuation_slots,
+    normalize_us_state,
     overlong_field_names,
+    set_checkbox_values,
+    set_text_values,
+    template_field_names,
+    unprintable_character_warning,
+    use_saved_appearances,
+    without_notes,
 )
-
 
 DEFAULT_FAMILY_OUTPUT_DIR = settings.generated_dir
 DEFAULT_FAMILY_TEMPLATE_PATHS = {
@@ -556,40 +558,18 @@ class GeneratedFamilyPdf:
     warnings: list[str]
 
 
-def _value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return True
-
-
 def _normalize_choice(value: Any) -> Any:
     if isinstance(value, str):
         return " ".join(value.strip().lower().replace("-", " ").split())
     return value
 
 
-def _as_pdf_date(value: Any) -> str:
-    raw = str(value).strip()
-    if not raw:
-        return ""
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
-        try:
-            return datetime.strptime(raw, fmt).strftime("%m/%d/%Y")
-        except ValueError:
-            continue
-    return raw
-
-
 def _as_pdf_value(field_key: str, value: Any, date_field_keys: set[str]) -> str:
     if field_key in date_field_keys:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
     # State fields on these forms are dropdowns of two-letter codes.
     if field_key.endswith("_state"):
-        return _normalize_us_state(value)
+        return normalize_us_state(value)
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
@@ -601,12 +581,13 @@ def _first_marriage_count() -> str:
     return "1"
 
 
-def _without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
+def without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
+    """Returns values without postal codes that only repeat the ZIP code."""
     # Case-fact aliases copy a ZIP code into the postal code key, but the forms keep Postal Code for foreign addresses.
     normalized = dict(values)
     for prefix in ("beneficiary_current", "petitioner_current"):
         postal_key = f"{prefix}_postal_code"
-        if _value_is_answered(normalized.get(postal_key)) and normalized.get(postal_key) == normalized.get(f"{prefix}_zip"):
+        if value_is_answered(normalized.get(postal_key)) and normalized.get(postal_key) == normalized.get(f"{prefix}_zip"):
             normalized.pop(postal_key)
     return normalized
 
@@ -618,25 +599,26 @@ I130_CLASS_NOT_OFFERED_WARNING = (
 
 
 def i130_class_of_admission_not_offered(values: dict[str, Any]) -> bool:
+    """Returns whether an answer has no matching I-130 Item 21.a option."""
     answer = values.get("beneficiary_class_of_admission")
-    return _value_is_answered(answer) and not i130_class_of_admission_code(answer)
+    return value_is_answered(answer) and not i130_class_of_admission_code(answer)
 
 
 def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
-    normalized = _without_zip_postal_aliases(values)
+    normalized = without_zip_postal_aliases(values)
     # Item 21.a is a dropdown that accepts only its USCIS options, for example B2.
-    if _value_is_answered(normalized.get("beneficiary_class_of_admission")):
+    if value_is_answered(normalized.get("beneficiary_class_of_admission")):
         normalized["beneficiary_class_of_admission"] = i130_class_of_admission_code(
             normalized["beneficiary_class_of_admission"]
         )
     if normalized.get("first_marriage_for_both") is True:
         normalized.setdefault("petitioner_marriage_count", _first_marriage_count())
         normalized.setdefault("beneficiary_marriage_count", _first_marriage_count())
-    if _value_is_answered(normalized.get("marriage_date")):
+    if value_is_answered(normalized.get("marriage_date")):
         normalized.setdefault("relationship_spouse", True)
         normalized.setdefault("petitioner_current_marital_status", "married")
         normalized.setdefault("beneficiary_current_marital_status", "married")
-    if _value_is_answered(normalized.get("beneficiary_location")):
+    if value_is_answered(normalized.get("beneficiary_location")):
         beneficiary_location = _normalize_choice(normalized.get("beneficiary_location"))
         if beneficiary_location in {"usa", "us", "u s", "united states", "united states of america"}:
             normalized.setdefault("beneficiary_adjustment_city", normalized.get("beneficiary_current_city"))
@@ -654,7 +636,7 @@ def _field_values_for_text_map(
 ) -> None:
     for field_key, field_names in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         pdf_value = _as_pdf_value(field_key, value, date_field_keys)
         for field_name in field_names:
@@ -676,7 +658,7 @@ def _field_values_for_checkbox_map(
 ) -> None:
     for field_key, choices in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         selected = choices.get(_normalize_choice(value))
         if not selected:
@@ -701,10 +683,10 @@ def _field_values_for_unit_map(
 ) -> None:
     for field_key, unit_fields in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         before = set(text_values) | set(checkbox_values)
-        _add_unit_fields(
+        add_unit_fields(
             text_values=text_values,
             checkbox_values=checkbox_values,
             value=value,
@@ -747,7 +729,7 @@ def _add_i130a_prior_address(
         return
     address = raw[0]
     before = set(text_values) | set(checkbox_values)
-    _add_unit_fields(
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=address.get("line2"),
@@ -759,9 +741,9 @@ def _add_i130a_prior_address(
     used_fields: list[str] = []
     for source_key, field_name in I130A_PRIOR_ADDRESS_FIELD_MAP.items():
         value = address.get(source_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
-        text_values[field_name] = _as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+        text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
         used_fields.append(field_name)
     used_fields.extend(sorted((set(text_values) | set(checkbox_values)) - before))
     if used_fields:
@@ -784,7 +766,7 @@ def _add_i130a_foreign_address(
     if not isinstance(address, dict):
         return
     before = set(text_values) | set(checkbox_values)
-    _add_unit_fields(
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=address.get("line2"),
@@ -795,8 +777,8 @@ def _add_i130a_foreign_address(
     )
     for source_key, field_name in I130A_FOREIGN_ADDRESS_FIELD_MAP.items():
         value = address.get(source_key)
-        if _value_is_answered(value):
-            text_values[field_name] = _as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+        if value_is_answered(value):
+            text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
     used_fields = sorted((set(text_values) | set(checkbox_values)) - before)
     if used_fields:
         mapped_fields.append({"field_key": "beneficiary_recent_foreign_address", "pdf_fields": used_fields})
@@ -856,10 +838,10 @@ def _add_i130a_employment_history(
 ) -> None:
     raw = values.get("beneficiary_employment_history")
     if isinstance(raw, list):
-        answered = [entry for entry in raw if isinstance(entry, dict) and _value_is_answered(entry)]
+        answered = [entry for entry in raw if isinstance(entry, dict) and value_is_answered(entry)]
         # Free text saved before the list was structured has no row, so it continues in Part 7.
-        note_only = [entry for entry in answered if not _entry_has_content(_without_notes(entry))]
-        entries = [entry for entry in answered if _entry_has_content(_without_notes(entry))]
+        note_only = [entry for entry in answered if not entry_has_content(without_notes(entry))]
+        entries = [entry for entry in answered if entry_has_content(without_notes(entry))]
         # The questions about the current employer are more specific, so they take the first row and
         # the history's entry for that employer only fills its gaps. Every other job keeps a place.
         current_name = text_values.get(I130A_EMPLOYER_ROWS[0]["name"], "")
@@ -868,7 +850,7 @@ def _add_i130a_employment_history(
             first = matching[0] if matching else {}
             entries = [first, *[entry for entry in entries if entry is not first]]
         continuation = "\n".join(
-            _employment_continuation_line(entry) for entry in [*entries[len(I130A_EMPLOYER_ROWS) :], *note_only]
+            employment_continuation_line(entry) for entry in [*entries[len(I130A_EMPLOYER_ROWS) :], *note_only]
         )
     else:
         entries = []
@@ -892,12 +874,12 @@ def _add_i130a_employment_history(
     for entry, row, unit_row in zip(entries, I130A_EMPLOYER_ROWS, I130A_EMPLOYER_UNIT_ROWS, strict=False):
         for source_key, field_name in row.items():
             value = entry.get(source_key)
-            if not _value_is_answered(value) or field_name in text_values:
+            if not value_is_answered(value) or field_name in text_values:
                 continue
             if source_key in {"from", "to"}:
-                text_values[field_name] = _as_pdf_date(value)
+                text_values[field_name] = as_pdf_date(value)
             elif source_key == "state":
-                text_values[field_name] = _normalize_us_state(value)
+                text_values[field_name] = normalize_us_state(value)
             else:
                 text_values[field_name] = str(value).strip()
             used_fields.append(field_name)
@@ -905,7 +887,7 @@ def _add_i130a_employment_history(
         if unit_row[3] in text_values:
             continue
         before = set(text_values) | set(checkbox_values)
-        _add_unit_fields(
+        add_unit_fields(
             text_values=text_values,
             checkbox_values=checkbox_values,
             value=entry.get("line2"),
@@ -922,6 +904,7 @@ def build_i130_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    """Returns the PDF field values and mapping report for an I-130."""
     normalized = _normalized_i130_values(values)
     text_values: dict[str, str] = {}
     checkbox_values: dict[str, str] = {}
@@ -965,7 +948,8 @@ def build_i130a_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
-    values = _without_zip_postal_aliases(values)
+    """Returns the PDF field values and mapping report for an I-130A."""
+    values = without_zip_postal_aliases(values)
     text_values: dict[str, str] = {}
     checkbox_values: dict[str, str] = {}
     mapped_fields: list[dict[str, Any]] = []
@@ -1026,6 +1010,7 @@ def build_g1145_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    """Returns the PDF field values and mapping report for a G-1145."""
     text_values: dict[str, str] = {}
     mapped_fields: list[dict[str, Any]] = []
 
@@ -1084,9 +1069,9 @@ def _generate_family_pdf_from_payload(
 
     reader = PdfReader(template_path)
     writer = _pdf_writer_from_reader(reader)
-    _use_saved_appearances(writer)
-    _set_text_values(writer, payload.text_values)
-    _set_checkbox_values(writer, payload.checkbox_values)
+    use_saved_appearances(writer)
+    set_text_values(writer, payload.text_values)
+    set_checkbox_values(writer, payload.checkbox_values)
 
     final_output_path = output_path or output_dir / f"{case_id}-{form_key}.pdf"
     final_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1099,8 +1084,8 @@ def _generate_family_pdf_from_payload(
     ]
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    warnings.extend(_field_length_warning(reader, payload.text_values))
-    warnings.extend(_unprintable_character_warning(writer))
+    warnings.extend(field_length_warning(reader, payload.text_values))
+    warnings.extend(unprintable_character_warning(writer))
     overflowing = overlong_field_names(reader, payload.text_values)
     if overflowing:
         warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
@@ -1129,11 +1114,12 @@ def generate_i130_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes an I-130 PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["i130"]
     if not final_template_path.exists():
         raise ValueError(f"form_i130 PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_i130_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_i130_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="i130",
@@ -1153,11 +1139,12 @@ def generate_i130a_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes an I-130A PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["i130a"]
     if not final_template_path.exists():
         raise ValueError(f"form_i130a PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_i130a_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_i130a_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="i130a",
@@ -1176,11 +1163,12 @@ def generate_g1145_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes a G-1145 PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["g1145"]
     if not final_template_path.exists():
         raise ValueError(f"form_g1145 PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_g1145_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_g1145_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="g1145",

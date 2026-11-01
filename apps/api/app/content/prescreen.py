@@ -1,7 +1,8 @@
+"""Prescreen questions that scope a case."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 PRESCREEN_VERSION = "marriage-happy-path-prescreen-2026-05-01"
 PRESCREEN_VERIFIED_ON = "2026-05-01"

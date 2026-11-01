@@ -1,3 +1,5 @@
+"""Generates packet cover letters and section index pages."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -220,6 +222,7 @@ def build_cover_letter_lines(
     lockbox_address_lines: list[str] | None = None,
     generated_on: date | None = None,
 ) -> list[str]:
+    """Returns the text of a packet's cover letter."""
     beneficiary_name = _person_name(values, "beneficiary")
     petitioner_name = _person_name(values, "petitioner")
     i130_status = str(values.get("i130_filing_status") or "").strip().lower()
@@ -284,6 +287,7 @@ def generate_cover_letter_pdf(
     output_dir: Path,
     lockbox_address_lines: list[str] | None = None,
 ) -> GeneratedCoverLetter:
+    """Writes a packet's cover letter."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{case_id}-cover-letter.pdf"
     writer = PdfWriter()
@@ -340,6 +344,7 @@ def build_section_index_lines(
     purpose: str,
     items: list[str],
 ) -> list[str]:
+    """Returns the text of a section index page."""
     title = SECTION_TITLES.get(section_label, section_label)
     lines = [
         "Section Index Page",
@@ -376,6 +381,7 @@ def generate_section_index_pdf(
     items: list[str],
     output_dir: Path,
 ) -> GeneratedCoverLetter:
+    """Writes a section index page."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{case_id}-{_slug(section_label)}-index.pdf"
     writer = PdfWriter()

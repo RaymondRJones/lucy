@@ -1,7 +1,8 @@
+"""USCIS lockbox mailing guidance for packets."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 PACKET_MAILING_VERIFIED_ON = "2026-10-30"
 PACKET_MAILING_SOURCE_LAST_REVIEWED = "2024-10-11"

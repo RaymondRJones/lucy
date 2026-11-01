@@ -1,7 +1,8 @@
+"""Question definitions for Forms I-130 and I-130A."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 I130_QUESTIONNAIRE_VERSION = "i130-04-01-24-marriage-v1"
 I130A_QUESTIONNAIRE_VERSION = "i130a-04-01-24-spouse-v2"

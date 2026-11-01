@@ -1,7 +1,8 @@
+"""Builds and generates supplemental form PDFs."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -13,7 +14,8 @@ from sqlmodel import Session
 from app.content.admission_classes import normalize_class_of_admission
 from app.content.supplemental_forms import all_supplemental_form_questions, get_supplemental_form_config
 from app.core.config import settings
-from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_field_payload, build_i130a_pdf_field_payload
+from app.services.case_facts import value_is_answered
+from app.services.family_pdf import build_i130_pdf_field_payload, build_i130a_pdf_field_payload, without_zip_postal_aliases
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
     build_form_fill_preview,
@@ -21,19 +23,20 @@ from app.services.form_ingestion import (
     get_form_state,
     normalize_form_key,
 )
-from app.services.i485_pdf import (
+from app.services.pdf_fields import (
     OVERLONG_WARNING,
-    _add_unit_fields,
-    _field_length_warning,
-    _set_checkbox_values,
-    _unprintable_character_warning,
-    _use_saved_appearances,
-    _set_text_values,
-    _template_field_names,
+    US_STATE_CODES,
+    add_unit_fields,
+    as_pdf_date,
+    field_length_warning,
     fill_continuation_slots,
     overlong_field_names,
+    set_checkbox_values,
+    set_text_values,
+    template_field_names,
+    unprintable_character_warning,
+    use_saved_appearances,
 )
-
 
 DEFAULT_FORM_OUTPUT_DIR = settings.generated_dir
 
@@ -136,7 +139,6 @@ US_STATE_NAME_TO_CODE = {
     "usvirginislands": "VI",
 }
 
-US_STATE_CODES = set(US_STATE_NAME_TO_CODE.values())
 STATE_QUESTION_IDS = {
     "beneficiary_mailing_state",
     "beneficiary_physical_state",
@@ -589,28 +591,6 @@ class GeneratedFormPdf:
     missing_template_fields: list[str]
 
 
-def _value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return True
-
-
-def _as_pdf_date(value: Any) -> str:
-    raw = str(value).strip()
-    if not raw:
-        return ""
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
-        try:
-            return datetime.strptime(raw, fmt).strftime("%m/%d/%Y")
-        except ValueError:
-            continue
-    return raw
-
-
 def _normalize_us_state_code(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -685,7 +665,7 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     if question_id == "i765_eligibility_category" and value == "c9_pending_i485":
         return "c"
     if question_id in DATE_QUESTION_IDS:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
@@ -709,62 +689,19 @@ def _fill_i765_eligibility_category(
         mapped_fields.append(field_name)
 
 
-def build_form_pdf_field_payload(
-    form_key: str,
+def _add_form_map_fields(
+    *,
     answers: dict[str, Any],
-    available_fields: set[str] | None = None,
-) -> FormPdfFieldPayload:
-    normalized_form_key = normalize_form_key(form_key)
-    question_by_id = {question["id"]: question for question in all_supplemental_form_questions(normalized_form_key)}
-    if normalized_form_key in {"i130", "i130a"}:
-        family_payload = (
-            build_i130_pdf_field_payload(answers, available_fields)
-            if normalized_form_key == "i130"
-            else build_i130a_pdf_field_payload(answers, available_fields)
-        )
-        mapped_question_ids = {
-            entry["field_key"] for entry in family_payload.mapped_fields if isinstance(entry.get("field_key"), str)
-        }
-        mapped_questions = [
-            {
-                "question_id": entry["field_key"],
-                "label": question_by_id.get(entry["field_key"], {}).get("label", entry["field_key"]),
-                "pdf_fields": entry["pdf_fields"],
-            }
-            for entry in family_payload.mapped_fields
-            if isinstance(entry.get("field_key"), str)
-        ]
-        unmapped_answered_questions = []
-        # The combined address answer is written through its street, city, state, and ZIP parts.
-        if "beneficiary_current_address_line1" in mapped_question_ids:
-            mapped_question_ids.add("beneficiary_current_address")
-        for question_id, value in sorted(_without_zip_postal_aliases(answers).items()):
-            if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not _value_is_answered(value):
-                continue
-            question = question_by_id.get(question_id, {})
-            unmapped_answered_questions.append(
-                {
-                    "question_id": question_id,
-                    "label": question.get("label", question_id),
-                    "pdf_ref": question.get("pdf_ref", ""),
-                }
-            )
-        return FormPdfFieldPayload(
-            text_values=family_payload.text_values,
-            checkbox_values=family_payload.checkbox_values,
-            mapped_questions=mapped_questions,
-            unmapped_answered_questions=unmapped_answered_questions,
-            missing_template_fields=family_payload.missing_template_fields,
-        )
-
-    text_values: dict[str, str] = {}
-    checkbox_values: dict[str, str] = {}
-    mapped_questions: list[dict[str, Any]] = []
-    mapped_question_ids: set[str] = set()
-
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    normalized_form_key: str,
+    question_by_id: dict[str, dict[str, Any]],
+    text_values: dict[str, str],
+) -> None:
     for question_id, field_names in TEXT_FIELD_MAP.get(normalized_form_key, {}).items():
         value = answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         if question_id == "i765_eligibility_category":
             selected_fields: list[str] = []
@@ -800,7 +737,7 @@ def build_form_pdf_field_payload(
 
     for question_id, choices in CHECKBOX_FIELD_MAP.get(normalized_form_key, {}).items():
         value = answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         selected = choices.get(value)
         if not selected:
@@ -818,10 +755,10 @@ def build_form_pdf_field_payload(
 
     for question_id, unit_fields in UNIT_FIELD_MAP.get(normalized_form_key, {}).items():
         value = answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         before = set(text_values) | set(checkbox_values)
-        _add_unit_fields(
+        add_unit_fields(
             text_values=text_values,
             checkbox_values=checkbox_values,
             value=value,
@@ -840,6 +777,92 @@ def build_form_pdf_field_payload(
                     "pdf_fields": selected_fields,
                 }
             )
+
+
+def _unmapped_form_questions(
+    *,
+    answers: dict[str, Any],
+    mapped_question_ids: set[str],
+    question_by_id: dict[str, dict[str, Any]],
+) -> Any:
+    unmapped_answered_questions = []
+    for question_id, value in sorted(answers.items()):
+        if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not value_is_answered(value):
+            continue
+        question = question_by_id.get(question_id, {})
+        unmapped_answered_questions.append(
+            {
+                "question_id": question_id,
+                "label": question.get("label", question_id),
+                "pdf_ref": question.get("pdf_ref", ""),
+            }
+        )
+    return unmapped_answered_questions
+
+
+def build_form_pdf_field_payload(
+    form_key: str,
+    answers: dict[str, Any],
+    available_fields: set[str] | None = None,
+) -> FormPdfFieldPayload:
+    """Returns the PDF field values and mapping report for a supplemental form."""
+    normalized_form_key = normalize_form_key(form_key)
+    question_by_id = {question["id"]: question for question in all_supplemental_form_questions(normalized_form_key)}
+    if normalized_form_key in {"i130", "i130a"}:
+        family_payload = (
+            build_i130_pdf_field_payload(answers, available_fields)
+            if normalized_form_key == "i130"
+            else build_i130a_pdf_field_payload(answers, available_fields)
+        )
+        mapped_question_ids = {
+            entry["field_key"] for entry in family_payload.mapped_fields if isinstance(entry.get("field_key"), str)
+        }
+        mapped_questions = [
+            {
+                "question_id": entry["field_key"],
+                "label": question_by_id.get(entry["field_key"], {}).get("label", entry["field_key"]),
+                "pdf_fields": entry["pdf_fields"],
+            }
+            for entry in family_payload.mapped_fields
+            if isinstance(entry.get("field_key"), str)
+        ]
+        unmapped_answered_questions = []
+        # The combined address answer is written through its street, city, state, and ZIP parts.
+        if "beneficiary_current_address_line1" in mapped_question_ids:
+            mapped_question_ids.add("beneficiary_current_address")
+        for question_id, value in sorted(without_zip_postal_aliases(answers).items()):
+            if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not value_is_answered(value):
+                continue
+            question = question_by_id.get(question_id, {})
+            unmapped_answered_questions.append(
+                {
+                    "question_id": question_id,
+                    "label": question.get("label", question_id),
+                    "pdf_ref": question.get("pdf_ref", ""),
+                }
+            )
+        return FormPdfFieldPayload(
+            text_values=family_payload.text_values,
+            checkbox_values=family_payload.checkbox_values,
+            mapped_questions=mapped_questions,
+            unmapped_answered_questions=unmapped_answered_questions,
+            missing_template_fields=family_payload.missing_template_fields,
+        )
+
+    text_values: dict[str, str] = {}
+    checkbox_values: dict[str, str] = {}
+    mapped_questions: list[dict[str, Any]] = []
+    mapped_question_ids: set[str] = set()
+
+    _add_form_map_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        normalized_form_key=normalized_form_key,
+        question_by_id=question_by_id,
+        text_values=text_values,
+    )
 
     if normalized_form_key in OTHER_NAME_MAPPINGS:
         other_name_fields = _add_other_name_fields(
@@ -863,18 +886,11 @@ def build_form_pdf_field_payload(
     filled_fields = set(text_values) | set(checkbox_values)
     missing_template_fields = sorted(filled_fields - available) if available else []
 
-    unmapped_answered_questions = []
-    for question_id, value in sorted(answers.items()):
-        if question_id in mapped_question_ids or question_id in NON_PDF_CONTROL_QUESTIONS or not _value_is_answered(value):
-            continue
-        question = question_by_id.get(question_id, {})
-        unmapped_answered_questions.append(
-            {
-                "question_id": question_id,
-                "label": question.get("label", question_id),
-                "pdf_ref": question.get("pdf_ref", ""),
-            }
-        )
+    unmapped_answered_questions = _unmapped_form_questions(
+        answers=answers,
+        mapped_question_ids=mapped_question_ids,
+        question_by_id=question_by_id,
+    )
 
     return FormPdfFieldPayload(
         text_values=text_values,
@@ -896,6 +912,7 @@ def generate_form_pdf_from_answers(
     allow_incomplete: bool = True,
     preview: dict[str, Any] | None = None,
 ) -> GeneratedFormPdf:
+    """Writes a supplemental form PDF from a set of answers."""
     config = get_supplemental_form_config(form_key)
     normalized_form_key = config["form_key"]
     final_template_path = template_path or Path(config["local_template_pdf"])
@@ -916,7 +933,7 @@ def generate_form_pdf_from_answers(
         )
 
     reader = PdfReader(final_template_path)
-    available_fields = _template_field_names(reader)
+    available_fields = template_field_names(reader)
     payload = build_form_pdf_field_payload(normalized_form_key, answers, available_fields)
 
     try:
@@ -934,9 +951,9 @@ def generate_form_pdf_from_answers(
             acroform = root.get("/AcroForm") if hasattr(root, "get") else None
             if acroform:
                 writer._root_object.update({NameObject("/AcroForm"): acroform})
-    _use_saved_appearances(writer)
-    _set_text_values(writer, payload.text_values)
-    _set_checkbox_values(writer, payload.checkbox_values)
+    use_saved_appearances(writer)
+    set_text_values(writer, payload.text_values)
+    set_checkbox_values(writer, payload.checkbox_values)
 
     final_output_path = output_path or output_dir / f"{case_id}-{normalized_form_key}.pdf"
     final_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -955,8 +972,8 @@ def generate_form_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    warnings.extend(_field_length_warning(reader, payload.text_values))
-    warnings.extend(_unprintable_character_warning(writer))
+    warnings.extend(field_length_warning(reader, payload.text_values))
+    warnings.extend(unprintable_character_warning(writer))
     overflowing = overlong_field_names(reader, payload.text_values)
     if overflowing:
         warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
@@ -994,11 +1011,12 @@ def generate_form_pdf(
     output_dir: Path = DEFAULT_FORM_OUTPUT_DIR,
     allow_incomplete: bool = True,
 ) -> GeneratedFormPdf:
+    """Writes a case's supplemental form PDF, filling blank answers from case facts."""
     preview = build_form_fill_preview(session, case_id, form_key)
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
     for proposal in build_form_answer_proposals_from_case_data(form_key, get_form_case_intake(session, case_id, form_key)):
-        if not _value_is_answered(answers.get(proposal["question_id"])):
+        if not value_is_answered(answers.get(proposal["question_id"])):
             answers[proposal["question_id"]] = proposal["value"]
     return generate_form_pdf_from_answers(
         case_id=case_id,

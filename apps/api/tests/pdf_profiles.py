@@ -6,9 +6,9 @@ value instead of passing by coincidence. All people, identifiers, and accounts h
 
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass
 from datetime import date, timedelta
+import random
 from typing import Any
 
 from app.content.i485_sample import build_sample_i485_answers

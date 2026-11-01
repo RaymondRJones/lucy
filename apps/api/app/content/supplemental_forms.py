@@ -1,3 +1,5 @@
+"""Question definitions for supplemental forms."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -6,15 +8,14 @@ from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, I94_INFO_S
 from app.content.family_questionnaires import (
     FAMILY_FORM_SOURCES,
     FAMILY_FORMS_VERIFIED_ON,
-    I130A_OFFICIAL_PDF_URL,
-    I130A_QUESTIONNAIRE,
-    I130A_QUESTIONNAIRE_VERSION,
     I130_OFFICIAL_PDF_URL,
     I130_OFFICIAL_URL,
     I130_QUESTIONNAIRE,
     I130_QUESTIONNAIRE_VERSION,
+    I130A_OFFICIAL_PDF_URL,
+    I130A_QUESTIONNAIRE,
+    I130A_QUESTIONNAIRE_VERSION,
 )
-
 
 SUPPLEMENTAL_FORMS_VERIFIED_ON = "2026-04-28"
 I765_VERIFIED_ON = "2026-05-09"

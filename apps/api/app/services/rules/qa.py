@@ -1,3 +1,5 @@
+"""Rules that produce QA issues."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +12,6 @@ from sqlmodel import Session
 from app.content.uscis_requirements import USCIS_REQUIREMENT_BY_CHECKLIST_CODE
 from app.models.entities import CaseChecklistItem, ChecklistProgressStatus, QAIssue, UploadedDocument
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 REFERENCE_REVIEW_CODES = {"review_current_fees", "review_form_editions"}
 

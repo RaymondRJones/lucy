@@ -1,15 +1,17 @@
+"""Seeds sample cases that cover packet assembly scenarios."""
+
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import json
 from typing import Any
 
 from pypdf import PdfReader
 from sqlmodel import Session, select
 
-from app.cli.seed_happy_path import _sample_answers, _seed_i485, _seed_supplemental_form
+from app.cli.seed_happy_path import sample_answers, seed_i485, seed_supplemental_form
 from app.cli.seed_placeholder_pdf import packet_section_for_checklist_code, write_seed_placeholder_pdf
 from app.core.config import settings
 from app.db.session import create_db_and_tables, engine
@@ -271,7 +273,7 @@ def _safe_email(name: str, slug: str) -> str:
 
 
 def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
-    answers = _sample_answers()
+    answers = sample_answers()
     beneficiary_email = _safe_email(scenario.beneficiary_first_name, scenario.slug)
     petitioner_email = _safe_email(scenario.petitioner_first_name, scenario.slug)
     birth_city = BIRTH_CITY_BY_COUNTRY[scenario.beneficiary_country]
@@ -460,15 +462,15 @@ def _seed_scenario(session: Session, scenario: PacketScenario, generate_packets:
     answers = _scenario_answers(scenario)
     case = _create_case(session, scenario, answers)
     upsert_intake_step(session, case.id, f"packet_scenario:{scenario.slug}", answers)
-    _seed_i485(session, case, answers)
-    _seed_supplemental_form(session, case, "i864", answers)
+    seed_i485(session, case, answers)
+    seed_supplemental_form(session, case, "i864", answers)
     if scenario.wants_i765:
-        _seed_supplemental_form(session, case, "i765", answers)
+        seed_supplemental_form(session, case, "i765", answers)
     if scenario.wants_i131:
-        _seed_supplemental_form(session, case, "i131", answers)
+        seed_supplemental_form(session, case, "i131", answers)
     if scenario.i130_filing_status == "not_filed":
-        _seed_supplemental_form(session, case, "i130", answers)
-        _seed_supplemental_form(session, case, "i130a", answers)
+        seed_supplemental_form(session, case, "i130", answers)
+        seed_supplemental_form(session, case, "i130a", answers)
     session.commit()
 
     checklist_items, facts = generate_checklist(session, case.id)

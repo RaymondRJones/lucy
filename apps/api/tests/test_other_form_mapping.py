@@ -8,7 +8,7 @@ import pytest
 from app.content.admission_classes import I130_CLASS_OF_ADMISSION_CODES
 from app.content.family_questionnaires import all_i130_questions, all_i130a_questions
 from app.content.supplemental_forms import all_supplemental_form_questions
-from app.services.case_facts import enrich_case_fact_aliases
+from app.services.case_facts import enrich_case_fact_aliases, value_is_answered
 from app.services.family_pdf import (
     I130_CLASS_NOT_OFFERED_WARNING,
     I130A_FOREIGN_ADDRESS_FIELD_MAP,
@@ -18,11 +18,13 @@ from app.services.family_pdf import (
 )
 from app.services.form_ingestion import build_form_answer_proposals_from_case_data
 from app.services.form_pdf import NON_PDF_CONTROL_QUESTIONS, OTHER_NAME_MAPPINGS, build_form_pdf_field_payload
-from app.services.i485_pdf import _template_field_names
+from app.services.pdf_fields import (
+    template_field_names,
+)
 
 
 def _available(form: str) -> set[str]:
-    return _template_field_names(PdfReader(f"blank-immigration-documents/{form}.pdf"))
+    return template_field_names(PdfReader(f"blank-immigration-documents/{form}.pdf"))
 
 
 @pytest.mark.parametrize(
@@ -277,3 +279,34 @@ def test_i130a_foreign_address_question_offers_structured_fields_the_pdf_reads()
     assert question["answer_type"] == "address"
     assert set(I130A_FOREIGN_ADDRESS_FIELD_MAP) <= keys
     assert "line2" in keys
+
+
+@pytest.mark.parametrize(
+    ("value", "answered"),
+    [
+        (None, False),
+        ("", False),
+        ("   ", False),
+        ([], False),
+        ({}, False),
+        (["", None], False),
+        ({"line1": "", "city": "  "}, False),
+        ([{"line1": ""}], False),
+        (False, True),
+        (0, True),
+        ("Austin", True),
+        ({"line1": "", "city": "Austin"}, True),
+        ([{"line1": "1 Main St"}], True),
+    ],
+)
+def test_value_is_answered_treats_blank_form_controls_as_no_answer(value: object, answered: bool) -> None:
+    assert value_is_answered(value) is answered
+
+
+def test_a_cleared_address_does_not_block_its_proposal() -> None:
+    # The address control saves blank keys when a user clears it, which must not read as an answer.
+    assert not value_is_answered({"line1": "", "line2": "", "city": "", "country": ""})
+    payload = build_i130a_pdf_field_payload(
+        {"beneficiary_recent_foreign_address": {"line1": "", "city": ""}}, _available("i-130a")
+    )
+    assert "beneficiary_recent_foreign_address" not in {entry["field_key"] for entry in payload.mapped_fields}

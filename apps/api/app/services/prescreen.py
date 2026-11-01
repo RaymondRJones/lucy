@@ -1,3 +1,5 @@
+"""Saves and evaluates prescreen answers."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -11,9 +13,8 @@ from app.services.intake import get_merged_case_intake, upsert_intake_step
 from app.services.rules.prescreen import (
     I130_ALREADY_FILED_STATUSES,
     PrescreenRuleEngine,
-    value_is_answered as _value_is_answered,
+    value_is_answered,
 )
-
 
 PRESCREEN_STEP_KEY = "prescreen"
 
@@ -23,7 +24,7 @@ LEGAL_ENTRY_TYPES = {"visa_admitted", "esta_vwp", "paroled", "visa_esta_parole"}
 def _set_projection_value(projection: dict[str, Any], db_path: Any, value: Any) -> None:
     if not isinstance(db_path, str) or not db_path.startswith("intake."):
         return
-    if _value_is_answered(value):
+    if value_is_answered(value):
         projection[db_path.removeprefix("intake.")] = value
 
 
@@ -59,8 +60,8 @@ def _project_prescreen_answers(answers: dict[str, Any]) -> dict[str, Any]:
         projection.get("beneficiary_current_address_state"),
         projection.get("beneficiary_current_address_postal_code"),
     ]
-    if any(_value_is_answered(part) for part in address_parts):
-        projection["beneficiary_current_address"] = ", ".join(str(part).strip() for part in address_parts if _value_is_answered(part))
+    if any(value_is_answered(part) for part in address_parts):
+        projection["beneficiary_current_address"] = ", ".join(str(part).strip() for part in address_parts if value_is_answered(part))
 
     if projection.get("i130_filing_status") in I130_ALREADY_FILED_STATUSES:
         projection["i130_already_filed"] = True
@@ -83,6 +84,7 @@ def _project_prescreen_answers(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def evaluate_prescreen(answers: dict[str, Any]) -> dict[str, Any]:
+    """Returns the workflow result for prescreen answers."""
     return PrescreenRuleEngine().evaluate(answers)
 
 
@@ -123,6 +125,7 @@ def _normalize_current_status(value: Any) -> Any:
 
 
 def get_prescreen_state(session: Session, case_id: UUID) -> dict[str, Any]:
+    """Returns a case's prescreen answers and result."""
     merged = get_merged_case_intake(session, case_id)
     answers = {question["id"]: merged.get(question["id"]) for question in PRESCREEN_QUESTIONS}
     answer_sources: dict[str, str] = {}
@@ -153,7 +156,7 @@ def get_prescreen_state(session: Session, case_id: UUID) -> dict[str, Any]:
             if grouped_answer:
                 answers[question["id"]] = grouped_answer
 
-        if not _value_is_answered(answers.get(question["id"])):
+        if not value_is_answered(answers.get(question["id"])):
             default_value = _default_answer_from_legacy_facts(question["id"], merged)
             if default_value is not None:
                 answers[question["id"]] = default_value
@@ -161,13 +164,14 @@ def get_prescreen_state(session: Session, case_id: UUID) -> dict[str, Any]:
 
     return {
         "case_id": str(case_id),
-        "answers": {key: value for key, value in answers.items() if _value_is_answered(value)},
+        "answers": {key: value for key, value in answers.items() if value_is_answered(value)},
         "answer_sources": answer_sources,
         "evaluation": evaluate_prescreen(answers),
     }
 
 
 def save_prescreen_answers(session: Session, case_id: UUID, answers: dict[str, Any]) -> dict[str, Any]:
+    """Saves prescreen answers and updates the case facts."""
     current_state = get_prescreen_state(session, case_id)
     merged_answers = {**current_state["answers"], **answers}
     projection = _project_prescreen_answers(merged_answers)

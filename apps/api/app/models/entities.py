@@ -1,3 +1,5 @@
+"""SQLModel tables and workflow status enums."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -10,6 +12,7 @@ from sqlmodel import Field, SQLModel
 
 
 def utcnow() -> datetime:
+    """Returns the current time in UTC."""
     return datetime.now(UTC)
 
 

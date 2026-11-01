@@ -4,10 +4,20 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from pypdf import PdfReader, PdfWriter
 import pypdfium2
 import pytest
+from test_g1650 import bank_payload
+from test_generated_form_pdfs import READY_PREVIEW
+from test_packet_assembly import create_case, make_session
+from test_supplemental_forms import (
+    sample_i130_answers,
+    sample_i130a_answers,
+    sample_i131_answers,
+    sample_i765_answers,
+    sample_i864_answers,
+)
 import zxingcpp
-from pypdf import PdfReader, PdfWriter
 
 from app.content.fee_schedule import G1450_FORM_EDITION, G1650_FORM_EDITION
 from app.content.i485_sample import build_sample_i485_answers
@@ -24,18 +34,14 @@ from app.services.form_pdf import CHECKBOX_FIELD_MAP, UNIT_FIELD_MAP, generate_f
 from app.services.g1450 import generate_g1450_pdf_from_payload
 from app.services.g1650 import generate_g1650_pdf_from_payload
 from app.services.i485_pdf import CHECKBOX_FIELD_MAP as I485_CHECKBOX_FIELD_MAP
-from app.services.i485_pdf import MULTI_CHECKBOX_FIELD_MAP, _set_checkbox_values, generate_i485_pdf_from_answers
+from app.services.i485_pdf import (
+    MULTI_CHECKBOX_FIELD_MAP,
+    generate_i485_pdf_from_answers,
+)
 from app.services.intake import upsert_intake_step
 from app.services.packet_assembly import _append_pdf_pages, _flatten_form_fields, assemble_packet_pdf
-from test_g1650 import bank_payload
-from test_generated_form_pdfs import READY_PREVIEW
-from test_packet_assembly import create_case, make_session
-from test_supplemental_forms import (
-    sample_i130_answers,
-    sample_i130a_answers,
-    sample_i131_answers,
-    sample_i765_answers,
-    sample_i864_answers,
+from app.services.pdf_fields import (
+    set_checkbox_values,
 )
 
 # Forms are printed and mailed, and USCIS scans each page's PDF417 barcode. It encodes FORM|EDITION|PAGE.
@@ -195,7 +201,7 @@ def test_checked_boxes_use_a_state_the_template_can_draw(generated_forms, form_k
 )
 def test_unit_checkboxes_print_despite_inconsistent_template_spelling(tmp_path, template, field, unit_state, drawn_state):
     writer = PdfWriter(clone_from=TEMPLATE_DIR / template)
-    _set_checkbox_values(writer, {field: unit_state})
+    set_checkbox_values(writer, {field: unit_state})
     path = tmp_path / "unit.pdf"
     with path.open("wb") as handle:
         writer.write(handle)

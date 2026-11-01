@@ -1,9 +1,10 @@
+"""Sample I-485 answers for seeds and tests."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from app.content.i485_questionnaire import all_i485_questions
-
 
 SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "beneficiary_a_number": "",

@@ -1,8 +1,10 @@
+"""Seeds a complete sample case for local development."""
+
 from __future__ import annotations
 
 import argparse
-import json
 from datetime import UTC, datetime
+import json
 from typing import Any
 
 from sqlmodel import Session, select
@@ -26,7 +28,6 @@ from app.services.i485 import get_i485_state, save_i485_page_answers
 from app.services.i485_pdf import DEFAULT_I485_OUTPUT_DIR, DEFAULT_I485_TEMPLATE_PATH, generate_i485_pdf
 from app.services.intake import upsert_intake_step
 from app.services.qa import run_qa
-
 
 BASE_SAMPLE: dict[str, Any] = {
     "petitioner_phone": "0000000101",
@@ -189,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _sample_answers() -> dict[str, Any]:
+def sample_answers() -> dict[str, Any]:
     answers = build_sample_i485_answers()
     answers.update(BASE_SAMPLE)
     answers["beneficiary_country_of_birth"] = "CO"
@@ -250,7 +251,7 @@ def _create_case(session: Session, case_name: str) -> CaseRecord:
     return case
 
 
-def _seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> None:
+def seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> None:
     for page in I485_QUESTIONNAIRE:
         page_answers = {
             question["id"]: sample[question["id"]]
@@ -260,7 +261,7 @@ def _seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> No
         save_i485_page_answers(session, case.id, page["id"], page_answers)
 
 
-def _seed_supplemental_form(session: Session, case: CaseRecord, form_key: str, sample: dict[str, Any]) -> None:
+def seed_supplemental_form(session: Session, case: CaseRecord, form_key: str, sample: dict[str, Any]) -> None:
     config = get_supplemental_form_config(form_key)
     for page in config["pages"]:
         page_answers = {
@@ -361,14 +362,14 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
 def main() -> None:
     args = build_parser().parse_args()
     create_db_and_tables()
-    sample = _sample_answers()
+    sample = sample_answers()
 
     with Session(engine) as session:
         case = _create_case(session, args.case_name)
         _seed_base_intake(session, case, sample)
-        _seed_i485(session, case, sample)
+        seed_i485(session, case, sample)
         for form_key in ("i765", "i131", "i864"):
-            _seed_supplemental_form(session, case, form_key, sample)
+            seed_supplemental_form(session, case, form_key, sample)
         _seed_uploads(session, case)
         session.commit()
 

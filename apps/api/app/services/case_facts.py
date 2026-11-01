@@ -1,7 +1,8 @@
+"""Derives equivalent case fields and defines when a value counts as answered."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 LEGAL_ENTRY_TO_ARRIVAL_TYPE = {
     "visa_admitted": "admitted",
@@ -12,6 +13,18 @@ LEGAL_ENTRY_TO_ARRIVAL_TYPE = {
 
 
 def value_is_answered(value: Any) -> bool:
+    """Returns whether a value holds an answer.
+
+    This is the one definition of "answered" for the whole app. False and 0 are answers. None, blank
+    strings, and lists or dicts holding only those are not, so a form control left blank never
+    counts as a response.
+
+    Args:
+        value: Any saved answer or case fact.
+
+    Returns:
+        True if the value holds at least one real answer.
+    """
     if value is None:
         return False
     if isinstance(value, bool):

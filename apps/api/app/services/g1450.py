@@ -1,9 +1,11 @@
+"""Generates Form G-1450 and payment packets."""
+
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+import json
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -15,7 +17,9 @@ from sqlmodel import Session, select
 from app.content.fee_schedule import G1450_FORM_FEES, G1450_PAYMENT_NOTE
 from app.models.entities import CaseChecklistItem, CaseRecord
 from app.services.intake import get_merged_case_intake
-from app.services.i485_pdf import _defined_appearance
+from app.services.pdf_fields import (
+    defined_appearance,
+)
 
 CARD_TYPE_APPEARANCES = {
     "visa": ("CreditCardTypeChBx[0]", NameObject("/V")),
@@ -68,6 +72,7 @@ class G1450PacketPlan:
 
 
 def load_card_payload(path: Path) -> dict[str, Any]:
+    """Reads card details from a local JSON file."""
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -97,14 +102,16 @@ def _parse_amount(value: Any) -> Decimal:
     return amount
 
 
-def _whole_dollar_amount(value: Any) -> str:
+def whole_dollar_amount(value: Any) -> str:
+    """Returns a fee amount as whole dollars, the form's format."""
     amount = _parse_amount(value)
     if amount <= 0 or amount != amount.to_integral_value():
         raise ValueError("Payment forms need a whole-dollar amount greater than zero.")
     return str(int(amount))
 
 
-def _split_name(full_name: str) -> tuple[str, str, str]:
+def split_name(full_name: str) -> tuple[str, str, str]:
+    """Returns a full name split into its parts."""
     parts = [part for part in full_name.strip().split() if part]
     if not parts:
         return "", "", ""
@@ -178,12 +185,13 @@ def _unit_kind_and_number(street_2: str) -> tuple[str | None, str]:
     return "CCHolderAptSteFlr_Unit[1]", normalized
 
 
-def _set_checkbox(writer: PdfWriter, field_name: str, appearance: NameObject) -> None:
+def set_checkbox(writer: PdfWriter, field_name: str, appearance: NameObject) -> None:
+    """Checks one checkbox in a PDF."""
     for page in writer.pages:
         for annotation_ref in page.get("/Annots", []):
             annotation = annotation_ref.get_object()
             if annotation.get("/T") == field_name:
-                defined = _defined_appearance(annotation, appearance)
+                defined = defined_appearance(annotation, appearance)
                 annotation.update(
                     {
                         NameObject("/V"): defined,
@@ -192,7 +200,8 @@ def _set_checkbox(writer: PdfWriter, field_name: str, appearance: NameObject) ->
                 )
 
 
-def _use_saved_appearances(writer: PdfWriter) -> None:
+def use_saved_appearances(writer: PdfWriter) -> None:
+    """Keeps PDF viewers from redrawing fields, which would break the form's barcode."""
     # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
     writer._root_object.update(
         {
@@ -216,6 +225,7 @@ def generate_g1450_pdf(
     form_code: str | None = None,
     filing_category: str | None = None,
 ) -> GeneratedG1450:
+    """Writes a G-1450 from a local JSON file."""
     payload = load_card_payload(card_json_path)
     return generate_g1450_pdf_from_payload(
         payload=payload,
@@ -240,14 +250,15 @@ def generate_g1450_pdf_from_payload(
     form_code: str | None = None,
     filing_category: str | None = None,
 ) -> GeneratedG1450:
+    """Writes a G-1450 from payment details."""
     if not template_path.exists():
         raise ValueError(f"G-1450 template PDF not found at {template_path}.")
     cardholder_name = _required_string(payload, "cardholder_name")
     requestor_name = str(
         payload.get("applicant_name") or payload.get("signature_name") or cardholder_name
     ).strip()
-    family_name, given_name, middle_name = _split_name(requestor_name)
-    cc_family_name, cc_given_name, cc_middle_name = _split_name(cardholder_name)
+    family_name, given_name, middle_name = split_name(requestor_name)
+    cc_family_name, cc_given_name, cc_middle_name = split_name(cardholder_name)
     billing = _billing_address(payload)
     chunks = _card_chunks(_required_string(payload, "credit_card_number"))
     amount = _format_amount(amount_override or payload.get("authorized_amount"))
@@ -287,24 +298,24 @@ def generate_g1450_pdf_from_payload(
         # USCIS says a typewritten name is not an acceptable G-1450 signature.
         "SignatureOfApplicant[0]": "",
         # The form preprints ".00" after this field, so writing cents would print "675.00 .00".
-        "AuthorizedPaymentAmt[0]": _whole_dollar_amount(amount),
+        "AuthorizedPaymentAmt[0]": whole_dollar_amount(amount),
     }
 
     reader = PdfReader(template_path)
     writer = PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
-    _use_saved_appearances(writer)
+    use_saved_appearances(writer)
     for page in writer.pages:
         writer.update_page_form_field_values(page, text_values, auto_regenerate=False)
-    _set_checkbox(writer, selected_card[0], selected_card[1])
+    set_checkbox(writer, selected_card[0], selected_card[1])
     if unit_field:
         appearance = {
             "CCHolderAptSteFlr_Unit[0]": NameObject("/ STE "),
             "CCHolderAptSteFlr_Unit[1]": NameObject("/ APT "),
             "CCHolderAptSteFlr_Unit[2]": NameObject("/ FLR "),
         }[unit_field]
-        _set_checkbox(writer, unit_field, appearance)
+        set_checkbox(writer, unit_field, appearance)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as handle:
@@ -329,6 +340,7 @@ def _case_or_error(session: Session, case_id: UUID) -> CaseRecord:
 
 
 def payable_checklist_items(session: Session, case_id: UUID) -> list[CaseChecklistItem]:
+    """Returns a case's checklist items that carry a fee."""
     _case_or_error(session, case_id)
     items = list(
         session.exec(
@@ -345,6 +357,7 @@ def payable_checklist_items(session: Session, case_id: UUID) -> list[CaseCheckli
 
 
 def get_case_g1450_payment_options(session: Session, case_id: UUID) -> list[G1450PaymentOption]:
+    """Returns the fees a case can pay and their amounts."""
     return [_payment_option_for_item(item) for item in payable_checklist_items(session, case_id)]
 
 
@@ -372,6 +385,7 @@ def generate_case_g1450_packet(
     output_dir: Path,
     selected_checklist_codes: list[str] | None = None,
 ) -> G1450PacketPlan:
+    """Writes a case's G-1450 forms from a local JSON file."""
     payload = load_card_payload(card_json_path)
     return generate_case_g1450_packet_from_payload(
         session=session,
@@ -394,6 +408,7 @@ def generate_case_g1450_packet_from_payload(
     selected_checklist_codes: list[str] | None = None,
     source_json_path: Path | None = None,
 ) -> G1450PacketPlan:
+    """Writes a case's G-1450 forms from payment details."""
     return generate_case_payment_packet(
         session=session,
         case_id=case_id,
@@ -419,6 +434,7 @@ def generate_case_payment_packet(
     filename_suffix: str,
     source_json_path: Path | None = None,
 ) -> G1450PacketPlan:
+    """Writes payment forms for the selected fees."""
     items = payable_checklist_items(session, case_id)
     applicable_codes = {item.code for item in items}
     selected_codes = applicable_codes if selected_checklist_codes is None else set(selected_checklist_codes)

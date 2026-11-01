@@ -201,6 +201,8 @@ It is intentionally separate from persisted packet QA:
 - Missing required I-485 answers are a blocking QA issue, so a case with a started I-485 cannot read as ready to print. The
   stored readiness label updates the next time QA runs.
 - Other names entered on the I-485 are shared through intake and proposed to the I-765 and I-131 as one name per line.
+- `value_is_answered` in `apps/api/app/services/case_facts.py` is the one definition of an answered value. False and 0 are
+  answers. Blank strings and lists or dicts holding only blanks are not, so a cleared form control does not block a proposal.
 - Free text saved on a list entry before it was structured is shown on the entry and prints in Part 14, on every I-485 list.
   It does not keep the entry's structured fields off the form, and it does not put "See Part 14" in the next row, because only
   a whole entry moved to Part 14 gets that pointer. If Part 14 cannot hold the note, the row still prints and the question is
