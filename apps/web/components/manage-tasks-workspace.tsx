@@ -294,7 +294,15 @@ export function ManageTasksWorkspace() {
                                 {formatStatus(necessity)}
                               </Badge>
                               {task.item && isEvidenceItem(task.item) && !attachedCodes.has(task.item.code) ? (
-                                <Badge tone={checked ? "warning" : "neutral"}>{checked ? "Ticked, no file attached" : "No file yet"}</Badge>
+                                <>
+                                  <Badge tone={checked ? "warning" : "neutral"}>{checked ? "Ticked, no file attached" : "No file yet"}</Badge>
+                                  <Link
+                                    href={`/packet-assembly?caseId=${encodeURIComponent(caseSummary?.id ?? "")}#evidence-heading`}
+                                    className="text-xs font-semibold text-pine underline-offset-4 hover:underline"
+                                  >
+                                    Attach file
+                                  </Link>
+                                </>
                               ) : null}
                               {task.item && !checked && task.item.completion_status !== "not_started" ? (
                                 <Badge className="capitalize">{formatStatus(task.item.completion_status)}</Badge>

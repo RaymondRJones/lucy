@@ -847,7 +847,7 @@ export function FormIngestionWorkspace({
       <PageHeader
         eyebrow={`Step 2 \u00b7 ${questionnaire.form_code}`}
         title={questionnaire.title}
-        description="Answer each page, then save. Answers you gave on other forms are filled in for you to confirm."
+        description="Answers save when you move to another page or select Save. Answers you gave on other forms are filled in for you to confirm."
         actions={
           <>
             <details className="relative">

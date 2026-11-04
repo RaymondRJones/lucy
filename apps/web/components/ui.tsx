@@ -115,7 +115,7 @@ type Tone = "neutral" | "strong" | "success" | "warning" | "danger" | "info" | "
 
 const BADGE_TONES: Record<Tone, string> = {
   neutral: "border-line bg-paper text-muted",
-  strong: "border-line-strong bg-white text-ink",
+  strong: "border-ink bg-ink text-white",
   success: "border-pine/20 bg-pine-soft text-pine-strong",
   warning: "border-amber-200 bg-amber-50 text-amber-900",
   danger: "border-red-200 bg-red-50 text-red-800",
@@ -174,29 +174,37 @@ export function Notice({
 }
 
 const ERROR_PATTERN = /(could not|failed|error|unable|not found|invalid|refused)/i;
+const WARNING_PATTERN = /(skipped|no payment|not added|need attention)/i;
+const UNREACHABLE_PATTERN = /could not reach the lucy api/i;
 
-// Status line for the result of the last action. Errors are announced assertively.
+// Status line for the result of the last action. Errors are announced assertively; warnings stand out in amber.
 export function StatusMessage({ message, className }: { message: string | null | undefined; className?: string }) {
   if (!message) {
     return null;
   }
   const isError = ERROR_PATTERN.test(message);
+  const isWarning = !isError && WARNING_PATTERN.test(message);
   return (
-    <p
+    <div
       role={isError ? "alert" : "status"}
       aria-live={isError ? "assertive" : "polite"}
       className={cx(
-        "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm leading-6",
-        isError ? "border-red-200 bg-red-50 text-red-900" : "border-line bg-white text-muted",
+        "flex flex-wrap items-start gap-x-2 gap-y-2 rounded-lg border px-3 py-2 text-sm leading-6",
+        isError ? "border-red-200 bg-red-50 text-red-900" : isWarning ? "border-amber-200 bg-amber-50 text-amber-950" : "border-line bg-white text-muted",
         className,
       )}
     >
       <span
         aria-hidden="true"
-        className={cx("mt-2 h-1.5 w-1.5 shrink-0 rounded-full", isError ? "bg-red-600" : "bg-pine")}
+        className={cx("mt-2 h-1.5 w-1.5 shrink-0 rounded-full", isError ? "bg-red-600" : isWarning ? "bg-amber-500" : "bg-pine")}
       />
-      <span className="min-w-0">{message}</span>
-    </p>
+      <span className="min-w-0 flex-1">{message}</span>
+      {UNREACHABLE_PATTERN.test(message) ? (
+        <button type="button" onClick={() => window.location.reload()} className={buttonClass("secondary", "sm")}>
+          Try again
+        </button>
+      ) : null}
+    </div>
   );
 }
 

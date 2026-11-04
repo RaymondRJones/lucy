@@ -150,14 +150,23 @@ export function ComeBackToggle({
       title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question so it shows in your list to come back to."}
       className={cx(
         "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
-        flagged ? (compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs") : "h-8 w-8 justify-center text-sm",
+        compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs",
         flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
       )}
     >
       <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
-      {flagged ? "Marked for later" : <span className="sr-only">Mark for later</span>}
+      {flagged ? "Marked for later" : (
+        <>
+          Flag<span className="sr-only"> for later</span>
+        </>
+      )}
     </button>
   );
+}
+
+// Generated helper lines like "This asks for the applicant's family name." only restate the label, so they are not shown.
+function addsInformation(text: ReactNode) {
+  return typeof text !== "string" || !/^(This asks for the|Answer this for the)\b/.test(text.trim());
 }
 
 export function QuestionCard({
@@ -206,7 +215,7 @@ export function QuestionCard({
               </span>
             ) : null}
           </p>
-          {plainLanguage ? <p className="mt-0.5 text-sm leading-6 text-muted">{plainLanguage}</p> : null}
+          {plainLanguage && addsInformation(plainLanguage) ? <p className="mt-0.5 text-sm leading-6 text-muted">{plainLanguage}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {missing ? <Badge tone="danger">Missing</Badge> : null}

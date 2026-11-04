@@ -726,12 +726,14 @@ export function PacketAssemblyWorkspace() {
           const skippedUploadCount = payload.skipped_documents.filter(
             (document) => document.source_type === "upload",
           ).length;
+          const kind = includeSupportingEvidence ? "full" : "forms-only";
+          const sections = `${payload.included_documents.length} ${payload.included_documents.length === 1 ? "section" : "sections"}`;
           setMessage(
             paymentSkipped
-              ? `Generated ${includeSupportingEvidence ? "full" : "forms-only"} packet with ${payload.included_documents.length} PDF section(s). Payment PDFs were skipped because no card details or uploaded G-1450 were provided.`
+              ? `Assembled a ${kind} packet with ${sections}. No payment form was added; see the note below.`
               : skippedUploadCount
-                ? `Generated ${includeSupportingEvidence ? "full" : "forms-only"} packet with ${payload.included_documents.length} PDF section(s). ${skippedUploadCount} uploaded file${skippedUploadCount === 1 ? "" : "s"} need attention below.`
-                : `Generated ${includeSupportingEvidence ? "full" : "forms-only"} packet with ${payload.included_documents.length} PDF section(s).`,
+                ? `Assembled a ${kind} packet with ${sections}. ${skippedUploadCount} uploaded ${skippedUploadCount === 1 ? "file needs" : "files need"} attention below.`
+                : `Assembled a ${kind} packet with ${sections}.`,
           );
         })
         .catch((error) => {
@@ -750,6 +752,11 @@ export function PacketAssemblyWorkspace() {
     0,
   );
   const paymentFormName = paymentMethod === "ach" ? "G-1650" : "G-1450";
+  const resultHasPayment = Boolean(
+    result?.included_documents.some(
+      (document) => document.source_type === "generated_payment_form" || document.checklist_item_code === "payment_g1450",
+    ),
+  );
   const paymentReady =
     paymentMode === "existing"
       ? paymentUploads.length > 0
@@ -851,7 +858,7 @@ export function PacketAssemblyWorkspace() {
           <Card className="border-pine/30">
             <SectionHeader
               id="result-heading"
-              eyebrow="Packet ready"
+              eyebrow={resultHasPayment ? "Packet ready" : "Packet assembled, payment missing"}
               title={`${includeSupportingEvidence ? "Full packet" : "Forms-only packet"} \u00b7 ${result.total_page_count} pages`}
               description="Open the PDF and check every page before printing single-sided on letter paper."
               actions={
@@ -865,6 +872,21 @@ export function PacketAssemblyWorkspace() {
                 </>
               }
             />
+            {!resultHasPayment ? (
+              <Notice
+                tone="warning"
+                className="mt-4"
+                title="This packet has no payment form"
+                actions={
+                  <a href="#payment-heading" className={buttonClass("secondary", "sm")}>
+                    Add payment
+                  </a>
+                }
+              >
+                Forms with a filing fee need payment in the packet. Add card or bank details in Payment and assemble again, or put
+                your own signed Form G-1450 or G-1650 on top of each form before mailing.
+              </Notice>
+            ) : null}
             <ol className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
               {result.included_documents.map((document, index) => (
                 <li key={packetDocumentKey(document, index)} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3 bg-white px-4 py-2.5 text-sm">
@@ -1062,7 +1084,9 @@ export function PacketAssemblyWorkspace() {
                                     </Badge>
                                     {itemUploads.length ? <Badge tone="success">Attached</Badge> : null}
                                   </div>
-                                  <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
+                                  {itemUploads.length && !replacingCodes.has(item.code) ? null : (
+                                    <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
+                                  )}
                                   {itemUploads.length ? (
                                     <ul className="mt-2 flex flex-wrap gap-2">{itemUploads.map((upload) => fileChip(upload, true))}</ul>
                                   ) : null}
@@ -1082,7 +1106,7 @@ export function PacketAssemblyWorkspace() {
                                       onClick={() => setReplacingCodes((current) => new Set(current).add(item.code))}
                                       className={buttonClass("secondary", "sm")}
                                     >
-                                      Add or replace a file
+                                      Replace or add
                                     </button>
                                   </div>
                                 ) : (

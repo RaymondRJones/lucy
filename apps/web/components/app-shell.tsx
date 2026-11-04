@@ -63,6 +63,7 @@ export function AppShell({
   const [fetchedCase, setFetchedCase] = useState<{ id: string; name: string; readiness: string } | null>(null);
 
   const [statuses, setStatuses] = useState<{ caseId: string; value: StepStatuses } | null>(null);
+  const [caseLoadFailed, setCaseLoadFailed] = useState<string | null>(null);
 
   // Loads the case name for pages that only know the ID, and step marks from saved case state.
   useEffect(() => {
@@ -110,7 +111,11 @@ export function AppShell({
         }
         setStatuses({ caseId, value });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) {
+          setCaseLoadFailed(caseId);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -137,7 +142,7 @@ export function AppShell({
             <StepList activeIndex={activeIndex} caseId={caseId} statuses={stepStatuses} />
           </nav>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 lg:ml-0">
-            <CaseSwitcher caseId={caseId} name={shownName} readiness={shownReadiness} />
+            <CaseSwitcher caseId={caseId} name={shownName} readiness={shownReadiness} caseUnavailable={caseLoadFailed === caseId} />
           </div>
         </div>
         <MobileSteps activeIndex={activeIndex} caseId={caseId} statuses={stepStatuses} />
@@ -181,7 +186,17 @@ function switchToCase(nextCase: CaseSummary) {
 }
 
 // The one place to see and change which case is open.
-function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; name: string | null; readiness: string | null }) {
+function CaseSwitcher({
+  caseId,
+  name,
+  readiness,
+  caseUnavailable,
+}: {
+  caseId?: string | null;
+  name: string | null;
+  readiness: string | null;
+  caseUnavailable: boolean;
+}) {
   return (
     <details className="group relative min-w-0">
       <summary
@@ -189,7 +204,7 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
         aria-label={name ? `Case: ${name}. Change case` : "Open a case"}
       >
         <span className="hidden text-xs font-semibold text-muted sm:inline">Case</span>
-        <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[14rem] xl:max-w-[18rem]">{name ?? (caseId ? "Loading..." : "No case open")}</span>
+        <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[14rem] xl:max-w-[18rem]">{name ?? (caseId ? (caseUnavailable ? "Case unavailable" : "Loading...") : "No case open")}</span>
         <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
           {"\u25BE"}
         </span>
@@ -224,8 +239,8 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
 
 function MobileSteps({ activeIndex, caseId, statuses }: { activeIndex: number; caseId?: string | null; statuses: StepStatuses }) {
   const current = STEPS[activeIndex];
-  // "Next" points at the first later step that is not finished yet.
-  const next = STEPS.slice(activeIndex + 1).find((entry) => statuses[entry.id]?.state !== "done") ?? STEPS[activeIndex + 1];
+  // Always the adjacent step, so the shortcut never skips Checklist or Review.
+  const next = STEPS[activeIndex + 1];
   return (
     <nav aria-label="Packet steps" className="border-t border-line lg:hidden">
       <div className="mx-auto flex max-w-shell items-center justify-between gap-3 px-4 py-1.5 md:px-8">

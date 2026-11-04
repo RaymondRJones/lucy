@@ -314,9 +314,13 @@ export function ReviewWorkspace() {
                     </label>
                     {acknowledgedIssues ? (
                       <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md", "shrink-0")}>
-                        Continue to print packet
+                        Continue to print packet anyway
                       </Link>
-                    ) : null}
+                    ) : (
+                      <span aria-disabled="true" className={buttonClass("secondary", "md", "shrink-0 cursor-not-allowed border-line text-muted shadow-none")}>
+                        Continue to print packet anyway
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : null}
