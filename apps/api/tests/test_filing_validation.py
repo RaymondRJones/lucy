@@ -904,6 +904,14 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
             "beneficiary_current_address": "123 Sample Street, Example City, CA 90000",
             "beneficiary_address_since": "2020-01-01",
             "beneficiary_marriage_count": 1,
+            "parent1_last_name": "Garcia",
+            "parent1_first_name": "Rosa",
+            "parent1_date_of_birth": "1972-03-03",
+            "parent1_country_of_birth": "Colombia",
+            "parent2_last_name": "Garcia",
+            "parent2_first_name": "Carlos",
+            "parent2_date_of_birth": "1970-11-20",
+            "parent2_country_of_birth": "Colombia",
         },
     )
     session.commit()
@@ -911,8 +919,8 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
     report = validate_case_filings(session, case.id, form_codes=["form_i130a"])
 
     assert report["summary"]["status"] == "passed"
-    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
-    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
+    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
+    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
     assert report["forms"][0]["metadata"]["mapped_pdf_field_count"] > 0
     assert report["forms"][0]["metadata"]["missing_template_fields"] == []
 
@@ -1091,3 +1099,33 @@ def test_filing_validation_capabilities_route_lists_templates_and_roadmap():
     finally:
         app.dependency_overrides.clear()
         session.close()
+
+
+def test_filing_validation_i130a_finds_parent_facts_only_saved_on_the_i485():
+    session = make_session()
+    case = create_case(session)
+    # Saved before these answers projected to intake, so only the I-485 step holds them.
+    upsert_intake_step(
+        session,
+        case.id,
+        "i485_ingestion:page_parents",
+        {"answers": {"parent1_last_name": "Garcia", "parent1_first_name": "Rosa"}},
+    )
+    session.commit()
+
+    codes = issue_codes(validate_case_filings(session, case.id, form_codes=["form_i130a"]))
+
+    assert "form_i130a_parent1_last_name_missing_required" not in codes
+    assert "form_i130a_parent1_first_name_missing_required" not in codes
+    assert "form_i130a_parent2_last_name_missing_required" in codes
+
+
+def test_filing_validation_i130_flags_a_class_of_admission_the_form_does_not_offer():
+    session = make_session()
+    case = create_case(session)
+    upsert_intake_step(session, case.id, "baseline", {"beneficiary_class_of_admission": "TN"})
+    session.commit()
+
+    report = validate_case_filings(session, case.id, form_codes=["form_i130"])
+
+    assert "form_i130_class_of_admission_not_offered" in issue_codes(report)

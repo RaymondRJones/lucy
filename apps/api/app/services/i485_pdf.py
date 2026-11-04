@@ -12,7 +12,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, TextStringObject
 from sqlmodel import Session
 
-from app.content.admission_classes import normalize_class_of_admission
+from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, normalize_class_of_admission
 from app.content.i485_questionnaire import all_i485_questions
 from app.core.config import settings
 from app.services.i485 import (
@@ -700,26 +700,41 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     return str(value).strip()
 
 
+# Part 1, Items 12 and 14 of edition 09/18/26 hold 20 characters.
+I485_STATUS_FIELD_LENGTH = 20
+
+
+I485_STATUS_LABELS = {
+    "B-1": "B-1 Business Visitor",
+    "B-2": "B-2 Visitor",
+    "F-1": "F-1 Student",
+    "F-2": "F-2 Dependent",
+    "J-1": "J-1 Exchange Visitor",
+    "J-2": "J-2 Dependent",
+    "M-1": "M-1 Student",
+    "M-2": "M-2 Dependent",
+}
+
+
 def _immigration_status_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return ""
+    if raw.lower() in {"visitor", "b2 visitor"}:
+        return I485_STATUS_LABELS["B-2"]
+    known_classes = {option["value"] for option in CLASS_OF_ADMISSION_OPTIONS}
     normalized = normalize_class_of_admission(raw)
-    if normalized == "B-2" or raw.strip().lower() in {"visitor", "b2 visitor", "b-2 visitor"}:
-        return "B-2 Visitor"
-    if normalized == "B-1":
-        return "B-1 Visitor for Business"
-    if normalized in {"F-1", "F-2", "J-1", "J-2", "M-1", "M-2"}:
-        labels = {
-            "F-1": "F-1 Student",
-            "F-2": "F-2 Dependent",
-            "J-1": "J-1 Exchange Visitor",
-            "J-2": "J-2 Dependent",
-            "M-1": "M-1 Vocational Student",
-            "M-2": "M-2 Dependent",
-        }
-        return labels[normalized]
-    return raw if " " in raw else normalized
+    if normalized not in known_classes:
+        # A description too long for the box collapses to its class, such as "B-1 visitor for business".
+        # A shorter answer keeps its wording, such as "F-1 OPT", unless it only restates the label.
+        first_word_class = normalize_class_of_admission(raw.split()[0])
+        if len(raw) > I485_STATUS_FIELD_LENGTH or raw.lower() == I485_STATUS_LABELS.get(first_word_class, "").lower():
+            normalized = first_word_class
+    if normalized in I485_STATUS_LABELS:
+        return I485_STATUS_LABELS[normalized]
+    if " " not in raw:
+        return normalized
+    return normalized if normalized in known_classes and len(raw) > I485_STATUS_FIELD_LENGTH else raw
 
 
 def _parse_pdf_date(value: Any) -> datetime | None:
@@ -814,20 +829,17 @@ def _add_unit_fields(
     ste_field: str,
     flr_field: str,
     number_field: str,
-    apt_appearance: str = "/ APT ",
-    ste_appearance: str = "/ STE ",
-    flr_appearance: str = "/ FLR ",
 ) -> None:
     unit_kind, unit_number = _unit_kind_and_number(value)
     if not unit_kind:
         return
     text_values[number_field] = unit_number
     if unit_kind == "apt":
-        checkbox_values[apt_field] = apt_appearance
+        checkbox_values[apt_field] = "/ APT "
     elif unit_kind == "ste":
-        checkbox_values[ste_field] = ste_appearance
+        checkbox_values[ste_field] = "/ STE "
     elif unit_kind == "flr":
-        checkbox_values[flr_field] = flr_appearance
+        checkbox_values[flr_field] = "/ FLR "
 
 
 def _add_prior_address_fields(
@@ -841,10 +853,11 @@ def _add_prior_address_fields(
     raw = answers.get("beneficiary_prior_address_history")
     if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict):
         return
-    entries = [_normalized_address_for_pdf(entry) for entry in raw if isinstance(entry, dict) and _value_is_answered(entry)]
-    if not entries:
+    answered = [entry for entry in raw if isinstance(entry, dict) and _entry_has_content(entry)]
+    if not answered:
         return
-    address = entries[0]
+    entries = [_normalized_address_for_pdf(entry) for entry in answered if _entry_has_content(_without_notes(entry))]
+    address = entries[0] if entries else {}
     mapped_fields: list[str] = []
     field_map = {
         "in_care_of": "Pt1Line18_PriorInCareOfName[0]",
@@ -875,9 +888,13 @@ def _add_prior_address_fields(
     )
     after = set(text_values) | set(checkbox_values)
     mapped_fields.extend(sorted(after - before))
-    continuation_text = "\n".join(
+    continuation_lines = [
         _address_continuation_text(entry, entry_index) for entry_index, entry in enumerate(entries[1:], start=2)
+    ]
+    continuation_lines.extend(
+        f"Prior address note: {str(entry['notes']).strip()}" for entry in answered if _value_is_answered(entry.get("notes"))
     )
+    continuation_text = "\n".join(continuation_lines)
     if continuation_text and not _part14_has_room(text_values, continuation_text):
         # Left unmapped so the review screen reports the addresses that did not make it onto the form.
         return
@@ -1083,7 +1100,9 @@ def _add_employment_history_fields(
     mapped_questions: list[dict[str, Any]],
     mapped_question_ids: set[str],
 ) -> None:
-    entries = _list_entries(answers.get("beneficiary_employment_history"))
+    all_entries = _list_entries(answers.get("beneficiary_employment_history"))
+    # An entry that is only free text from before the list was structured has no row, so it continues in Part 14.
+    entries = [entry for entry in all_entries if _entry_has_content(_without_notes(entry))]
     mapped_fields: list[str] = []
     outside_entry = None
     if entries:
@@ -1110,7 +1129,18 @@ def _add_employment_history_fields(
         )
         outside_entry = next((entry for entry in entries if entry.get("outside_us") is True and entry is not entries[0]), None)
 
-    foreign_entry = outside_entry or next(iter(_employment_entries_from_value(answers.get("beneficiary_foreign_employer_or_school"))), None)
+    placed_entries = [entry for entry in (entries[0] if entries else None, outside_entry) if entry is not None]
+    overflow_entries = [
+        entry
+        for entry in all_entries
+        if not any(entry is placed for placed in placed_entries) or _value_is_answered(entry.get("notes"))
+    ]
+    foreign_answer = _employment_entries_from_value(answers.get("beneficiary_foreign_employer_or_school"))
+    overflow_entries.extend(entry for entry in foreign_answer if _value_is_answered(entry.get("notes")))
+    overflow_text = "\n".join(_employment_continuation_line(entry) for entry in overflow_entries)
+    overflow_fits = _part14_has_room(text_values, overflow_text)
+
+    foreign_entry = outside_entry or next(iter(foreign_answer), None)
     if foreign_entry:
         mapped_fields.extend(
             _add_employment_entry_fields(
@@ -1136,7 +1166,7 @@ def _add_employment_history_fields(
                 force_foreign=True,
             )
         )
-        if _value_is_answered(answers.get("beneficiary_foreign_employer_or_school")):
+        if _value_is_answered(answers.get("beneficiary_foreign_employer_or_school")) and overflow_fits:
             mapped_question_ids.add("beneficiary_foreign_employer_or_school")
             mapped_questions.append(
                 {
@@ -1159,9 +1189,6 @@ def _add_employment_history_fields(
                 }
             )
 
-    overflow_entries = entries[1:] if outside_entry is None else [entry for entry in entries[1:] if entry is not outside_entry]
-    overflow_text = "\n".join(_employment_continuation_line(entry) for entry in overflow_entries)
-    overflow_fits = _part14_has_room(text_values, overflow_text)
     if overflow_entries and overflow_fits:
         mapped_fields.extend(
             _add_part14_continuation(
@@ -1174,7 +1201,7 @@ def _add_employment_history_fields(
         )
 
     # Left unmapped when it does not fit, so the review screen reports the jobs that did not make it onto the form.
-    if entries and overflow_fits:
+    if all_entries and overflow_fits:
         mapped_question_ids.add("beneficiary_employment_history")
         mapped_questions.append(
             {
@@ -1231,7 +1258,6 @@ def _add_address_fields(
     checkbox_values: dict[str, str],
     field_map: dict[str, str],
     unit_fields: tuple[str, str, str, str] | None = None,
-    unit_appearances: tuple[str, str, str] | None = None,
     fallback_country: Any = None,
     force_foreign: bool = False,
 ) -> list[str]:
@@ -1258,9 +1284,6 @@ def _add_address_fields(
             ste_field=unit_fields[1],
             flr_field=unit_fields[2],
             number_field=unit_fields[3],
-            apt_appearance=(unit_appearances or ("/ APT ", "/ STE ", "/ FLR "))[0],
-            ste_appearance=(unit_appearances or ("/ APT ", "/ STE ", "/ FLR "))[1],
-            flr_appearance=(unit_appearances or ("/ APT ", "/ STE ", "/ FLR "))[2],
         )
         after = set(text_values) | set(checkbox_values)
         mapped_fields.extend(sorted(after - before))
@@ -1347,11 +1370,22 @@ def _entries_for_mapping(value: Any) -> list[dict[str, Any]]:
     for raw in raw_entries:
         if isinstance(raw, str) and raw.strip():
             entries.append({"notes": raw.strip()})
-        elif isinstance(raw, dict) and any(
-            _value_is_answered(entry) and not isinstance(entry, bool) for entry in raw.values()
-        ):
+        elif isinstance(raw, dict) and _entry_has_content(raw):
             entries.append(raw)
     return entries
+
+
+def _entry_has_content(entry: dict[str, Any]) -> bool:
+    # A false checkbox alone is only the form control's default, not an answer.
+    return any(_value_is_answered(value) and not isinstance(value, bool) for value in entry.values())
+
+
+def _without_notes(entry: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in entry.items() if key != "notes"}
+
+
+def _entry_has_note_and_fields(entry: dict[str, Any]) -> bool:
+    return _value_is_answered(entry.get("notes")) and _entry_has_content(_without_notes(entry))
 
 
 def _entry_field_value(key: str, value: Any) -> str:
@@ -1380,10 +1414,7 @@ def _entry_continuation_text(mapping: EntryListMapping, entry: dict[str, Any]) -
     fields = {field["key"]: field for field in QUESTION_BY_ID[mapping.question_id].get("entry_fields", [])}
     parts = []
     for key, value in entry.items():
-        if not _value_is_answered(value):
-            continue
-        if key == "notes":
-            parts.append(str(value).strip())
+        if key == "notes" or not _value_is_answered(value):
             continue
         field = fields.get(key, {})
         option_labels = {option["value"]: option["label"] for option in field.get("options", [])}
@@ -1392,6 +1423,9 @@ def _entry_continuation_text(mapping: EntryListMapping, entry: dict[str, Any]) -
         else:
             shown = option_labels.get(value) or _entry_field_value(key, value)
         parts.append(f"{field.get('label', key)}: {shown}")
+    if _value_is_answered(entry.get("notes")):
+        note = str(entry["notes"]).strip()
+        parts.append(f"Note: {note}" if parts else note)
     return f"{mapping.entry_label}: " + "; ".join(parts)
 
 
@@ -1409,15 +1443,25 @@ def _add_entry_list_fields(
             continue
         placed: list[dict[str, Any]] = []
         overflow: list[dict[str, Any]] = []
+        noted: list[dict[str, Any]] = []
         for entry in entries:
-            if len(placed) < len(mapping.rows) and _entry_fits_row(mapping, entry, len(placed)):
-                placed.append(entry)
+            # Free text from before the list was structured has no box, so it must not keep the row off the form.
+            row_entry = _without_notes(entry) if _entry_has_note_and_fields(entry) else entry
+            if len(placed) < len(mapping.rows) and _entry_fits_row(mapping, row_entry, len(placed)):
+                placed.append(row_entry)
+                if row_entry is not entry:
+                    noted.append(entry)
             else:
                 overflow.append(entry)
         overflow_text = "\n".join(_entry_continuation_text(mapping, entry) for entry in overflow)
         # Answers that do not fit stay unmapped so the review screen reports them instead of dropping them.
         if overflow and not _part14_has_room(text_values, overflow_text):
             continue
+        continuation_text = "\n".join(_entry_continuation_text(mapping, entry) for entry in [*overflow, *noted])
+        # A note must not cost a row that fits, so only the note is left out and reported.
+        notes_fit = _part14_has_room(text_values, continuation_text)
+        if not notes_fit:
+            continuation_text = overflow_text
         fields: list[str] = []
         for row_index, entry in enumerate(placed):
             row = mapping.rows[row_index]
@@ -1430,21 +1474,24 @@ def _add_entry_list_fields(
                     field_name, appearance = choices[entry[key]]
                     checkbox_values[field_name] = appearance
                     fields.append(field_name)
-        if overflow:
-            if len(placed) < len(mapping.rows):
-                first_key, first_field = next(iter(mapping.rows[len(placed)].items()))
-                if mapping.limits.get(first_key, len(SEE_PART14)) >= len(SEE_PART14):
-                    text_values[first_field] = SEE_PART14
-                    fields.append(first_field)
+        # Only a whole entry moved to Part 14 gets the pointer. A note on a placed entry would read as another entry.
+        if overflow and len(placed) < len(mapping.rows):
+            first_key, first_field = next(iter(mapping.rows[len(placed)].items()))
+            if mapping.limits.get(first_key, len(SEE_PART14)) >= len(SEE_PART14):
+                text_values[first_field] = SEE_PART14
+                fields.append(first_field)
+        if continuation_text:
             fields.extend(
                 _add_part14_continuation(
                     text_values=text_values,
                     page_number=mapping.page,
                     part_number=mapping.part,
                     item_number=mapping.item,
-                    text=overflow_text,
+                    text=continuation_text,
                 )
             )
+        if not notes_fit:
+            continue
         _record_mapped_question(
             question_id=mapping.question_id,
             fields=fields,
@@ -1542,8 +1589,9 @@ def _add_public_charge_fields(
                 mapped_question_ids=mapped_question_ids,
             )
 
-    benefits = _list_entries(answers.get("means_tested_benefit_history"))
-    if benefits:
+    all_benefits = _list_entries(answers.get("means_tested_benefit_history"))
+    if all_benefits:
+        benefits = [entry for entry in all_benefits if _entry_has_content(_without_notes(entry))]
         continuation_lines = []
         for index, entry in enumerate(benefits, start=1):
             name = str(entry.get("benefit_name") or "").strip()
@@ -1553,6 +1601,9 @@ def _add_public_charge_fields(
                     f"{name}: {_as_pdf_date(entry.get('start_date'))} to {_as_pdf_date(entry.get('end_date')) or 'present'}; "
                     f"amount {str(entry.get('dollar_amount') or '').strip() or 'N/A'}; reason: {reason}"
                 )
+        continuation_lines.extend(
+            f"Public benefit note: {str(entry['notes']).strip()}" for entry in all_benefits if _value_is_answered(entry.get("notes"))
+        )
         continuation_text = "\n".join(continuation_lines)
         if not continuation_lines or _part14_has_room(text_values, continuation_text):
             fields = []
@@ -1662,7 +1713,6 @@ def _add_special_fields(
             "country": "P6Line8_Country[0]",
         },
         unit_fields=("P6Line8_Unit[0]", "P6Line8_Unit[1]", "P6Line8_Unit[2]", "P6Line8_Number[0]"),
-        unit_appearances=("/APT", "/STE", "/FLR"),
     )
     if petitioner_fields:
         mapped_question_ids.add("petitioner_current_address")
@@ -1713,7 +1763,6 @@ def _add_special_fields(
             "to": "Pt1Line18_RecentDateTo[0]",
         },
         unit_fields=("Pt1Line18_RecentUnit[0]", "Pt1Line18_RecentUnit[1]", "Pt1Line18_RecentUnit[2]", "Pt1Line18_RecentNumber[0]"),
-        unit_appearances=("/APT", "/STE", "/FLR"),
         fallback_country=answers.get("beneficiary_country_of_birth") or answers.get("beneficiary_country_of_citizenship"),
         force_foreign=True,
     )
@@ -2071,7 +2120,7 @@ FIELD_MULTILINE_FLAG = 1 << 12
 
 
 def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list[str]:
-    """Fields over the template's length limit or the box width; a printed form clips overflow without any sign."""
+    """Fields wider than their box; a printed form clips the overflow. `_field_length_warning` covers template limits."""
     overlong: set[str] = set()
     for page in reader.pages:
         for annotation_ref in page.get("/Annots", []) or []:
@@ -2080,20 +2129,62 @@ def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list
             value = text_values.get(field_name) or text_values.get(_annotation_full_name(annotation) or "")
             if not value:
                 continue
-            max_chars = annotation.get("/MaxLen")
-            if max_chars is None:
-                font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
-                if int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG or not font_size or not float(font_size.group(1)):
-                    continue
-                left, _, right, _ = (float(number) for number in annotation["/Rect"])
-                # Template fields use Courier, whose characters are 0.6 em wide.
-                max_chars = int((right - left - 4) / (0.6 * float(font_size.group(1))))
-            if len(value) > int(max_chars):
+            font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
+            if (
+                annotation.get("/MaxLen") is not None
+                or int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG
+                or not font_size
+                or not float(font_size.group(1))
+            ):
+                continue
+            left, _, right, _ = (float(number) for number in annotation["/Rect"])
+            # Template fields use Courier, whose characters are 0.6 em wide.
+            if len(value) > int((right - left - 4) / (0.6 * float(font_size.group(1)))):
                 overlong.add(field_name)
     return sorted(overlong)
 
 
 OVERLONG_WARNING = "Longer than the form's box allows and may print cut off. Check the printed page, and shorten these or use the additional information section: "
+
+
+def _field_length_warning(reader: PdfReader, values: dict[str, str]) -> list[str]:
+    too_long: dict[str, str] = {}
+    for page in reader.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            max_length = annotation.get("/MaxLen")
+            if not field_name or max_length is None:
+                continue
+            full_name = _annotation_full_name(annotation)
+            value = values.get(full_name) if full_name in values else values.get(str(field_name))
+            if value is not None and len(value) > int(max_length):
+                too_long[str(field_name)] = f"{value!r} ({len(value)} characters, the form allows {int(max_length)})"
+    if not too_long:
+        return []
+    return ["These answers may be cut off when printed: " + "; ".join(too_long.values()) + "."]
+
+
+def _unprintable_character_warning(writer: PdfWriter) -> list[str]:
+    # The form fonts cannot draw every character: the field keeps "Łukasz" but prints "?ukasz".
+    unprintable: set[str] = set()
+    for page in writer.pages:
+        for annotation_ref in page.get("/Annots", []) or []:
+            annotation = annotation_ref.get_object()
+            value = annotation.get("/V")
+            normal_appearance = (annotation.get("/AP") or {}).get("/N")
+            if not isinstance(value, str) or value.isascii() or normal_appearance is None:
+                continue
+            stream = normal_appearance.get_object()
+            if hasattr(stream, "get_data") and stream.get_data().count(b"?") > value.count("?"):
+                unprintable.add(value)
+    if not unprintable:
+        return []
+    return [
+        "These answers contain characters the form cannot print and will show a question mark: "
+        + "; ".join(sorted(unprintable))
+        + ". Enter them as they should appear on the filing, using the Latin spelling on the passport where one is shown."
+    ]
 
 
 def _use_saved_appearances(writer: PdfWriter) -> None:
@@ -2176,9 +2267,11 @@ def generate_i485_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    overlong = overlong_field_names(reader, payload.text_values)
-    if overlong:
-        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
+    overflowing = overlong_field_names(reader, payload.text_values)
+    if overflowing:
+        warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
 
     return GeneratedI485Pdf(
         case_id=case_id,

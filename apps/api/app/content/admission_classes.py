@@ -63,3 +63,33 @@ def normalize_class_of_admission(value: object) -> str:
         if option["value"].replace("-", "") == no_hyphen:
             return option["value"]
     return compact
+
+
+# Options of the I-130 Part 4, Item 21.a dropdown, which accepts nothing else.
+# Read from blank-immigration-documents/i-130.pdf on 2026-10-31.
+I130_CLASS_OF_ADMISSION_CODES = frozenset(
+    """
+    1B1 1B2 1B3 1B4 1B5 1BS A1 A2 A3 AS ASD AW B1 B1A B1B B1C B1D B2 BE C1 C2 C3 C4 CC CH CP CW1 CW2 D1 D2 DA DE DT DX
+    E1 E2 E2C E3 EAO EWI F1 F2 FSM FUG G1 G2 G3 G4 G5 GB GT H1 H1A H1B H1C H2 H2A H2B H2R H3 H3A H3B H4 HSC I IMM IN
+    J1 J1S J2 J2S K1 K2 K3 K4 L1 L1A L1B L2 LZ M1 M2 MIS ML N1 N2 N3 N4 N5 N6 N7 N8 N9 O1 O1A O1B O2 O3 OP
+    P1 P1A P1B P1S P2 P2S P3 P3S P4 PAL PAR PI Q1 Q2 Q3 R1 R2 RE RE5 RW S1 S2 S9 SDF ST T1 T2 T3 T4 T5 TB TC TD TN1 TN2
+    TWO U1 U2 U3 U4 U5 UN UU V1 V2 V3 WB WD WI WT X
+    """.split()
+)
+_I130_CLASS_ALIASES = {"PAROLE": "PAR", "PAROLEE": "PAR"}
+
+
+def i130_class_of_admission_code(value: object) -> str:
+    """Return the Item 21.a option for an answer, or "" when none can be chosen without guessing."""
+    raw = str(value or "").strip()
+    candidates = [raw]
+    # A class code can lead a description, such as "B-1 visitor for business". A digit tells it from a plain word.
+    first_word = raw.split()[0] if raw else ""
+    if any(character.isdigit() for character in first_word):
+        candidates.append(first_word)
+    for candidate in candidates:
+        code = normalize_class_of_admission(candidate).replace("-", "")
+        code = _I130_CLASS_ALIASES.get(code, code)
+        if code in I130_CLASS_OF_ADMISSION_CODES:
+            return code
+    return ""

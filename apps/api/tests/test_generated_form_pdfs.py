@@ -273,7 +273,7 @@ def test_i485_generation_normalizes_reported_foreign_address_and_visitor_status(
     assert payload.text_values["Pt1Line18_RecentCountry[0]"] == "Colombia"
     assert payload.text_values["Pt1Line18_RecentProvince[0]"] == "Caldas"
     assert payload.text_values["Pt1Line18_RecentNumber[0]"] == "1101"
-    assert payload.checkbox_values["Pt1Line18_RecentUnit[0]"] == "/APT"
+    assert payload.checkbox_values["Pt1Line18_RecentUnit[0]"] == "/ APT "
     assert "Pt1Line18_RecentState[0]" not in payload.text_values
     assert payload.text_values["P4Line7_City[0]"] == "Manizales"
     assert payload.text_values["P4Line7_Province[0]"] == "Caldas"

@@ -13,6 +13,7 @@ from app.content.supplemental_forms import (
 )
 from app.models.entities import IntakeResponse
 from app.services.case_facts import enrich_case_fact_aliases
+from app.services.i485 import build_i485_intake_projection, get_i485_state
 from app.services.intake import apply_case_projection, get_merged_case_intake, upsert_intake_step
 from app.services.rules.questionnaire import QuestionnaireEvaluationConfig, QuestionnaireRuleEngine
 
@@ -623,6 +624,18 @@ def save_form_page_answers(
     return get_form_state(session, case_id, form_key)
 
 
+# These forms reuse saved I-485 answers, so a case saved before a mapping existed still gets them.
+FORMS_USING_I485_ANSWERS = {"i765", "i131", "i130a"}
+
+
+def get_form_case_intake(session: Session, case_id: UUID, form_key: str) -> dict[str, Any]:
+    """Return the case facts a form draws on, so import, generation, and validation agree."""
+    merged = get_merged_case_intake(session, case_id)
+    if normalize_form_key(form_key) in FORMS_USING_I485_ANSWERS:
+        return {**merged, **build_i485_intake_projection(get_i485_state(session, case_id)["answers"])}
+    return merged
+
+
 def import_form_answers_from_case_data(
     session: Session,
     case_id: UUID,
@@ -630,8 +643,7 @@ def import_form_answers_from_case_data(
     overwrite: bool = False,
 ) -> dict[str, Any]:
     config = get_supplemental_form_config(form_key)
-    merged = get_merged_case_intake(session, case_id)
-    proposals = build_form_answer_proposals_from_case_data(form_key, merged)
+    proposals = build_form_answer_proposals_from_case_data(form_key, get_form_case_intake(session, case_id, form_key))
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
     answer_sources = dict(state["answer_sources"])

@@ -29,6 +29,21 @@ class I130FilingValidator:
         pdf_payload = build_i130_pdf_field_payload(payload_values, template_fields)
         issues: list[dict[str, Any]] = []
 
+        if i130_class_of_admission_not_offered(merged):
+            issues.append(
+                _issue(
+                    form_code="form_i130",
+                    severity="important",
+                    code="form_i130_class_of_admission_not_offered",
+                    title="Class of admission must be chosen by hand",
+                    description=I130_CLASS_NOT_OFFERED_WARNING,
+                    source="blank_pdf_template",
+                    field_key="beneficiary_class_of_admission",
+                    question_id="beneficiary_class_of_admission",
+                    pdf_ref="Part 4, Item 21.a",
+                    actual=merged.get("beneficiary_class_of_admission"),
+                )
+            )
         if template_error:
             issues.append(
                 _issue(
@@ -251,7 +266,7 @@ class I130AFilingValidator:
     form_code = "form_i130a"
 
     def validate(self, session: Session, case_id: UUID, template_path: Path | None) -> dict[str, Any]:
-        merged = get_merged_case_intake(session, case_id)
+        merged = _intake_with_form_gaps_filled(session, case_id, "i130a")
         uploads = _confirmed_uploads(session, case_id)
         template_fields, template_error = _template_field_names(template_path) if template_path else (set(), None)
         pdf_payload = build_i130a_pdf_field_payload(merged, template_fields)

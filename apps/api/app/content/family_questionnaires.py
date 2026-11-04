@@ -4,7 +4,7 @@ from typing import Any
 
 
 I130_QUESTIONNAIRE_VERSION = "i130-04-01-24-marriage-v1"
-I130A_QUESTIONNAIRE_VERSION = "i130a-04-01-24-spouse-v1"
+I130A_QUESTIONNAIRE_VERSION = "i130a-04-01-24-spouse-v2"
 FAMILY_FORMS_VERIFIED_ON = "2026-05-01"
 I130_OFFICIAL_URL = "https://www.uscis.gov/i-130"
 I130_OFFICIAL_PDF_URL = "https://www.uscis.gov/sites/default/files/document/forms/i-130.pdf"
@@ -81,6 +81,7 @@ def q(
     risk_when: Any = None,
     risk_code: str | None = None,
     help_text: str | None = None,
+    entry_fields: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": question_id,
@@ -94,7 +95,20 @@ def q(
         "risk_when": risk_when,
         "risk_code": risk_code,
         "help_text": help_text,
+        "entry_fields": entry_fields or [],
     }
+
+
+FOREIGN_ADDRESS_FIELDS: list[dict[str, Any]] = [
+    {"key": "line1", "label": "Street address", "type": "text"},
+    {"key": "line2", "label": "Apartment, suite, or floor", "type": "text"},
+    {"key": "city", "label": "City or town", "type": "text"},
+    {"key": "province", "label": "Province", "type": "text"},
+    {"key": "postal_code", "label": "Postal code", "type": "text"},
+    {"key": "country", "label": "Country", "type": "text"},
+    {"key": "from", "label": "Date from", "type": "date"},
+    {"key": "to", "label": "Date to", "type": "date"},
+]
 
 
 I130_QUESTIONNAIRE: list[dict[str, Any]] = [
@@ -180,6 +194,7 @@ I130_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("petitioner_email", "Petitioner email address", "text", required=False, pdf_ref="Part 6, Item 5", db_path="intake.petitioner_email"),
             q("petitioner_marriage_count", "Number of times petitioner has been married", "number", required=False, pdf_ref="Part 2, Item 16", db_path="intake.petitioner_marriage_count", ideal_answer=1, risk_when="not_1", risk_code="outside_niche_prior_marriage"),
             q("petitioner_current_marital_status", "Petitioner current marital status", "select", required=False, pdf_ref="Part 2, Item 17", db_path="intake.petitioner_current_marital_status", options=MARITAL_STATUS_OPTIONS, ideal_answer="married", risk_when="not_married", risk_code="outside_niche_marital_status"),
+            q("petitioner_spouse1_last_name", "Petitioner's current spouse family name", "text", required=False, pdf_ref="Part 2, Item 20", db_path="intake.petitioner_spouse1_last_name"),
             q("petitioner_spouse1_first_name", "Petitioner's current spouse given name", "text", required=False, pdf_ref="Part 2, Item 20", db_path="intake.petitioner_spouse1_first_name"),
             q("petitioner_spouse1_middle_name", "Petitioner's current spouse middle name", "text", required=False, pdf_ref="Part 2, Item 20", db_path="intake.petitioner_spouse1_middle_name"),
             q("petitioner_spouse1_marriage_ended", "Date petitioner's prior marriage ended, if applicable", "date", required=False, pdf_ref="Part 2, Item 21", db_path="intake.petitioner_spouse1_marriage_ended"),
@@ -380,12 +395,6 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Beneficiary family name", "text", pdf_ref="Part 1, Item 3", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Beneficiary given name", "text", pdf_ref="Part 1, Item 3", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Beneficiary middle name", "text", required=False, pdf_ref="Part 1, Item 3", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_date_of_birth", "Beneficiary date of birth", "date", pdf_ref="I-130A identity gate", db_path="intake.beneficiary_date_of_birth"),
-            q("beneficiary_sex", "Beneficiary sex", "select", required=False, pdf_ref="Part 1, Item 12", db_path="intake.beneficiary_sex", options=[{"value": "female", "label": "Female"}, {"value": "male", "label": "Male"}]),
-            q("beneficiary_city_of_birth", "Beneficiary city or town of birth", "text", required=False, pdf_ref="Part 1, Item 12", db_path="intake.beneficiary_city_of_birth"),
-            q("beneficiary_country_of_birth", "Beneficiary country of birth", "country", pdf_ref="I-130A identity gate", db_path="intake.beneficiary_country_of_birth"),
-            q("beneficiary_country_of_citizenship", "Beneficiary country of citizenship or nationality", "country", required=False, pdf_ref="Part 1, Item 14", db_path="intake.beneficiary_country_of_citizenship"),
-            q("beneficiary_country_of_residence", "Beneficiary country of residence", "country", required=False, pdf_ref="Part 1, Item 15", db_path="intake.beneficiary_country_of_residence"),
         ],
     },
     {
@@ -402,7 +411,34 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_current_zip", "Current ZIP code", "text", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_current_zip"),
             q("beneficiary_current_country", "Current country", "country", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_current_country"),
             q("beneficiary_address_since", "Date current address began", "date", pdf_ref="Part 1, Item 5", db_path="intake.beneficiary_address_since"),
-            q("beneficiary_prior_address_history", "Prior addresses for the last five years", "address_list", required=False, pdf_ref="Part 1, Items 6-8", db_path="intake.beneficiary_prior_address_history"),
+            q("beneficiary_prior_address_history", "Prior addresses for the last five years", "address_list", required=False, pdf_ref="Part 1, Items 6-7", db_path="intake.beneficiary_prior_address_history"),
+            q("beneficiary_recent_foreign_address", "Last address outside the United States of more than one year", "address", required=False, pdf_ref="Part 1, Items 8-9", db_path="intake.beneficiary_recent_foreign_address", entry_fields=FOREIGN_ADDRESS_FIELDS),
+        ],
+    },
+    {
+        "id": "i130a_parents",
+        "title": "Beneficiary's Parents",
+        "pdf_part": "Part 1",
+        "local_pdf_pages": [2],
+        "questions": [
+            q("parent1_last_name", "Parent 1 family name (maiden name, if applicable)", "text", pdf_ref="Part 1, Item 10", db_path="intake.parent1_last_name"),
+            q("parent1_first_name", "Parent 1 given name", "text", pdf_ref="Part 1, Item 10", db_path="intake.parent1_first_name"),
+            q("parent1_middle_name", "Parent 1 middle name", "text", required=False, pdf_ref="Part 1, Item 10", db_path="intake.parent1_middle_name"),
+            q("parent1_date_of_birth", "Parent 1 date of birth", "date", pdf_ref="Part 1, Item 11", db_path="intake.parent1_date_of_birth"),
+            q("parent1_sex", "Parent 1 sex", "select", required=False, pdf_ref="Part 1, Item 12", db_path="intake.parent1_sex", options=[{"value": "female", "label": "Female"}, {"value": "male", "label": "Male"}]),
+            q("parent1_city_of_birth", "Parent 1 city, town, or village of birth", "text", required=False, pdf_ref="Part 1, Item 13", db_path="intake.parent1_city_of_birth"),
+            q("parent1_country_of_birth", "Parent 1 country of birth", "country", pdf_ref="Part 1, Item 14", db_path="intake.parent1_country_of_birth"),
+            q("parent1_city_of_residence", "Parent 1 city, town, or village of residence", "text", required=False, pdf_ref="Part 1, Item 15", db_path="intake.parent1_city_of_residence"),
+            q("parent1_country_of_residence", "Parent 1 country of residence", "country", required=False, pdf_ref="Part 1, Item 16", db_path="intake.parent1_country_of_residence"),
+            q("parent2_last_name", "Parent 2 family name", "text", pdf_ref="Part 1, Item 17", db_path="intake.parent2_last_name"),
+            q("parent2_first_name", "Parent 2 given name", "text", pdf_ref="Part 1, Item 17", db_path="intake.parent2_first_name"),
+            q("parent2_middle_name", "Parent 2 middle name", "text", required=False, pdf_ref="Part 1, Item 17", db_path="intake.parent2_middle_name"),
+            q("parent2_date_of_birth", "Parent 2 date of birth", "date", pdf_ref="Part 1, Item 18", db_path="intake.parent2_date_of_birth"),
+            q("parent2_sex", "Parent 2 sex", "select", required=False, pdf_ref="Part 1, Item 19", db_path="intake.parent2_sex", options=[{"value": "female", "label": "Female"}, {"value": "male", "label": "Male"}]),
+            q("parent2_city_of_birth", "Parent 2 city, town, or village of birth", "text", required=False, pdf_ref="Part 1, Item 20", db_path="intake.parent2_city_of_birth"),
+            q("parent2_country_of_birth", "Parent 2 country of birth", "country", pdf_ref="Part 1, Item 21", db_path="intake.parent2_country_of_birth"),
+            q("parent2_city_of_residence", "Parent 2 city, town, or village of residence", "text", required=False, pdf_ref="Part 1, Item 22", db_path="intake.parent2_city_of_residence"),
+            q("parent2_country_of_residence", "Parent 2 country of residence", "country", required=False, pdf_ref="Part 1, Item 23", db_path="intake.parent2_country_of_residence"),
         ],
     },
     {
@@ -412,7 +448,14 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
         "local_pdf_pages": [2, 3],
         "questions": [
             q("beneficiary_current_employer_or_school", "Current employer, company, or school", "text", pdf_ref="Part 2, Item 1", db_path="intake.beneficiary_current_employer_or_school"),
+            q("beneficiary_current_employer_address_line1", "Current employer or school street address", "text", required=False, pdf_ref="Part 2, Item 2.a", db_path="intake.beneficiary_current_employer_address_line1"),
+            q("beneficiary_current_employer_address_line2", "Current employer or school apartment, suite, or floor", "text", required=False, pdf_ref="Part 2, Item 2.b", db_path="intake.beneficiary_current_employer_address_line2"),
+            q("beneficiary_current_employer_city", "Current employer or school city", "text", required=False, pdf_ref="Part 2, Item 2.c", db_path="intake.beneficiary_current_employer_city"),
+            q("beneficiary_current_employer_state", "Current employer or school state", "text", required=False, pdf_ref="Part 2, Item 2.d", db_path="intake.beneficiary_current_employer_state"),
+            q("beneficiary_current_employer_zip", "Current employer or school ZIP code", "text", required=False, pdf_ref="Part 2, Item 2.e", db_path="intake.beneficiary_current_employer_zip"),
+            q("beneficiary_current_employer_country", "Current employer or school country", "country", required=False, pdf_ref="Part 2, Item 2.h", db_path="intake.beneficiary_current_employer_country"),
             q("beneficiary_current_occupation", "Current occupation", "text", required=False, pdf_ref="Part 2, Item 3", db_path="intake.beneficiary_current_occupation"),
+            q("beneficiary_current_employment_from", "Date current employment or school began", "date", required=False, pdf_ref="Part 2, Item 4.a", db_path="intake.beneficiary_current_employment_from"),
             q("beneficiary_employment_history", "Employment, unemployment, retirement, or school history for the last five years", "textarea", pdf_ref="Part 2, Items 1-10", db_path="intake.beneficiary_employment_history"),
         ],
     },
@@ -425,6 +468,7 @@ I130A_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_current_marital_status", "Beneficiary current marital status", "select", pdf_ref="Simple spouse-beneficiary scope", db_path="intake.beneficiary_current_marital_status", ideal_answer="married", risk_when="not_married", risk_code="outside_niche_marital_status"),
             q("beneficiary_marriage_count", "Number of times beneficiary has been married", "number", pdf_ref="Simple spouse-beneficiary scope", db_path="intake.beneficiary_marriage_count", ideal_answer=1, risk_when="not_1", risk_code="outside_niche_prior_marriage"),
             q("beneficiary_phone", "Beneficiary daytime phone", "text", required=False, pdf_ref="Part 4, Item 3", db_path="intake.beneficiary_phone"),
+            q("beneficiary_mobile_phone", "Beneficiary mobile phone", "text", required=False, pdf_ref="Part 4, Item 4", db_path="intake.beneficiary_mobile_phone"),
             q("beneficiary_email", "Beneficiary email", "text", required=False, pdf_ref="Part 4, Item 5", db_path="intake.beneficiary_email"),
         ],
     },

@@ -17,15 +17,16 @@ from app.services.family_pdf import _without_zip_postal_aliases, build_i130_pdf_
 from app.services.form_ingestion import (
     build_form_answer_proposals_from_case_data,
     build_form_fill_preview,
+    get_form_case_intake,
     get_form_state,
     normalize_form_key,
 )
-from app.services.i485 import build_i485_intake_projection, get_i485_state
-from app.services.intake import get_merged_case_intake
 from app.services.i485_pdf import (
     OVERLONG_WARNING,
     _add_unit_fields,
+    _field_length_warning,
     _set_checkbox_values,
+    _unprintable_character_warning,
     _use_saved_appearances,
     _set_text_values,
     _template_field_names,
@@ -38,6 +39,7 @@ DEFAULT_FORM_OUTPUT_DIR = settings.generated_dir
 
 DATE_QUESTION_IDS = {
     "beneficiary_date_of_birth",
+    "beneficiary_i94_expiration",
     "beneficiary_last_arrival_date",
     "beneficiary_passport_expiration",
     "petitioner_date_of_birth",
@@ -59,6 +61,14 @@ NON_PDF_CONTROL_QUESTIONS = {
     "interpreter_used",
     "preparer_used",
     "additional_information_needed",
+    # Saved by older cases: I-864 Item 7 asks for country of birth, and I-130A Part 1 has no self-identity items.
+    "petitioner_city_of_birth",
+    "beneficiary_date_of_birth",
+    "beneficiary_sex",
+    "beneficiary_city_of_birth",
+    "beneficiary_country_of_birth",
+    "beneficiary_country_of_citizenship",
+    "beneficiary_country_of_residence",
 }
 
 US_STATE_NAME_TO_CODE = {
@@ -186,7 +196,8 @@ TEXT_FIELD_MAP: dict[str, dict[str, tuple[str, ...]]] = {
         "petitioner_current_zip": ("P4_Line2g_ZipCode[0]",),
         "petitioner_country_of_domicile": ("P4_Line5_CountryOfDomicile[0]",),
         "petitioner_date_of_birth": ("P4_Line6_DateOfBirth[0]",),
-        "petitioner_city_of_birth": ("P4_Line7_CityofBirth[0]",),
+        # The template names this field CityofBirth, but edition 08/24/26 prints Item 7 as Country of Birth.
+        "petitioner_country_of_birth": ("P4_Line7_CityofBirth[0]",),
         "petitioner_social_security_number": ("P4_Line10_SocialSecurityNumber[0]",),
         "beneficiary_last_name": ("P2_Line1a_FamilyName[0]",),
         "beneficiary_first_name": ("P2_Line1b_GivenName[0]",),
@@ -944,9 +955,11 @@ def generate_form_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    overlong = overlong_field_names(reader, payload.text_values)
-    if overlong:
-        warnings.append(OVERLONG_WARNING + ", ".join(overlong))
+    warnings.extend(_field_length_warning(reader, payload.text_values))
+    warnings.extend(_unprintable_character_warning(writer))
+    overflowing = overlong_field_names(reader, payload.text_values)
+    if overflowing:
+        warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
 
     return GeneratedFormPdf(
         case_id=case_id,
@@ -984,11 +997,7 @@ def generate_form_pdf(
     preview = build_form_fill_preview(session, case_id, form_key)
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
-    merged = get_merged_case_intake(session, case_id)
-    if normalize_form_key(form_key) in {"i765", "i131"}:
-        i485_projection = build_i485_intake_projection(get_i485_state(session, case_id)["answers"])
-        merged = {**merged, **i485_projection}
-    for proposal in build_form_answer_proposals_from_case_data(form_key, merged):
+    for proposal in build_form_answer_proposals_from_case_data(form_key, get_form_case_intake(session, case_id, form_key)):
         if not _value_is_answered(answers.get(proposal["question_id"])):
             answers[proposal["question_id"]] = proposal["value"]
     return generate_form_pdf_from_answers(

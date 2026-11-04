@@ -13,7 +13,7 @@ class I131FilingValidator:
     form_code = "form_i131"
 
     def validate(self, session: Session, case_id: UUID, template_path: Path | None) -> dict[str, Any]:
-        merged = get_merged_case_intake(session, case_id)
+        merged = _intake_with_form_gaps_filled(session, case_id, "i131")
         facts = derive_case_facts(merged)
         uploads = _confirmed_uploads(session, case_id)
         state = get_form_state(session, case_id, "i131")

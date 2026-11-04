@@ -198,6 +198,23 @@ It is intentionally separate from persisted packet QA:
   without a comma go to the additional information section as written, since the family name cannot be identified.
 - I-130A employment history fills Employer 1 and 2 when structured and otherwise goes to Part 7. The more specific current
   employer answers win over the history's first row.
+- Missing required I-485 answers are a blocking QA issue, so a case with a started I-485 cannot read as ready to print. The
+  stored readiness label updates the next time QA runs.
+- Other names entered on the I-485 are shared through intake and proposed to the I-765 and I-131 as one name per line.
+- Free text saved on a list entry before it was structured is shown on the entry and prints in Part 14, on every I-485 list.
+  It does not keep the entry's structured fields off the form, and it does not put "See Part 14" in the next row, because only
+  a whole entry moved to Part 14 gets that pointer. If Part 14 cannot hold the note, the row still prints and the question is
+  reported as unmapped.
+- I-485 Part 1 Items 12 and 14 print the class label for a recognized class, including spaced forms such as `B 2`. A description
+  too long for the 20-character box collapses to its class. A shorter answer such as `F-1 OPT` keeps its wording.
+- I-130 Part 4 Item 21.a is a dropdown that accepts only the codes in `I130_CLASS_OF_ADMISSION_CODES`, read from the blank form.
+  An answer with no matching option, such as `TN` (the form offers `TN1` and `TN2`), is left blank with a generation warning and
+  a `form_i130_class_of_admission_not_offered` validation issue. Lucy does not guess the option.
+- A history entry supplies current-employer details only when it names the current employer. With no current employer answer,
+  it supplies them only when it is the single open entry, and then it supplies the name too. On the I-130A the current employer
+  takes the first row, other jobs keep their rows or continue in Part 7, and an answered unit is not replaced by the history's.
+- The I-130A, I-765, and I-131 validators read facts from saved I-485 answers when intake lacks them, as import and generation
+  do. Facts already in intake are kept, so cross-form mismatch checks still compare them with the I-485.
 - Not yet on the generated forms: I-485 Parts 11-12 interpreter and preparer details, and I-130A Part 3 employment outside
   the United States.
 - `form_i130` is supported as a partial validator for petitioner citizenship, core relationship facts,

@@ -231,6 +231,24 @@ and `PLACEHOLDER` text so final packet previews do not contain visually blank ev
 npm run seed:packet-scenarios -- --no-generate-packets
 ```
 
+## PDF Population Regression Tests
+
+`apps/api/tests/test_pdf_population_regression.py` runs as part of `npm run test:api`. It seeds 8 fictional
+applicants from `apps/api/tests/pdf_profiles.py`, sends them through the real intake, questionnaire, and
+readiness flow, and reads each generated I-485, I-765, I-131, I-864, I-130, I-130A, G-1145, G-1450, and G-1650 back.
+
+- Expected values are written by hand from the USCIS field labels, not read from the generator field maps.
+- Text field maps are also checked against the tooltips in `blank-immigration-documents/`, which catches a
+  correct value sent to the wrong line. Template field names are not reliable; for example, the I-864 field
+  `P4_Line7_CityofBirth[0]` is the printed Item 7 Country of Birth.
+- Every filled field must print: checkbox states must exist in the template, dropdown values must be options,
+  text must fit `/MaxLen` and have a drawn appearance, and dates must be MM/DD/YYYY.
+- Answers longer than a field's `/MaxLen` add a "may be cut off" warning to the generated form and packet, and
+  characters the form fonts cannot draw (such as `Ł`, which prints as `?`) add a "cannot print" warning.
+
+When adding a form or field, add it to the matching `expected_*` function and to the profile builder. A mapped
+question that no seed reaches fails the coverage test until a seed fills it or it is listed as conditional.
+
 ## Credit-Card JSON Shape
 
 The generator expects this shape:

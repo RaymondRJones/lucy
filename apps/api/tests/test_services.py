@@ -472,3 +472,19 @@ def test_run_qa_surfaces_i485_outside_niche_flags_as_important():
 
     assert issue.severity == "important"
     assert issue.checklist_item_code == "form_i485"
+
+
+def test_run_qa_blocks_readiness_while_i485_answers_are_missing():
+    session = make_session()
+    case = create_case(session)
+    upsert_intake_step(session, case.id, "baseline", standard_intake_payload())
+    session.commit()
+    generate_checklist(session, case.id)
+    save_i485_page_answers(session, case.id, "page_01_identity", {"beneficiary_last_name": "Garcia"})
+    session.commit()
+
+    issues, summary = run_qa(session, case.id)
+    missing = next(issue for issue in issues if issue.code == "i485_missing_required_answers")
+
+    assert missing.severity == "blocking"
+    assert summary["label"] == "Not ready"

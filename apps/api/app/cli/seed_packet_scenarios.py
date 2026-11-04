@@ -141,7 +141,7 @@ SCENARIOS = [
             "beneficiary_prior_marriage_termination_date": "2021-08-20",
             "i131_travel_purpose": "Short family visit for a parent's scheduled medical procedure.",
             "i131_countries_to_visit": "Mexico",
-            "i131_expected_trip_length": "10 days",
+            "i131_expected_trip_length": 10,
         },
     ),
     PacketScenario(
@@ -253,15 +253,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+BIRTH_CITY_BY_COUNTRY = {
+    "Canada": "Toronto",
+    "Colombia": "Bogota",
+    "Kenya": "Nairobi",
+    "Mexico": "Guadalajara",
+    "Philippines": "Manila",
+    "Poland": "Warsaw",
+    "United Kingdom": "London",
+}
+
+
 def _safe_email(name: str, slug: str) -> str:
     local = name.lower().replace(" ", ".")
-    return f"{local}.{slug.replace('-', '.')}@example.com"
+    # I-485, I-765, I-130, and I-130A email fields hold 38 characters.
+    return f"{local}.{slug.split('-')[0]}@example.com"
 
 
 def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
     answers = _sample_answers()
     beneficiary_email = _safe_email(scenario.beneficiary_first_name, scenario.slug)
     petitioner_email = _safe_email(scenario.petitioner_first_name, scenario.slug)
+    birth_city = BIRTH_CITY_BY_COUNTRY[scenario.beneficiary_country]
     address = {
         "line1": f"100 {scenario.city} Avenue",
         "line2": "Apt 2",
@@ -293,6 +306,24 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
             "beneficiary_mobile_phone": "0000002000",
             "beneficiary_country_of_birth": scenario.beneficiary_country,
             "beneficiary_country_of_citizenship": scenario.beneficiary_country,
+            "beneficiary_passport_country": scenario.beneficiary_country,
+            "beneficiary_city_of_birth": birth_city,
+            "beneficiary_recent_foreign_address": {
+                **answers["beneficiary_recent_foreign_address"],
+                "city": birth_city,
+                "country": scenario.beneficiary_country,
+            },
+            "parent1_last_name": scenario.beneficiary_last_name,
+            "parent1_country_of_birth": scenario.beneficiary_country,
+            "parent1_city_of_birth": birth_city,
+            "parent1_city_of_residence": birth_city,
+            "parent1_country_of_residence": scenario.beneficiary_country,
+            "parent2_last_name": scenario.beneficiary_last_name,
+            "parent2_country_of_birth": scenario.beneficiary_country,
+            "parent2_city_of_birth": birth_city,
+            "parent2_city_of_residence": birth_city,
+            "parent2_country_of_residence": scenario.beneficiary_country,
+            "i131_countries_to_visit": scenario.beneficiary_country,
             "beneficiary_current_address_line1": address["line1"],
             "beneficiary_current_address_line2": address["line2"],
             "beneficiary_current_city": address["city"],
@@ -327,6 +358,7 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
             "beneficiary_last_shared_zip": address["zip"],
             "beneficiary_adjustment_city": address["city"],
             "beneficiary_adjustment_state": address["state"],
+            "petitioner_spouse1_last_name": scenario.beneficiary_last_name,
             "petitioner_spouse1_first_name": scenario.beneficiary_first_name,
             "beneficiary_spouse1_last_name": scenario.petitioner_last_name,
             "beneficiary_spouse1_first_name": scenario.petitioner_first_name,
