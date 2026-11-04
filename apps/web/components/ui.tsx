@@ -280,14 +280,16 @@ export function YesNoControl({
             onClick={() => onChange(option.value)}
             className={cx(
               "flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-semibold transition-colors",
-              selected ? "border-pine bg-pine text-white shadow-card" : "border-line-strong bg-white text-ink hover:border-ink/40 hover:bg-paper",
+              selected
+                ? "border-pine bg-pine-soft text-pine-strong ring-1 ring-pine"
+                : "border-line-strong bg-white text-ink hover:border-ink/40 hover:bg-paper",
             )}
           >
             <span
               aria-hidden="true"
               className={cx(
                 "flex h-4 w-4 items-center justify-center rounded-full border",
-                selected ? "border-white bg-white text-pine" : "border-line-strong",
+                selected ? "border-pine bg-white" : "border-line-strong",
               )}
             >
               {selected ? <span className="h-2 w-2 rounded-full bg-pine" /> : null}

@@ -1518,8 +1518,8 @@ export function PacketAssemblyWorkspace() {
             <span aria-hidden="true">{" \u00b7 "}</span>
             {stateCode ? US_LOCATIONS.find(([value]) => value === stateCode)?.[1] : "No state chosen"}
           </p>
-          <a href="#assemble" className={buttonClass("primary", "sm", "shrink-0")}>
-            Assemble
+          <a href={stateCode ? "#assemble" : "#filer-state"} className={buttonClass(stateCode ? "primary" : "secondary", "sm", "shrink-0")}>
+            {stateCode ? "Assemble" : "Choose state"}
           </a>
         </div>
       ) : null}

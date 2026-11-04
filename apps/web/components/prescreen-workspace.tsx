@@ -365,6 +365,8 @@ export function PrescreenWorkspace() {
   const [selectedPageId, setSelectedPageId] = useState("");
   const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
   const [isDirty, setIsDirty] = useState(false);
+  // Missing answers are highlighted only on pages the user has saved or left, not on first view.
+  const [attemptedPageIds, setAttemptedPageIds] = useState<Set<string>>(new Set());
   const [formStatuses, setFormStatuses] = useState<FormStatuses>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -464,6 +466,10 @@ export function PrescreenWorkspace() {
     if (pageId === selectedPage?.id) {
       return;
     }
+    if (selectedPage) {
+      const leftPageId = selectedPage.id;
+      setAttemptedPageIds((current) => new Set(current).add(leftPageId));
+    }
     if (isDirty && caseSummary && selectedPage) {
       saveCurrentPage(false, pageId);
       return;
@@ -522,6 +528,7 @@ export function PrescreenWorkspace() {
             document.getElementById("form-page")?.scrollIntoView({ behavior: "smooth", block: "start" });
           }
           forgetFormStatuses(caseSummary.id);
+          setAttemptedPageIds((current) => new Set(current).add(selectedPage.id));
           setMessage(`Saved "${selectedPage.title}".`);
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Could not save this prescreen page.");
@@ -555,7 +562,7 @@ export function PrescreenWorkspace() {
       <QuestionCard
         key={question.id}
         label={question.label}
-        missing={missing}
+        missing={missing && Boolean(selectedPage && attemptedPageIds.has(selectedPage.id))}
         plainLanguage={question.help_text}
         source={sourceLabel(source) ?? (fieldSourceCount ? `${fieldSourceCount} answers filled from your case` : null)}
         actions={<QuestionHelpButton question={question} />}
@@ -568,7 +575,7 @@ export function PrescreenWorkspace() {
   if (!questionnaire) {
     return (
       <AppShell step="prescreen" caseId={caseSummary?.id}>
-        <LoadingState label="Loading prescreen questions..." />
+        {message ? <StatusMessage message={message} /> : <LoadingState label="Loading prescreen questions..." />}
       </AppShell>
     );
   }
@@ -625,7 +632,9 @@ export function PrescreenWorkspace() {
               </div>
             ) : null}
 
-            <div className="grid gap-4">{selectedPage.questions.map((question) => renderQuestionCard(question))}</div>
+            <div className="divide-y divide-line border-y border-line">
+              {selectedPage.questions.map((question) => renderQuestionCard(question))}
+            </div>
 
             <PageFooterActions
               onSave={() => saveCurrentPage(false)}
@@ -744,6 +753,7 @@ export function PrescreenWorkspace() {
                       .map((code) => FORM_ACTIONS[code]?.label)
                       .filter(Boolean)
                       .join(", ")}
+                    {includedForms.includes("form_g1145") ? ". Form G-1145 needs no answers; Lucy fills it in from your case." : ""}
                   </p>
                 ) : null}
               </div>

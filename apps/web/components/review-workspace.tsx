@@ -110,7 +110,7 @@ export function ReviewWorkspace() {
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const [qa, setQa] = useState<QaResults | null>(null);
   const [prescreen, setPrescreen] = useState<PrescreenState | null>(null);
-  const [message, setMessage] = useState<string | null>("Choose a case to review the packet.");
+  const [message, setMessage] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [acknowledgedIssues, setAcknowledgedIssues] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -260,7 +260,6 @@ export function ReviewWorkspace() {
                     {requiredEvidenceMissing.length} required {requiredEvidenceMissing.length === 1 ? "file" : "files"} missing
                   </Badge>
                 ) : null}
-
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
                 {attentionCount
@@ -292,43 +291,41 @@ export function ReviewWorkspace() {
                   />
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:w-80 lg:flex-col">
               {attentionCount ? (
-                <a href="#issues-heading" className={buttonClass("primary", "lg")}>
-                  Review {attentionCount} open {attentionCount === 1 ? "item" : "items"}
-                </a>
-              ) : null}
-              {attentionCount ? (
-                <div className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                <div className="mt-4 grid max-w-2xl gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
                   <p className="text-sm leading-6 text-amber-950">
                     <span className="font-semibold">Before you continue: </span>
                     some items may mean this case is outside what Lucy is built for. If you are unsure, talk to an immigration attorney or
                     accredited representative before mailing.
                   </p>
-                  <label className="flex cursor-pointer items-start gap-3 rounded-md bg-white p-3 text-sm text-ink ring-1 ring-amber-200">
-                    <input
-                      type="checkbox"
-                      checked={acknowledgedIssues}
-                      onChange={(event) => setAcknowledgedIssues(event.target.checked)}
-                      className="mt-0.5 h-5 w-5 shrink-0"
-                    />
-                    <span>
-                      {blockingCount
-                        ? "I understand the blocking issues mean this packet is not ready, and I want to see the print step anyway."
-                        : "I have read the open items and want to continue anyway."}
-                    </span>
-                  </label>
-                  {acknowledgedIssues ? (
-                    <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md")}>
-                      Continue to print packet
-                    </Link>
-                  ) : (
-                    <span aria-disabled="true" className={buttonClass("secondary", "md", "cursor-not-allowed opacity-50")}>
-                      Continue to print packet
-                    </span>
-                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        checked={acknowledgedIssues}
+                        onChange={(event) => setAcknowledgedIssues(event.target.checked)}
+                        className="mt-0.5 h-5 w-5 shrink-0"
+                      />
+                      <span>
+                        {blockingCount
+                          ? "I understand the blocking issues mean this packet is not ready, and I want to see the print step anyway."
+                          : "I have read the open items and want to continue anyway."}
+                      </span>
+                    </label>
+                    {acknowledgedIssues ? (
+                      <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md", "shrink-0")}>
+                        Continue to print packet
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row lg:w-72 lg:flex-col">
+              {attentionCount ? (
+                <a href="#issues-heading" className={buttonClass("primary", "lg")}>
+                  See {attentionCount} open {attentionCount === 1 ? "item" : "items"}
+                </a>
               ) : (
                 <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("primary", "lg")}>
                   Continue to print packet
@@ -349,7 +346,7 @@ export function ReviewWorkspace() {
                   title="Open items"
                   description={
                     qa
-                      ? "From the latest review checks and your attached files. Items marked Blocking must be fixed before the packet is ready."
+                      ? "From the latest review checks and your attached files. Blocking: must be fixed. Important: check before mailing. Check: may not apply to your case."
                       : "Review checks have not run for this case yet."
                   }
                 />
@@ -424,6 +421,40 @@ export function ReviewWorkspace() {
                 )}
               </Card>
 
+              {flags.length ? (
+                <Card aria-labelledby="flags-heading">
+                  <SectionHeader
+                    id="flags-heading"
+                    title="From your prescreen answers"
+                    description="These answers fall outside the standard path. They may repeat an open item above; review them before relying on the generated forms."
+                    actions={
+                      <Link href={actionHref("/prescreen", caseSummary.id)} className={buttonClass("secondary", "sm")}>
+                        Edit prescreen
+                      </Link>
+                    }
+                  />
+                  <ul className="mt-4 grid gap-2">
+                    {flags.map((flag) => (
+                      <li
+                        key={flag.code}
+                        className={cx(
+                          "rounded-lg border px-4 py-3",
+                          flag.severity === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={flag.severity === "critical" ? "danger" : "warning"} className="capitalize">
+                            {flag.severity}
+                          </Badge>
+                          <p className="text-sm font-semibold text-ink">{flag.title}</p>
+                        </div>
+                        <p className="mt-1 text-sm leading-6 text-ink/80">{flag.description}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
+
               <Card aria-labelledby="facts-heading">
                 <SectionHeader
                   id="facts-heading"
@@ -460,39 +491,6 @@ export function ReviewWorkspace() {
                 </dl>
               </Card>
 
-              {flags.length ? (
-                <Card aria-labelledby="flags-heading">
-                  <SectionHeader
-                    id="flags-heading"
-                    title="Prescreen flags"
-                    description="These answers fall outside the standard path. Review them before relying on the generated forms."
-                    actions={
-                      <Link href={actionHref("/prescreen", caseSummary.id)} className={buttonClass("secondary", "sm")}>
-                        Edit prescreen
-                      </Link>
-                    }
-                  />
-                  <ul className="mt-4 grid gap-2">
-                    {flags.map((flag) => (
-                      <li
-                        key={flag.code}
-                        className={cx(
-                          "rounded-lg border px-4 py-3",
-                          flag.severity === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50",
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={flag.severity === "critical" ? "danger" : "warning"} className="capitalize">
-                            {flag.severity}
-                          </Badge>
-                          <p className="text-sm font-semibold text-ink">{flag.title}</p>
-                        </div>
-                        <p className="mt-1 text-sm leading-6 text-ink/80">{flag.description}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              ) : null}
 
               {!checklist.length || missingRequired.length ? (
                 <Card aria-labelledby="missing-heading">

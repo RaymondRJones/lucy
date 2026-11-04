@@ -125,7 +125,7 @@ export function CaseSelector({
         ))}
       </select>
       {errorMessage ? <span role="alert" className="text-xs text-red-800">
-          Could not load saved cases. Check that the Lucy API is running. ({errorMessage})
+          Could not load saved cases. {errorMessage}
         </span> : null}
     </label>
   );

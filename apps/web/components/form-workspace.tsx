@@ -150,12 +150,12 @@ export function ComeBackToggle({
       title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question so it shows in your list to come back to."}
       className={cx(
         "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
-        compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs",
+        flagged ? (compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs") : "h-8 w-8 justify-center text-sm",
         flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
       )}
     >
       <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
-      {flagged ? "Marked for later" : "Mark for later"}
+      {flagged ? "Marked for later" : <span className="sr-only">Mark for later</span>}
     </button>
   );
 }
@@ -186,8 +186,12 @@ export function QuestionCard({
   return (
     <div
       className={cx(
-        "grid gap-3 rounded-lg border bg-white p-4 transition-colors",
-        missing ? "border-clay/40 shadow-[inset_3px_0_0_0_#a8522f]" : flagged ? "border-amber-300 shadow-[inset_3px_0_0_0_#d97706]" : "border-line",
+        "grid gap-3 bg-white transition-colors",
+        missing
+          ? "my-3 rounded-lg border border-clay/40 p-4 shadow-[inset_3px_0_0_0_#a8522f]"
+          : flagged
+            ? "my-3 rounded-lg border border-amber-300 p-4 shadow-[inset_3px_0_0_0_#d97706]"
+            : "py-5",
         className,
       )}
     >
@@ -501,7 +505,7 @@ export function FormCompleteNotice({
       tone="success"
       title={`${formCode} has every required answer`}
       actions={
-        <Link href={nextHref} className={buttonClass("primary", "sm")}>
+        <Link href={nextHref} className={buttonClass("secondary", "sm")}>
           {nextLabel} <span aria-hidden="true">{"\u2192"}</span>
         </Link>
       }

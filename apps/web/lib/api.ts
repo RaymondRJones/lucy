@@ -79,15 +79,24 @@ function apiErrorMessage(payload: unknown) {
   return "Something went wrong while talking to the API.";
 }
 
+export const API_UNREACHABLE_MESSAGE =
+  "Could not reach the Lucy API on this computer. Start it with npm run dev:api, then reload this page.";
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+  } catch {
+    // fetch rejects only when the server cannot be reached at all.
+    throw new Error(API_UNREACHABLE_MESSAGE);
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -201,6 +210,8 @@ export async function uploadBinary(uploadUrl: string, file: File) {
   const response = await fetch(`${apiBaseUrl()}${uploadUrl}`, {
     method: "POST",
     body: formData,
+  }).catch(() => {
+    throw new Error(API_UNREACHABLE_MESSAGE);
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));

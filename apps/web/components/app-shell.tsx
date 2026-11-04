@@ -12,7 +12,7 @@ import { clearSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type { CaseSummary } from "@/lib/types";
 
 export type WorkflowStep = "prescreen" | "forms" | "checklist" | "review" | "packet";
-type StepStatus = { state: "done" | "attention"; note: string };
+type StepStatus = { state: "done" | "attention" | "progress"; note: string };
 type StepStatuses = Partial<Record<WorkflowStep, StepStatus>>;
 
 const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
@@ -94,7 +94,7 @@ export function AppShell({
         if (formEntries.length && !formsMissing) {
           value.forms = { state: "done", note: "every form has its required answers" };
         } else if (formsMissing) {
-          value.forms = { state: "attention", note: `${formsMissing} required ${formsMissing === 1 ? "answer" : "answers"} left` };
+          value.forms = { state: "progress", note: `${formsMissing} required ${formsMissing === 1 ? "answer" : "answers"} left` };
         }
         const required = checklist?.items.filter((item) => item.applicability === "required") ?? [];
         if (required.length && required.every((item) => DONE_STATUSES.has(item.completion_status))) {
@@ -190,11 +190,6 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
       >
         <span className="hidden text-xs font-semibold text-muted sm:inline">Case</span>
         <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[14rem] xl:max-w-[18rem]">{name ?? (caseId ? "Loading..." : "No case open")}</span>
-        {readiness ? (
-          <Badge tone={readinessTone(readiness)} className="hidden md:inline-flex">
-            {readiness}
-          </Badge>
-        ) : null}
         <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
           {"\u25BE"}
         </span>
@@ -204,7 +199,11 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
           <div>
             <p className="text-xs font-semibold text-muted">Open case</p>
             <p className="mt-0.5 text-sm font-semibold text-ink">{name}</p>
-            {readiness ? <p className="mt-0.5 text-sm text-muted">{readiness}</p> : null}
+            {readiness ? (
+              <Badge tone={readinessTone(readiness)} className="mt-1.5">
+                Readiness check: {readiness}
+              </Badge>
+            ) : null}
           </div>
         ) : null}
         <CaseSelector selectedCaseId={caseId ?? ""} onSelect={switchToCase} label="Switch to another case" />
@@ -225,7 +224,8 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
 
 function MobileSteps({ activeIndex, caseId, statuses }: { activeIndex: number; caseId?: string | null; statuses: StepStatuses }) {
   const current = STEPS[activeIndex];
-  const next = STEPS[activeIndex + 1];
+  // "Next" points at the first later step that is not finished yet.
+  const next = STEPS.slice(activeIndex + 1).find((entry) => statuses[entry.id]?.state !== "done") ?? STEPS[activeIndex + 1];
   return (
     <nav aria-label="Packet steps" className="border-t border-line lg:hidden">
       <div className="mx-auto flex max-w-shell items-center justify-between gap-3 px-4 py-1.5 md:px-8">

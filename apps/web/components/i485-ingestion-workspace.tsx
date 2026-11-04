@@ -517,6 +517,8 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
   const [questionnaire, setQuestionnaire] = useState<I485Questionnaire | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string>("");
   const [isDirty, setIsDirty] = useState(false);
+  // Missing answers are highlighted only on pages the user has saved or left, not on first view.
+  const [attemptedPageIds, setAttemptedPageIds] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerSources, setAnswerSources] = useState<I485IngestionState["answer_sources"]>({});
   const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
@@ -654,10 +656,18 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
     setIsDirty(true);
   }
 
+  function showMissing(questionId: string) {
+    return missingRequiredQuestionIds.has(questionId) && Boolean(selectedPage && attemptedPageIds.has(selectedPage.id));
+  }
+
   // Unsaved edits on the current page are saved before moving to another page.
   function goToPage(pageId: string) {
     if (pageId === selectedPage?.id) {
       return;
+    }
+    if (selectedPage) {
+      const leftPageId = selectedPage.id;
+      setAttemptedPageIds((current) => new Set(current).add(leftPageId));
     }
     if (isDirty && caseId && selectedPage) {
       saveCurrentPage(false, pageId);
@@ -713,6 +723,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
         .then((state) => {
           applyState(state);
           forgetFormStatuses(caseId);
+          setAttemptedPageIds((current) => new Set(current).add(selectedPage.id));
           setMessage(`Saved "${selectedPage.title}".`);
           if (targetPageId) {
             setSelectedPageId(targetPageId);
@@ -810,7 +821,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
   if (!questionnaire) {
     return (
       <AppShell step="forms" caseId={caseId}>
-        <LoadingState label="Loading I-485 questions..." />
+        {message ? <StatusMessage message={message} /> : <LoadingState label="Loading I-485 questions..." />}
       </AppShell>
     );
   }
@@ -950,13 +961,13 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 </Notice>
               ) : null}
 
-              <div className="grid gap-4">
+              <div className="divide-y divide-line border-y border-line">
                 {selectedPage.questions.map((question) => (
                   <QuestionCard
                     key={question.id}
                     label={question.label}
                     required={question.required}
-                    missing={missingRequiredQuestionIds.has(question.id)}
+                    missing={showMissing(question.id)}
                     flagged={Boolean(manualFlags[question.id])}
                     plainLanguage={question.plain_language}
                     meta={question.pdf_ref}
@@ -991,7 +1002,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
         </section>
       </div>
 
-      {isFormComplete ? (
+      {isFormComplete && !hasNextPage ? (
         <FormCompleteNotice
           formCode="I-485"
           nextHref={nextStepHref}

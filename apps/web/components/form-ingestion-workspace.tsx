@@ -454,6 +454,8 @@ export function FormIngestionWorkspace({
   const [questionnaire, setQuestionnaire] = useState<FormQuestionnaire | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string>("");
   const [isDirty, setIsDirty] = useState(false);
+  // Missing answers are highlighted only on pages the user has saved or left, not on first view.
+  const [attemptedPageIds, setAttemptedPageIds] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerSources, setAnswerSources] = useState<FormIngestionState["answer_sources"]>({});
   const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
@@ -614,10 +616,18 @@ export function FormIngestionWorkspace({
     setIsDirty(true);
   }
 
+  function showMissing(questionId: string) {
+    return missingRequiredQuestionIds.has(questionId) && Boolean(selectedPage && attemptedPageIds.has(selectedPage.id));
+  }
+
   // Unsaved edits on the current page are saved before moving to another page.
   function goToPage(pageId: string) {
     if (pageId === selectedPage?.id) {
       return;
+    }
+    if (selectedPage) {
+      const leftPageId = selectedPage.id;
+      setAttemptedPageIds((current) => new Set(current).add(leftPageId));
     }
     if (isDirty && caseId && selectedPage) {
       saveCurrentPage(false, pageId);
@@ -654,6 +664,7 @@ export function FormIngestionWorkspace({
         .then((state) => {
           applyState(state);
           forgetFormStatuses(caseId);
+          setAttemptedPageIds((current) => new Set(current).add(selectedPage.id));
           setMessage(`Saved "${selectedPage.title}".`);
           if (targetPageId) {
             setSelectedPageId(targetPageId);
@@ -704,7 +715,7 @@ export function FormIngestionWorkspace({
         key={question.id}
         label={question.label}
         required={question.required}
-        missing={missingRequiredQuestionIds.has(question.id)}
+        missing={showMissing(question.id)}
         flagged={Boolean(manualFlags[question.id])}
         plainLanguage={question.plain_language}
         meta={question.pdf_ref}
@@ -722,7 +733,7 @@ export function FormIngestionWorkspace({
   }
 
   function renderAddressGroup(group: AddressQuestionGroup, questions: FormQuestion[]) {
-    const missingCount = questions.filter((question) => missingRequiredQuestionIds.has(question.id)).length;
+    const missingCount = questions.filter((question) => showMissing(question.id)).length;
     const manualFlagCount = questions.filter((question) => manualFlags[question.id]).length;
 
     return (
@@ -751,7 +762,7 @@ export function FormIngestionWorkspace({
                 <span className="text-sm font-semibold leading-5 text-ink">
                   {question.label}
                   {question.required ? <span className="text-clay"> *</span> : null}
-                  {missingRequiredQuestionIds.has(question.id) ? <span className="sr-only"> (missing)</span> : null}
+                  {showMissing(question.id) ? <span className="sr-only"> (missing)</span> : null}
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
                   <ComeBackToggle
@@ -764,8 +775,8 @@ export function FormIngestionWorkspace({
                 </div>
               </div>
               <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
-              <span className={classNames("text-xs", missingRequiredQuestionIds.has(question.id) ? "font-semibold text-clay" : "text-muted")}>
-                {missingRequiredQuestionIds.has(question.id) ? "Required. " : ""}
+              <span className={classNames("text-xs", showMissing(question.id) ? "font-semibold text-clay" : "text-muted")}>
+                {showMissing(question.id) ? "Required. " : ""}
                 {question.pdf_ref}
                 {sourceLabel(answerSources[question.id]) ? ` \u00b7 ${sourceLabel(answerSources[question.id])}` : ""}
               </span>
@@ -816,7 +827,7 @@ export function FormIngestionWorkspace({
   if (!questionnaire) {
     return (
       <AppShell step="forms" caseId={caseId}>
-        <LoadingState label="Loading form questions..." />
+        {message ? <StatusMessage message={message} /> : <LoadingState label="Loading form questions..." />}
       </AppShell>
     );
   }
@@ -839,9 +850,22 @@ export function FormIngestionWorkspace({
         description="Answer each page, then save. Answers you gave on other forms are filled in for you to confirm."
         actions={
           <>
-            <button type="button" onClick={importFromCaseData} disabled={!caseId || isPending} className={buttonClass("secondary", "md")}>
-              Refill from other forms
-            </button>
+            <details className="relative">
+              <summary className={buttonClass("secondary", "md", "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
+                Import answers {"\u25BE"}
+              </summary>
+              <div className="absolute right-0 z-20 mt-2 grid w-64 gap-1 rounded-lg border border-line bg-white p-1.5 shadow-pop">
+                <button
+                  type="button"
+                  onClick={importFromCaseData}
+                  disabled={!caseId || isPending}
+                  className="rounded-md px-3 py-2 text-left text-sm hover:bg-paper disabled:opacity-50"
+                >
+                  <span className="block font-semibold text-ink">Refill from other forms</span>
+                  <span className="block text-xs text-muted">Copies answers saved on other forms</span>
+                </button>
+              </div>
+            </details>
             <button
               type="button"
               onClick={generatePdf}
@@ -923,7 +947,7 @@ export function FormIngestionWorkspace({
 
               <ComeBackList items={manualReviewItems} onSelect={goToPage} />
 
-              <div className="grid gap-4">
+              <div className="divide-y divide-line border-y border-line">
                 {selectedPageItems.map((item) =>
                   item.type === "group" ? renderAddressGroup(item.group, item.questions) : renderQuestionCard(item.question),
                 )}
@@ -942,7 +966,7 @@ export function FormIngestionWorkspace({
         </section>
       </div>
 
-      {isFormComplete ? (
+      {isFormComplete && !hasNextPage ? (
         <FormCompleteNotice
           formCode={questionnaire.form_code}
           nextHref={nextStepHref}

@@ -76,7 +76,7 @@ export function LucyLanding() {
               </li>
             ))}
           </ul>
-          <button type="button" onClick={resumePacket} className={buttonClass("secondary", "sm", "ml-auto sm:ml-2")}>
+          <button type="button" onClick={resumePacket} className={buttonClass(savedCaseId ? "secondary" : "primary", "sm", "ml-auto sm:ml-2")}>
             {savedCaseId ? "Open my case" : "Start a packet"}
           </button>
         </nav>

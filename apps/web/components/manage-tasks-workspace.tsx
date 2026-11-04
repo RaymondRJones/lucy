@@ -5,8 +5,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { CaseSelector } from "@/components/case-selector";
-import { Badge, Card, Notice, PageHeader, ProgressBar, SectionHeader, StatusMessage, buttonClass, inputClass } from "@/components/ui";
-import { getChecklist, getUscisRequirements, listCases, updateChecklistItem } from "@/lib/api";
+import { Badge, Card, Notice, PageHeader, ProgressBar, SectionHeader, StatusMessage, buttonClass } from "@/components/ui";
+import { getChecklist, getUscisRequirements, listCases, listUploads, updateChecklistItem } from "@/lib/api";
+import { getSatisfiedChecklistCodes, isEvidenceItem } from "@/lib/evidence";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type {
   CaseSummary,
@@ -42,6 +43,7 @@ function isDone(item?: ChecklistItem) {
 export function ManageTasksWorkspace() {
   const [caseSummary, setCaseSummary] = useState<CaseSummary | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [attachedCodes, setAttachedCodes] = useState<Set<string>>(new Set());
   const [requirements, setRequirements] = useState<UscisRequirementsPayload | null>(null);
   const [selectedForm, setSelectedForm] = useState("form_i485");
   const [message, setMessage] = useState<string | null>("Loading tasks.");
@@ -71,7 +73,11 @@ export function ManageTasksWorkspace() {
         }
 
         rememberCaseId(activeCase.id);
-        const loadedChecklist = await getChecklist(activeCase.id).catch(() => null);
+        const [loadedChecklist, loadedUploads] = await Promise.all([
+          getChecklist(activeCase.id).catch(() => null),
+          listUploads(activeCase.id).catch(() => []),
+        ]);
+        setAttachedCodes(new Set(loadedUploads.flatMap(getSatisfiedChecklistCodes)));
         if (cancelled) {
           return;
         }
@@ -154,7 +160,7 @@ export function ManageTasksWorkspace() {
       <PageHeader
         eyebrow="Step 3"
         title="Checklist"
-        description="Everything each form needs, from the checklist Lucy built for your answers. Tick items off as you collect them, then attach the files on the Print packet step."
+        description="Everything each form needs, from the checklist Lucy built for your answers. Tick items off as you collect them. Only attached files go into the printed packet, so attach each one on the Print packet step."
       />
 
       <StatusMessage message={message} />
@@ -199,7 +205,7 @@ export function ManageTasksWorkspace() {
             <div className="px-2 pb-3 pt-1">
               <div className="flex items-center justify-between text-xs font-semibold text-muted">
                 <span>Required items marked done</span>
-                <span className="tabular-nums">
+                <span className="whitespace-nowrap tabular-nums">
                   {totalDone} of {totalRequired}
                 </span>
               </div>
@@ -209,21 +215,7 @@ export function ManageTasksWorkspace() {
                 className="mt-1.5"
               />
             </div>
-            <label className="grid gap-1.5 px-2 pb-2 lg:hidden">
-              <span className="text-sm font-semibold text-ink">Form</span>
-              <select value={selectedForm} onChange={(event) => setSelectedForm(event.target.value)} className={inputClass}>
-                {FORM_FILTERS.map((form) => {
-                  const plan = formPlans.find((entry) => entry.code === form.code);
-                  return (
-                    <option key={form.code} value={form.code}>
-                      {form.label}
-                      {plan?.requiredCount ? ` (${plan.doneRequired} of ${plan.requiredCount} done)` : " (optional)"}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-            <div role="tablist" aria-label="Forms" aria-orientation="vertical" className="hidden flex-col gap-1 lg:flex">
+            <div role="tablist" aria-label="Forms" aria-orientation="vertical" className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:flex lg:flex-col">
               {FORM_FILTERS.map((form) => {
                 const plan = formPlans.find((entry) => entry.code === form.code);
                 const isSelected = selectedForm === form.code;
@@ -301,6 +293,9 @@ export function ManageTasksWorkspace() {
                               <Badge tone={necessity === "required" ? "strong" : "neutral"} className="capitalize">
                                 {formatStatus(necessity)}
                               </Badge>
+                              {task.item && isEvidenceItem(task.item) && !attachedCodes.has(task.item.code) ? (
+                                <Badge tone={checked ? "warning" : "neutral"}>{checked ? "Ticked, no file attached" : "No file yet"}</Badge>
+                              ) : null}
                               {task.item && !checked && task.item.completion_status !== "not_started" ? (
                                 <Badge className="capitalize">{formatStatus(task.item.completion_status)}</Badge>
                               ) : null}
