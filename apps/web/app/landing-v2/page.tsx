@@ -209,26 +209,26 @@ export default function LandingV2Page() {
           <h2 className="mt-3 font-display text-4xl leading-tight md:text-5xl">
             You do not need a giant legal machine for a simple packet.
           </h2>
-          <p className="mt-5 text-base leading-8 text-ink/70">
+          <p className="mt-5 text-base leading-8 text-ink/80">
             You need a reliable path through the exact forms, repeated fields, evidence categories, and print-day
             checks that make a do-it-yourself filing feel heavier than it should.
           </p>
         </div>
         <div className="grid gap-3">
           {PROBLEM_POINTS.map((point) => (
-            <div key={point} className="rounded-lg border border-ink/10 bg-white p-4 text-sm font-semibold shadow-sm">
+            <div key={point} className="rounded-lg border border-line bg-white p-4 text-sm font-semibold shadow-sm">
               {point}
             </div>
           ))}
         </div>
       </section>
 
-      <section className="border-y border-ink/10 bg-white">
+      <section className="border-y border-line bg-white">
         <div className="mx-auto w-full max-w-7xl px-4 py-16 md:px-8">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-clay">If any of this sounds like you</p>
           <div className="mt-8 grid gap-3 md:grid-cols-2">
             {PAIN_POINTS.map((point) => (
-              <p key={point} className="rounded-lg border border-ink/10 bg-[#f8faf7] p-4 text-base leading-7 text-ink/75">
+              <p key={point} className="rounded-lg border border-line bg-[#f8faf7] p-4 text-base leading-7 text-ink/80">
                 {point}
               </p>
             ))}
@@ -245,9 +245,9 @@ export default function LandingV2Page() {
         </div>
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {BENEFITS.map((benefit) => (
-            <article key={benefit.title} className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
+            <article key={benefit.title} className="rounded-lg border border-line bg-white p-5 shadow-sm">
               <h3 className="font-display text-2xl">{benefit.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-ink/70">{benefit.body}</p>
+              <p className="mt-3 text-sm leading-7 text-ink/80">{benefit.body}</p>
             </article>
           ))}
         </div>
@@ -259,7 +259,7 @@ export default function LandingV2Page() {
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-pine">Introducing</p>
             <h2 className="mt-3 font-display text-4xl leading-tight md:text-5xl">Lucy, the local I-485 packet workspace.</h2>
           </div>
-          <div className="text-base leading-8 text-ink/75">
+          <div className="text-base leading-8 text-ink/80">
             <p>
               Lucy is the free, open-source packet generator you were looking for if your case is simple enough to do
               yourself, but important enough that you want branching, smart defaults, review warnings, and a final
@@ -294,15 +294,15 @@ export default function LandingV2Page() {
         </div>
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {INCLUDED.map((item) => (
-            <article key={item.title} className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
+            <article key={item.title} className="rounded-lg border border-line bg-white p-5 shadow-sm">
               <h3 className="font-display text-xl">{item.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-ink/70">{item.body}</p>
+              <p className="mt-3 text-sm leading-7 text-ink/80">{item.body}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="border-y border-ink/10 bg-white">
+      <section className="border-y border-line bg-white">
         <div className="mx-auto w-full max-w-7xl px-4 py-16 md:px-8">
           <div className="max-w-4xl">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-clay">FAQ</p>
@@ -312,9 +312,9 @@ export default function LandingV2Page() {
           </div>
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
             {FAQS.map((faq) => (
-              <article key={faq.question} className="rounded-lg border border-ink/10 bg-[#f8faf7] p-5">
+              <article key={faq.question} className="rounded-lg border border-line bg-[#f8faf7] p-5">
                 <h3 className="text-base font-semibold">{faq.question}</h3>
-                <p className="mt-3 text-sm leading-7 text-ink/70">{faq.answer}</p>
+                <p className="mt-3 text-sm leading-7 text-ink/80">{faq.answer}</p>
               </article>
             ))}
           </div>

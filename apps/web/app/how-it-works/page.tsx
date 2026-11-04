@@ -2,28 +2,24 @@ import { PublicCard, PublicPage } from "@/components/public-page";
 
 const STEPS = [
   {
-    title: "Create or open a case",
-    body: "Lucy starts with a local case workspace for the petitioner, beneficiary, checklist, uploads, and review issues.",
+    title: "Prescreen",
+    body: "Answer a short set of questions about your marriage and immigration history. Lucy tells you whether your case fits the standard path and which forms your packet needs.",
   },
   {
-    title: "Complete intake or ingest existing forms",
-    body: "Clients who have not started can answer structured questions. Clients with existing PDFs can import a packet folder and let ingestion extract reviewable facts.",
+    title: "Forms",
+    body: "Fill in each USCIS form page by page. Facts you have already given, like names and addresses, carry over so you confirm them instead of retyping.",
   },
   {
-    title: "Generate the checklist",
-    body: "The API derives conservative case facts, evaluates checklist rules, and marks which forms and evidence appear applicable.",
+    title: "Checklist",
+    body: "See every document each form needs, such as birth certificates, photos, and proof of your relationship, and tick items off as you collect them.",
   },
   {
-    title: "Upload and link documents",
-    body: "Files are attached to checklist items so one document can satisfy more than one requirement when the mapping is explainable.",
+    title: "Review",
+    body: "Lucy checks for missing answers, mismatches between forms, and answers outside the standard path, and links each issue to where you fix it.",
   },
   {
-    title: "Run QA",
-    body: "The backend checks for missing required items, translation support, selected form-edition signals, source-backed mismatches, and higher-risk intake answers.",
-  },
-  {
-    title: "Prepare for final review",
-    body: "Lucy can help organize what to print and review, but a human still confirms sources, signatures, dates, fees, and legal strategy before mailing.",
+    title: "Print packet",
+    body: "Attach your evidence, add payment, and choose where you live. Lucy assembles one PDF in USCIS order and shows the mailing address to use.",
   },
 ];
 
@@ -31,16 +27,18 @@ export default function HowItWorksPage() {
   return (
     <PublicPage
       eyebrow="Workflow"
-      title="Lucy keeps the packet process inspectable instead of magical."
-      description="Every major action should leave behind saved data: intake answers, extracted fields, checklist status, upload metadata, QA issues, and source reminders."
+      title="Five steps from first question to a mail-ready packet."
+      description="Everything you enter is saved on your computer, so you can stop and pick up where you left off. You stay in control of what gets signed and mailed."
     >
-      <div className="grid gap-4 md:grid-cols-2">
+      <ol className="grid max-w-3xl gap-4">
         {STEPS.map((step, index) => (
-          <PublicCard key={step.title} title={step.title} eyebrow={`Step ${index + 1}`}>
-            {step.body}
-          </PublicCard>
+          <li key={step.title}>
+            <PublicCard title={step.title} eyebrow={`Step ${index + 1}`}>
+              {step.body}
+            </PublicCard>
+          </li>
         ))}
-      </div>
+      </ol>
     </PublicPage>
   );
 }

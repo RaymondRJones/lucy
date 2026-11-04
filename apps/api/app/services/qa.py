@@ -18,7 +18,7 @@ from app.models.entities import (
     UploadedDocument,
     utcnow,
 )
-from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
+from app.services.i485 import QUESTION_BY_ID, build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
 from app.services.intake import derive_case_facts, get_merged_case_intake, normalize_country
 from app.services.prescreen import get_prescreen_state
 from app.services.rules.qa import QARuleContext, QARuleDependencies, QARuleEngine
@@ -558,13 +558,17 @@ def _i485_ingestion_issues(session: Session, case_id: UUID) -> list[QAIssue]:
     for flag in evaluation["flags"]:
         severity = "blocking" if flag["severity"] == "blocking" else "important"
         code = f"i485_{flag['code']}_{flag['question_id']}"
+        # Name the question so several flags on one form are told apart.
+        question_label = QUESTION_BY_ID.get(flag["question_id"], {}).get("label")
         if flag["category"] == "outside_niche":
             title = "I-485 answer is outside the standard marriage case profile"
         else:
             title = "I-485 answer may need professional legal review"
+        if question_label:
+            title = f"{title}: {question_label}"
         description = (
             f"{flag['description']} Source: {flag['pdf_ref']}. "
-            "Review the I-485 ingestion page before relying on this case as packet-ready."
+            "Check this answer on the I-485 form page before relying on this case as packet-ready."
         )
         issues.append(
             _build_issue(
@@ -585,7 +589,7 @@ def _i485_ingestion_issues(session: Session, case_id: UUID) -> list[QAIssue]:
                 "i485_missing_required_answers",
                 f"{len(missing)} required I-485 answers are missing",
                 "The I-485 is incomplete until these are answered, so it cannot be treated as packet-ready. "
-                "Open the I-485 ingestion page to see the list.",
+                "Open the I-485 form page to see the list.",
                 "form_i485",
             )
         )

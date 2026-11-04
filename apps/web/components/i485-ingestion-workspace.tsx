@@ -1,9 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { CaseSelector } from "@/components/case-selector";
+import { AppShell } from "@/components/app-shell";
+import {
+  CaseBar,
+  ComeBackList,
+  ComeBackToggle,
+  FormCompleteNotice,
+  FormTabs,
+  GeneratedPdfNotice,
+  HelpPopover,
+  MissingAnswers,
+  PageFooterActions,
+  PageNav,
+  QuestionCard,
+  SourcesDisclosure,
+} from "@/components/form-workspace";
+import { LoadingState, YesNoControl, Notice, PageHeader, StatusMessage, buttonClass, cardClass, eyebrowClass } from "@/components/ui";
 import {
   apiUrl,
   generateI485Pdf,
@@ -16,6 +30,8 @@ import {
   saveI485Page,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { forgetFormStatuses } from "@/lib/form-status";
+import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import {
   manualFlagCountForPage,
   manualFlagsForPage,
@@ -140,7 +156,7 @@ function flagTone(flag: I485Flag) {
   if (flag.category === "outside_niche") {
     return "border-amber-200 bg-amber-50 text-amber-950";
   }
-  return "border-ink/10 bg-white text-ink";
+  return "border-line bg-white text-ink";
 }
 
 function sourceLabel(source: I485IngestionState["answer_sources"][string] | undefined) {
@@ -152,9 +168,12 @@ function sourceLabel(source: I485IngestionState["answer_sources"][string] | unde
     return `Pulled from ${source.filename ?? "uploaded PDF"}${confidence}`;
   }
   if (source.source_type === "user") {
-    return "User entered";
+    return null;
   }
-  return formatStatus(source.source_type);
+  if (source.source_type === "case_intake") {
+    return "Filled from your other answers";
+  }
+  return `Filled from ${formatStatus(source.source_type)}`;
 }
 
 function QuestionHelpButton({ question }: { question: I485Question }) {
@@ -163,27 +182,14 @@ function QuestionHelpButton({ question }: { question: I485Question }) {
   }
 
   return (
-    <span className="group/help relative inline-flex">
-      <button
-        type="button"
-        aria-label={`More context for ${question.label}`}
-        className="flex h-6 w-6 items-center justify-center rounded-full border border-pine/35 bg-white text-xs font-bold text-pine transition hover:border-pine focus:border-pine"
-      >
-        ?
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute right-0 top-8 z-20 hidden w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-ink/15 bg-white p-3 text-left text-xs font-normal leading-5 text-ink shadow-lg group-focus-within/help:block group-hover/help:block"
-      >
-        <span className="block font-semibold text-ink">How to answer this</span>
-        <span className="mt-1 block">{question.deep_explanation}</span>
-        {question.teaching_source ? (
-          <span className="mt-2 block border-t border-ink/10 pt-2 text-ink/55">
-            Based on {question.teaching_source.label}, fetched {question.teaching_source.fetched_on}.
-          </span>
-        ) : null}
-      </span>
-    </span>
+    <HelpPopover label={`How to answer: ${question.label}`} title="How to answer this">
+      <p>{question.deep_explanation}</p>
+      {question.teaching_source ? (
+        <p className="mt-2 border-t border-line pt-2 text-xs text-muted">
+          Based on {question.teaching_source.label}, fetched {question.teaching_source.fetched_on}.
+        </p>
+      ) : null}
+    </HelpPopover>
   );
 }
 
@@ -198,7 +204,8 @@ function RepeatableHistoryControl({
 }) {
   const fields = question.entry_fields ?? [];
   const entries = repeatableEntries(question, value);
-  const visibleEntries = entries.length ? entries : [emptyRepeatableEntry(question)];
+  // Optional lists start empty so their per-entry required markers do not read as required questions.
+  const visibleEntries = entries.length ? entries : question.required ? [emptyRepeatableEntry(question)] : [];
   const formEntryLimit = question.form_entry_limit ?? null;
   const overflowCount = formEntryLimit === null ? 0 : Math.max(0, visibleEntries.length - formEntryLimit);
 
@@ -222,19 +229,24 @@ function RepeatableHistoryControl({
           {question.overflow_pdf_ref ?? "additional information"}.
         </p>
       ) : null}
+      {!visibleEntries.length ? (
+        <p className="rounded-lg border border-dashed border-line-strong px-3 py-2.5 text-sm text-muted">
+          None added. Add an entry only if this applies.
+        </p>
+      ) : null}
       {visibleEntries.map((entry, index) => {
         const isOverflow = formEntryLimit !== null && index >= formEntryLimit;
         return (
-          <div key={index} className="grid gap-3 rounded-lg border border-ink/10 bg-white p-3">
+          <div key={index} className="grid gap-3 rounded-lg border border-line bg-white p-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink/55">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                 Entry {index + 1}{isOverflow ? " · Part 14" : ""}
               </p>
-              {visibleEntries.length > 1 ? (
+              {visibleEntries.length > 1 || !question.required ? (
                 <button
                   type="button"
                   onClick={() => removeEntry(index)}
-                  className="rounded-lg border border-ink/15 px-3 py-1 text-xs font-semibold text-ink/70"
+                  className={buttonClass("ghost", "sm", "text-red-800 hover:bg-red-50")}
                 >
                   Remove
                 </button>
@@ -261,12 +273,12 @@ function RepeatableHistoryControl({
                 if (field.type === "textarea") {
                   return (
                     <label key={field.key} className="grid gap-1 md:col-span-2">
-                      <span className="text-xs font-semibold text-ink/65">{fieldLabel}</span>
+                      <span className="text-sm font-medium text-ink">{fieldLabel}</span>
                       <textarea
                         value={fieldValue(entry[field.key])}
                         onChange={(event) => updateEntry(index, field.key, event.target.value)}
                         rows={2}
-                        className="w-full rounded-lg border border-ink/15 bg-paper/35 px-3 py-2 text-sm leading-6 text-ink"
+                        className="w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm leading-6 text-ink transition-colors hover:border-ink/40"
                       />
                     </label>
                   );
@@ -274,11 +286,11 @@ function RepeatableHistoryControl({
                 if (field.type === "select") {
                   return (
                     <label key={field.key} className="grid gap-1">
-                      <span className="text-xs font-semibold text-ink/65">{fieldLabel}</span>
+                      <span className="text-sm font-medium text-ink">{fieldLabel}</span>
                       <select
                         value={fieldValue(entry[field.key])}
                         onChange={(event) => updateEntry(index, field.key, event.target.value)}
-                        className="h-10 w-full rounded-lg border border-ink/15 bg-paper/35 px-3 text-sm text-ink"
+                        className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
                       >
                         <option value="">Select</option>
                         {(field.options ?? []).map((option) => (
@@ -292,7 +304,7 @@ function RepeatableHistoryControl({
                 }
                 if (field.type === "boolean") {
                   return (
-                    <label key={field.key} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-paper/35 px-3 py-2 text-sm text-ink">
+                    <label key={field.key} className="flex items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink">
                       <input
                         type="checkbox"
                         checked={entry[field.key] === true}
@@ -305,12 +317,12 @@ function RepeatableHistoryControl({
                 }
                 return (
                   <label key={field.key} className="grid gap-1">
-                    <span className="text-xs font-semibold text-ink/65">{fieldLabel}</span>
+                    <span className="text-sm font-medium text-ink">{fieldLabel}</span>
                     <input
                       type={field.type === "date" ? "date" : "text"}
                       value={fieldValue(entry[field.key])}
                       onChange={(event) => updateEntry(index, field.key, event.target.value)}
-                      className="h-10 w-full rounded-lg border border-ink/15 bg-paper/35 px-3 text-sm text-ink"
+                      className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
                     />
                   </label>
                 );
@@ -322,9 +334,9 @@ function RepeatableHistoryControl({
       <button
         type="button"
         onClick={() => onChange([...visibleEntries, emptyRepeatableEntry(question)])}
-        className="w-fit rounded-lg border border-pine px-3 py-2 text-xs font-semibold text-pine"
+        className={buttonClass("secondary", "sm", "w-fit")}
       >
-        Add entry
+        + Add {visibleEntries.length ? "another entry" : "an entry"}
       </button>
     </div>
   );
@@ -347,17 +359,17 @@ export function StructuredAddressControl({
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-ink/10 bg-white p-3 md:grid-cols-2">
+    <div className="grid gap-3 rounded-lg border border-line bg-white p-3 md:grid-cols-2">
       {fields.map((field) => {
         const fieldLabel = `${field.label}${field.required ? " *" : ""}`;
         if (field.type === "select") {
           return (
             <label key={field.key} className="grid gap-1">
-              <span className="text-xs font-semibold text-ink/65">{fieldLabel}</span>
+              <span className="text-sm font-medium text-ink">{fieldLabel}</span>
               <select
                 value={fieldValue(entry[field.key])}
                 onChange={(event) => updateField(field.key, event.target.value)}
-                className="h-10 w-full rounded-lg border border-ink/15 bg-paper/35 px-3 text-sm text-ink"
+                className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
               >
                 <option value="">Select</option>
                 {(field.options ?? []).map((option) => (
@@ -371,7 +383,7 @@ export function StructuredAddressControl({
         }
         if (field.type === "boolean") {
           return (
-            <label key={field.key} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-paper/35 px-3 py-2 text-sm text-ink">
+            <label key={field.key} className="flex items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={entry[field.key] === true}
@@ -384,12 +396,12 @@ export function StructuredAddressControl({
         }
         return (
           <label key={field.key} className="grid gap-1">
-            <span className="text-xs font-semibold text-ink/65">{fieldLabel}</span>
+            <span className="text-sm font-medium text-ink">{fieldLabel}</span>
             <input
               type={field.type === "date" ? "date" : "text"}
               value={fieldValue(entry[field.key])}
               onChange={(event) => updateField(field.key, event.target.value)}
-              className="h-10 w-full rounded-lg border border-ink/15 bg-paper/35 px-3 text-sm text-ink"
+              className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
             />
           </label>
         );
@@ -416,38 +428,16 @@ function QuestionControl({
   }
 
   if (question.answer_type === "boolean") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onChange(true)}
-          className={classNames(
-            "h-10 rounded-lg border px-4 text-sm font-semibold",
-            value === true ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
-          )}
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange(false)}
-          className={classNames(
-            "h-10 rounded-lg border px-4 text-sm font-semibold",
-            value === false ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
-          )}
-        >
-          No
-        </button>
-      </div>
-    );
+    return <YesNoControl value={value} onChange={onChange} label={question.label} />;
   }
 
   if (question.answer_type === "select") {
     return (
       <select
+        aria-label={question.label}
         value={fieldValue(value)}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+        className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
       >
         <option value="">Select</option>
         {question.options.map((option) => (
@@ -463,7 +453,7 @@ function QuestionControl({
     return (
       <div className="grid gap-2 sm:grid-cols-2">
         {question.options.map((option) => (
-          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white p-3 text-sm">
+          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-line bg-white p-3 text-sm">
             <input
               type="checkbox"
               checked={isChecked(value, option.value)}
@@ -484,7 +474,7 @@ function QuestionControl({
     return (
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {question.options.map((option) => (
-          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white p-3 text-sm">
+          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-line bg-white p-3 text-sm">
             <input
               type="checkbox"
               checked={value === option.value}
@@ -501,10 +491,11 @@ function QuestionControl({
   if (["textarea", "address", "address_list"].includes(question.answer_type)) {
     return (
       <textarea
+        aria-label={question.label}
         value={fieldValue(value)}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        className="w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm leading-6 text-ink"
+        className="w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm leading-6 text-ink transition-colors hover:border-ink/40"
       />
     );
   }
@@ -512,10 +503,11 @@ function QuestionControl({
   const inputType = question.answer_type === "date" ? "date" : question.answer_type === "number" ? "number" : "text";
   return (
     <input
+      aria-label={question.label}
       type={inputType}
       value={fieldValue(value)}
       onChange={(event) => onChange(normalizeInputValue(question, event.target.value))}
-      className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+      className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
     />
   );
 }
@@ -524,6 +516,9 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
   const [caseId, setCaseId] = useState<string | null>(null);
   const [questionnaire, setQuestionnaire] = useState<I485Questionnaire | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [isDirty, setIsDirty] = useState(false);
+  // Missing answers are highlighted only on pages the user has saved or left, not on first view.
+  const [attemptedPageIds, setAttemptedPageIds] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerSources, setAnswerSources] = useState<I485IngestionState["answer_sources"]>({});
   const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
@@ -596,8 +591,8 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
           .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh I-485 fill preview."));
         setMessage(
           result.imported_count
-            ? `Synced ${result.imported_count} answers from saved case data. ${result.skipped_count} existing I-485 answers were preserved.`
-            : "Checked saved case data; I-485 is already in sync.",
+            ? `Filled in ${result.imported_count} ${result.imported_count === 1 ? "answer" : "answers"} from your other forms. Check them before saving.`
+            : null,
         );
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not sync I-485 answers from case data."));
@@ -609,8 +604,11 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh I-485 fill preview."));
   }
 
+  useUnsavedChangesGuard(isDirty);
+
   function applyState(state: I485IngestionState) {
     setAnswers(state.answers);
+    setIsDirty(false);
     setAnswerSources(state.answer_sources);
     setManualFlags(normalizeManualQuestionFlags(state.manual_flags));
     setFlags(state.evaluation.flags);
@@ -655,10 +653,32 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
 
   function updateAnswer(questionId: string, value: unknown) {
     setAnswers((current) => ({ ...current, [questionId]: value }));
+    setIsDirty(true);
+  }
+
+  function showMissing(questionId: string) {
+    return missingRequiredQuestionIds.has(questionId) && Boolean(selectedPage && attemptedPageIds.has(selectedPage.id));
+  }
+
+  // Unsaved edits on the current page are saved before moving to another page.
+  function goToPage(pageId: string) {
+    if (pageId === selectedPage?.id) {
+      return;
+    }
+    if (selectedPage) {
+      const leftPageId = selectedPage.id;
+      setAttemptedPageIds((current) => new Set(current).add(leftPageId));
+    }
+    if (isDirty && caseId && selectedPage) {
+      saveCurrentPage(false, pageId);
+      return;
+    }
+    setSelectedPageId(pageId);
   }
 
   function useHappyPathEmploymentDefaults() {
     const foreignSchool = firstForeignSchoolEntry(answers.beneficiary_employment_history);
+    setIsDirty(true);
     setAnswers((current) => ({
       ...current,
       beneficiary_employment_history: [
@@ -692,7 +712,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
     );
   }
 
-  function saveCurrentPage() {
+  function saveCurrentPage(moveNext = false, targetPageId?: string) {
     if (!caseId || !selectedPage) {
       setMessage("Create or open a case first, then return to this I-485 page.");
       return;
@@ -702,7 +722,19 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
       saveI485Page(caseId, selectedPage.id, pageAnswers, manualFlagsForPage(selectedPage, manualFlags))
         .then((state) => {
           applyState(state);
-          setMessage("Saved this I-485 page and refreshed the case mapping.");
+          forgetFormStatuses(caseId);
+          setAttemptedPageIds((current) => new Set(current).add(selectedPage.id));
+          setMessage(`Saved "${selectedPage.title}".`);
+          if (targetPageId) {
+            setSelectedPageId(targetPageId);
+          } else if (moveNext && questionnaire) {
+            const index = questionnaire.pages.findIndex((page) => page.id === selectedPage.id);
+            const nextPage = questionnaire.pages[index + 1];
+            if (nextPage) {
+              setSelectedPageId(nextPage.id);
+              document.getElementById("form-page")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          }
         })
         .catch((error) => setMessage(error instanceof Error ? error.message : "Could not save this I-485 page."));
     });
@@ -781,436 +813,209 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
     });
   }
 
-  function navigateToForm(formKey: string) {
-    const option = formFlowOptions.find((candidate) => candidate.formKey === formKey);
-    if (option) {
-      window.location.assign(packetFormHref(option.formKey, caseId));
-    }
-  }
-
   function selectCase(nextCase: CaseSummary) {
     rememberCaseId(nextCase.id);
     window.location.assign(`/i485-ingestion?caseId=${encodeURIComponent(nextCase.id)}`);
   }
 
   if (!questionnaire) {
-    return <main className="mx-auto max-w-5xl px-6 py-10 text-ink">Loading I-485 questionnaire...</main>;
+    return (
+      <AppShell step="forms" caseId={caseId}>
+        {message ? <StatusMessage message={message} /> : <LoadingState label="Loading I-485 questions..." />}
+      </AppShell>
+    );
   }
 
-  return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 text-ink">
-      <header className="flex flex-col gap-4 border-b border-ink/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-pine/80">I-485 ingestion</p>
-          <h1 className="font-display text-4xl text-ink">Adjustment questionnaire map</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
-            Fourteen source-backed pages for collecting, mapping, and flagging I-485 answers before form-fill work.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            value="i485"
-            onChange={(event) => navigateToForm(event.target.value)}
-            className="h-10 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold text-ink"
-          >
-            {formFlowOptions.map((option) => (
-              <option key={option.formKey} value={option.formKey}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={importFromCaseData}
-            disabled={!caseId || isPending}
-            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
-          >
-            Pull from case data
-          </button>
-          <button
-            type="button"
-            onClick={importFromUpload}
-            disabled={!caseId || isPending}
-            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
-          >
-            Pull from uploaded I-485
-          </button>
-          <button
-            type="button"
-            onClick={generatePdf}
-            disabled={!caseId || isPending}
-            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
-          >
-            Generate draft PDF
-          </button>
-          <Link
-            href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
-            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
-          >
-            Generate full packet
-          </Link>
-          <Link href="/" className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink">
-            Case workspace
-          </Link>
-          <a
-            href={questionnaire.official_url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
-          >
-            USCIS source
-          </a>
-        </div>
-      </header>
+  const pageIndex = questionnaire.pages.findIndex((page) => page.id === selectedPage?.id);
+  const hasNextPage = pageIndex >= 0 && pageIndex < questionnaire.pages.length - 1;
+  const nextStepHref = nextFormOption
+    ? packetFormHref(nextFormOption.formKey, caseId)
+    : caseId
+      ? `/manage-tasks?caseId=${encodeURIComponent(caseId)}`
+      : "/manage-tasks";
 
-      {message ? <p className="rounded-lg border border-ink/10 bg-white p-3 text-sm text-ink/75">{message}</p> : null}
+  return (
+    <AppShell step="forms" caseId={caseId}>
+      <FormTabs options={formFlowOptions} activeKey="i485" caseId={caseId} />
+
+      <PageHeader
+        eyebrow={"Step 2 \u00b7 I-485"}
+        title="Application to Adjust Status"
+        description="Fourteen pages that follow Form I-485. Answers you gave on other forms are filled in for you to confirm."
+        actions={
+          <>
+            <details className="relative">
+              <summary className={buttonClass("secondary", "md", "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
+                Import answers {"\u25BE"}
+              </summary>
+              <div className="absolute right-0 z-20 mt-2 grid w-64 gap-1 rounded-lg border border-line bg-white p-1.5 shadow-pop">
+                <button
+                  type="button"
+                  onClick={importFromCaseData}
+                  disabled={!caseId || isPending}
+                  className="rounded-md px-3 py-2 text-left text-sm hover:bg-paper disabled:opacity-50"
+                >
+                  <span className="block font-semibold text-ink">Refill from other forms</span>
+                  <span className="block text-xs text-muted">Copies answers saved on other forms</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={importFromUpload}
+                  disabled={!caseId || isPending}
+                  className="rounded-md px-3 py-2 text-left text-sm hover:bg-paper disabled:opacity-50"
+                >
+                  <span className="block font-semibold text-ink">Read an uploaded I-485</span>
+                  <span className="block text-xs text-muted">Pulls answers from a filled PDF you uploaded</span>
+                </button>
+              </div>
+            </details>
+            <button type="button" onClick={generatePdf} disabled={!caseId || isPending} className={buttonClass("secondary", "md")}>
+              Preview draft PDF
+            </button>
+          </>
+        }
+      />
+
+      <StatusMessage message={message} />
 
       {generatedPdf ? (
-        <section className="rounded-lg border border-pine/20 bg-white p-4 text-sm text-ink/75">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="font-semibold text-ink">Draft PDF generated</p>
-              <p className="mt-1 break-all">{generatedPdf.generated_pdf}</p>
-            </div>
-            <a
-              href={apiUrl(generatedPdf.download_url)}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-pine bg-pine px-4 py-2 text-center text-sm font-semibold text-white"
-            >
-              Open PDF
-            </a>
-          </div>
-          <p className="mt-2">
-            Filled {generatedPdf.field_count} template fields from {generatedPdf.mapped_question_count} mapped questions.
-            {generatedPdf.ready_for_pdf_generation ? "" : " This draft still needs questionnaire completion and review."}
-          </p>
-        </section>
+        <GeneratedPdfNotice
+          path={generatedPdf.generated_pdf}
+          href={apiUrl(generatedPdf.download_url)}
+          fieldCount={generatedPdf.field_count}
+          mappedCount={generatedPdf.mapped_question_count}
+          ready={generatedPdf.ready_for_pdf_generation}
+        />
       ) : null}
 
-      {isFormComplete ? (
-        <section className="rounded-lg border border-pine/20 bg-white p-5">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Form complete</p>
-              <h2 className="font-display text-2xl text-ink">Choose what to do next</h2>
-              <p className="mt-1 text-sm leading-6 text-ink/65">
-                I-485 has its required answers. Generate a draft, continue the packet path, or assemble the full packet.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            <button
-              type="button"
-              onClick={generatePdf}
-              disabled={!caseId || isPending}
-              className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-left text-sm font-semibold text-ink transition hover:border-pine/35 hover:bg-white disabled:opacity-55"
-            >
-              Generate draft PDF
-            </button>
-            {nextFormOption ? (
-              <Link
-                href={packetFormHref(nextFormOption.formKey, caseId)}
-                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
-              >
-                Go to next: {nextFormOption.label}
-              </Link>
-            ) : (
-              <Link
-                href={caseId ? `/review?caseId=${encodeURIComponent(caseId)}` : "/review"}
-                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
-              >
-                Review checklist
-              </Link>
-            )}
-            <Link
-              href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
-              className="rounded-lg border border-ink/15 bg-white p-3 text-sm font-semibold text-ink"
-            >
-              Generate full packet
-            </Link>
-          </div>
-        </section>
-      ) : null}
 
-      {!caseId ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <CaseSelector
-            selectedCaseId=""
-            onSelect={selectCase}
-            disabled={isPending}
-            label="Choose saved case"
-          />
-          <p className="mt-3">No active case ID is stored in this browser. Choose a case before saving answers.</p>
-        </section>
-      ) : (
-        <section className="grid gap-4 rounded-lg border border-ink/10 bg-white p-4 text-sm text-ink/70 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end">
-          <CaseSelector
-            selectedCaseId={caseId}
-            onSelect={selectCase}
-            disabled={isPending}
-            label="Switch case"
-          />
-          <p>
-            <span className="font-semibold text-ink">Active case ID:</span>{" "}
-            <span className="break-all">{caseId}</span>
-          </p>
-        </section>
-      )}
+      {!caseId ? <CaseBar caseId="" onSelect={selectCase} disabled={isPending} /> : null}
 
-      {fillPreview ? (
-        <section className="grid gap-3 rounded-lg border border-ink/10 bg-white p-5 md:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))]">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Fill preview</p>
-            <h2 className="font-display text-2xl text-ink">{formatStatus(fillPreview.generation_status)}</h2>
-            <p className="mt-1 text-sm leading-6 text-ink/65">
-              {fillPreview.questionnaire_version}
-            </p>
-          </div>
-          {[
-            ["Mapped", fillPreview.field_count],
-            ["Missing", fillPreview.missing_required_count],
-            ["Risk", fillPreview.blocking_flag_count],
-            ["Review", fillPreview.low_confidence_count],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-ink/10 bg-paper/55 p-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-ink/45">{label}</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
-            </div>
-          ))}
-        </section>
-      ) : null}
+      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
 
-      {missingRequiredItems.length ? (
-        <section className="rounded-lg border border-clay/20 bg-clay/5 p-4 text-sm text-ink/76">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-semibold text-ink">Missing required answers</p>
-            <p className="text-xs uppercase tracking-[0.14em] text-clay">
-              {missingRequiredItems.length} remaining
-            </p>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {visibleMissingRequiredItems.map((item) => (
-              <button
-                key={item.question_id}
-                type="button"
-                onClick={() => setSelectedPageId(item.page_id)}
-                className="max-w-full rounded-full border border-clay/20 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/72 transition hover:border-clay/40 hover:text-clay"
-              >
-                {item.label}
-              </button>
-            ))}
-            {hiddenMissingRequiredCount ? (
-              <span className="rounded-full border border-clay/20 bg-white px-3 py-1.5 text-xs font-semibold text-ink/55">
-                +{hiddenMissingRequiredCount} more shown in the page list
-              </span>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <PageNav
+          items={questionnaire.pages.map((page) => ({
+            id: page.id,
+            title: page.title,
+            subtitle: page.pdf_part,
+            missingCount: missingRequiredItems.filter((item) => item.page_id === page.id).length,
+            complete: isPageComplete(page),
+            flagCount: manualFlagCountForPage(page, manualFlags),
+          }))}
+          selectedId={selectedPageId}
+          onSelect={goToPage}
+          completionPct={completionPct}
+          statusLabel={formatStatus(readiness)}
+          stats={
+            fillPreview
+              ? [
+                  { label: "fields filled", value: fillPreview.field_count },
+                  { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                  { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                  { label: "to review", value: fillPreview.low_confidence_count },
+                ]
+              : undefined
+          }
+        />
 
-      <section className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <aside className="rounded-lg border border-ink/10 bg-white p-4">
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-ink">Completion</p>
-            <div className="mt-2 h-2 rounded-full bg-ink/10">
-              <div className="h-2 rounded-full bg-pine" style={{ width: `${completionPct}%` }} />
-            </div>
-            <p className="mt-2 text-xs uppercase tracking-[0.18em] text-ink/55">{completionPct}% · {formatStatus(readiness)}</p>
-          </div>
-          <div className="grid gap-2">
-            {questionnaire.pages.map((page, index) => {
-              const manualFlagCount = manualFlagCountForPage(page, manualFlags);
-              const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
-              const pageComplete = isPageComplete(page);
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => setSelectedPageId(page.id)}
-                  className={classNames(
-                    "rounded-lg border px-3 py-2 text-left text-sm",
-                    selectedPageId === page.id ? "border-pine bg-mist text-ink" : "border-ink/10 bg-white text-ink/75",
-                    pageMissingCount ? "border-clay/30" : "",
-                  )}
-                >
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="font-semibold">{index + 1}. {page.title}</span>
-                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
-                      {pageMissingCount ? (
-                        <span className="rounded-full bg-clay/10 px-2 py-0.5 text-[11px] font-semibold text-clay">
-                          {pageMissingCount} missing
-                        </span>
-                      ) : pageComplete ? (
-                        <span className="rounded-full bg-pine/10 px-2 py-0.5 text-[11px] font-semibold text-pine">
-                          Done
-                        </span>
-                      ) : null}
-                      {manualFlagCount ? (
-                        <span className="rounded-full bg-sand/55 px-2 py-0.5 text-[11px] font-semibold text-ink/70">
-                          {manualFlagCount}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                  <span className="mt-1 block text-xs text-ink/55">{page.pdf_part}</span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        <section className="rounded-lg border border-ink/10 bg-white p-5">
+        <section id="form-page" aria-labelledby="form-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
           {selectedPage ? (
             <>
-              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-pine/80">{selectedPage.pdf_part}</p>
-                  <h2 className="font-display text-2xl text-ink">{selectedPage.title}</h2>
-                  <p className="mt-1 text-sm text-ink/60">Local PDF pages {selectedPage.local_pdf_pages.join(", ")}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={saveCurrentPage}
-                  disabled={isPending}
-                  className="rounded-lg bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {isPending ? "Saving..." : "Save page"}
-                </button>
+              <div className="mb-5">
+                <p className={eyebrowClass}>
+                  {selectedPage.pdf_part}
+                  {selectedPage.local_pdf_pages.length ? ` \u00b7 PDF page ${selectedPage.local_pdf_pages.join(", ")}` : ""}
+                </p>
+                <h2 id="form-page-heading" className="mt-1 font-display text-2xl text-ink">
+                  {selectedPage.title}
+                </h2>
               </div>
 
               {pageFlags.length ? (
                 <div className="mb-5 grid gap-2">
                   {pageFlags.map((flag) => (
-                    <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border p-3 text-sm", flagTone(flag))}>
-                      <p className="font-semibold">{formatStatus(flag.code)}</p>
+                    <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border px-4 py-3 text-sm", flagTone(flag))}>
+                      <p className="font-semibold capitalize">{formatStatus(flag.code)}</p>
                       <p className="mt-1 leading-6">{flag.description}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
 
-              {manualReviewItems.length ? (
-                <div className="mb-5 rounded-lg border border-sand/50 bg-sand/15 p-3 text-sm text-ink/72">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="font-semibold text-ink">Come-back questions</p>
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">
-                      {manualReviewItems.length} marked
-                    </p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {manualReviewItems.map((item) => (
-                      <button
-                        key={item.questionId}
-                        type="button"
-                        onClick={() => setSelectedPageId(item.pageId)}
-                        className="max-w-full rounded-full border border-ink/10 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/70 transition hover:border-pine/30 hover:text-pine"
-                      >
-                        {item.pageTitle}: {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <ComeBackList items={manualReviewItems} onSelect={goToPage} />
 
               {selectedPage.questions.some((question) => question.id === "beneficiary_employment_history") ? (
-                <div className="mb-5 rounded-lg border border-pine/20 bg-mist p-4 text-sm text-ink">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="font-semibold text-ink">USCIS Part 4 employment and education history</p>
-                      <p className="mt-1 leading-6 text-ink/70">
-                        Enter the current U.S. status first. For this sample, that should be unemployment supported by husband, then the Colombia school belongs in the outside-U.S. school section.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={useHappyPathEmploymentDefaults}
-                      className="w-fit shrink-0 rounded-lg border border-pine bg-white px-3 py-2 text-xs font-semibold text-pine"
-                    >
+                <Notice
+                  tone="info"
+                  className="mb-5"
+                  title="Part 4 employment and education history"
+                  actions={
+                    <button type="button" onClick={useHappyPathEmploymentDefaults} className={buttonClass("secondary", "sm")}>
                       Use sample defaults
                     </button>
-                  </div>
-                </div>
+                  }
+                >
+                  Enter the current U.S. status first. For this sample, that should be unemployment supported by husband, then the
+                  Colombia school belongs in the outside-U.S. school section.
+                </Notice>
               ) : null}
 
-              <div className="grid gap-4">
+              <div className="divide-y divide-line border-y border-line">
                 {selectedPage.questions.map((question) => (
-                  <div
+                  <QuestionCard
                     key={question.id}
-                    className={classNames(
-                      "grid gap-2 rounded-lg border p-4",
-                      missingRequiredQuestionIds.has(question.id)
-                        ? "border-clay/35 bg-clay/5"
-                        : manualFlags[question.id]
-                          ? "border-sand/60 bg-sand/15"
-                          : "border-ink/10 bg-paper/55",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-sm font-semibold text-ink">
-                        {question.label}
-                        {question.required ? <span className="text-clay"> *</span> : null}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {missingRequiredQuestionIds.has(question.id) ? (
-                          <span className="rounded-full bg-clay/10 px-2.5 py-1 text-xs font-semibold text-clay">
-                            Missing
-                          </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          aria-pressed={Boolean(manualFlags[question.id])}
-                          onClick={() => toggleManualFlag(question)}
+                    label={question.label}
+                    required={question.required}
+                    missing={showMissing(question.id)}
+                    flagged={Boolean(manualFlags[question.id])}
+                    plainLanguage={question.plain_language}
+                    meta={question.pdf_ref}
+                    source={sourceLabel(answerSources[question.id])}
+                    actions={
+                      <>
+                        <ComeBackToggle
+                          flagged={Boolean(manualFlags[question.id])}
+                          onToggle={() => toggleManualFlag(question)}
                           disabled={isPending}
-                          className={classNames(
-                            "rounded-full border px-3 py-1 text-xs font-semibold transition disabled:opacity-55",
-                            manualFlags[question.id]
-                              ? "border-sand bg-sand/45 text-ink"
-                              : "border-ink/10 bg-white text-ink/55 hover:border-sand/70 hover:text-ink",
-                          )}
-                        >
-                          {manualFlags[question.id] ? "Flagged" : "Come back"}
-                        </button>
+                        />
                         <QuestionHelpButton question={question} />
-                      </div>
-                    </div>
-                    {question.plain_language ? (
-                      <span className="text-xs leading-5 text-ink/70">{question.plain_language}</span>
-                    ) : null}
+                      </>
+                    }
+                  >
                     <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
-                    <span className="text-xs text-ink/55">
-                      {question.pdf_ref}
-                      {question.db_path ? ` · maps to ${question.db_path}` : ""}
-                    </span>
-                    {question.help_text ? <span className="text-xs leading-5 text-ink/65">{question.help_text}</span> : null}
-                    {sourceLabel(answerSources[question.id]) ? (
-                      <span className="text-xs font-semibold text-pine">{sourceLabel(answerSources[question.id])}</span>
-                    ) : null}
-                  </div>
+                    {question.help_text ? <p className="text-xs leading-5 text-muted">{question.help_text}</p> : null}
+                  </QuestionCard>
                 ))}
               </div>
+
+              <PageFooterActions
+                onPrevious={pageIndex > 0 ? () => goToPage(questionnaire.pages[pageIndex - 1].id) : undefined}
+                onSave={() => saveCurrentPage(false)}
+                onSaveAndNext={() => saveCurrentPage(true)}
+                isPending={isPending}
+                isDirty={isDirty}
+                hasNext={hasNextPage}
+              />
             </>
           ) : null}
         </section>
-      </section>
+      </div>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Source control</p>
-            <h2 className="font-display text-2xl">Questionnaire version {questionnaire.version}</h2>
-          </div>
-          <p className="text-sm text-ink/60">Verified {questionnaire.verified_on}</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {questionnaire.sources.map((source) => (
-            <a key={source.label} href={source.url.startsWith("http") ? source.url : undefined} className="rounded-lg border border-ink/10 bg-paper/50 p-3 text-sm text-ink/75">
-              <span className="font-semibold text-ink">{source.label}</span>
-              <span className="mt-1 block leading-6">{source.notes}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-    </main>
+      {isFormComplete && !hasNextPage ? (
+        <FormCompleteNotice
+          formCode="I-485"
+          nextHref={nextStepHref}
+          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
+        />
+      ) : null}
+
+      <SourcesDisclosure
+        version={questionnaire.version}
+        verifiedOn={questionnaire.verified_on}
+        officialUrl={questionnaire.official_url}
+        sources={questionnaire.sources}
+      />
+    </AppShell>
   );
 }

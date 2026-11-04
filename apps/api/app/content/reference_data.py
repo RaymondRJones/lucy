@@ -40,7 +40,7 @@ FEE_TABLE = {
     "reference_mode": "user_confirmed",
     "verification_required": True,
     "last_reviewed": None,
-    "note": "This MVP intentionally avoids hard-coding filing fees as authoritative legal content. Ask users to confirm the current USCIS fee schedule before mailing.",
+    "note": "Lucy intentionally avoids hard-coding filing fees as authoritative legal content. Ask users to confirm the current USCIS fee schedule before mailing.",
     "items": [
         {
             "code": "review_current_fees",

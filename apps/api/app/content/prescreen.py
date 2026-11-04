@@ -91,11 +91,11 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         ideal_answer="usc_spouse",
         flag_when={"not": "usc_spouse"},
         flag_code="outside_happy_path_case_basis",
-        flag_title="This MVP is only for a U.S. citizen spouse case",
+        flag_title="Lucy is only for a U.S. citizen spouse case",
         flag_description=(
             "The current guided packet is built for a U.S. citizen petitioning for a foreign spouse who "
             "is adjusting status in the United States. Other family, employment, asylum, or preference "
-            "categories should be reviewed outside this MVP flow."
+            "categories should be reviewed outside what Lucy covers."
         ),
         options=[
             {"value": "usc_spouse", "label": "U.S. citizen filing for spouse"},
@@ -112,7 +112,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
             {"value": "other_unsure", "label": "Other or unsure"},
         ],
         help_text="This chooses the packet family before Lucy starts eliminating forms and questions.",
-        why="Different immigration categories use different timing rules, forms, and evidence. This MVP only models the simple U.S. citizen spouse path.",
+        why="Different immigration categories use different timing rules, forms, and evidence. Lucy only models the simple U.S. citizen spouse path.",
     ),
     q(
         "petitioner_citizenship_status",
@@ -126,14 +126,14 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         flag_title="Petitioner is not marked as a U.S. citizen",
         flag_description=(
             "A lawful permanent resident spouse path can be valid, but it adds visa-availability and "
-            "priority-date logic that is outside this MVP."
+            "priority-date logic that is outside what Lucy covers."
         ),
         options=[
             {"value": "us_citizen", "label": "Yes, U.S. citizen"},
             {"value": "lpr", "label": "No, lawful permanent resident"},
             {"value": "other", "label": "No or unsure"},
         ],
-        help_text="This MVP is scoped to a U.S. citizen spouse petitioning for a foreign spouse.",
+        help_text="Lucy is scoped to a U.S. citizen spouse petitioning for a foreign spouse.",
         why="A U.S. citizen spouse case is treated differently from a green-card-holder spouse case for timing and visa availability.",
     ),
     q(
@@ -305,7 +305,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
                 "category": "outside_happy_path",
                 "title": "Last entry is outside the simple inspected-entry path",
                 "description": (
-                    "The MVP assumes the foreign spouse can show an inspected admission or parole record. Entry without "
+                    "Lucy assumes the foreign spouse can show an inspected admission or parole record. Entry without "
                     "inspection, crewman/transit issues, or an unknown entry record should be reviewed before using this flow."
                 ),
             },
@@ -471,7 +471,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         flag_description="A K-1 entrant generally needs careful review if the adjustment is not through the original K-1 petitioner.",
         flag_severity="critical",
         elimination_text="Only shown for K-1 status.",
-        help_text="This MVP is still centered on the standard spouse adjustment path, so K-1 answers stay visible as review flags.",
+        help_text="Lucy is still centered on the standard spouse adjustment path, so K-1 answers stay visible as review flags.",
         why="The branching spec separates K-1 adjustment from the standard spouse workflow.",
     ),
     q(
@@ -534,7 +534,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         flag_code="outside_happy_path_prior_marriage",
         flag_title="Prior marriage documents will be needed",
         flag_description=(
-            "Prior marriages are not unusual by themselves, but this MVP's happy path assumes no prior marriages. "
+            "Prior marriages are not unusual by themselves, but Lucy's standard path assumes no prior marriages. "
             "The packet should collect termination records and review date consistency."
         ),
         help_text="Prior marriages add divorce, annulment, or death-certificate review.",
@@ -549,9 +549,9 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         ideal_answer=False,
         flag_when=True,
         flag_code="outside_happy_path_children_in_case",
-        flag_title="Children in the same packet are outside this MVP",
-        flag_description="This MVP assumes one spouse beneficiary and does not model derivative or stepchild packet branching yet.",
-        help_text="This MVP assumes one spouse beneficiary and no derivative or stepchild packet branching.",
+        flag_title="Children in the same packet are outside what Lucy covers",
+        flag_description="Lucy assumes one spouse beneficiary and does not model derivative or stepchild packet branching yet.",
+        help_text="Lucy assumes one spouse beneficiary and no derivative or stepchild packet branching.",
         why="Children can add separate eligibility, form, and evidence branches.",
     ),
     q(
@@ -751,7 +751,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         flag_code="immigration_history_review",
         flag_title="Immigration history needs review",
         flag_description=(
-            "These answers can be important even when they are not automatically fatal. The MVP should surface them "
+            "These answers can be important even when they are not automatically fatal. Lucy should surface them "
             "clearly on the review page before document generation."
         ),
         flag_severity="critical",
@@ -821,8 +821,8 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         flag_when=True,
         flag_code="outside_happy_path_prior_denial",
         flag_title="Prior denial should be reviewed",
-        flag_description="A prior denial is outside the MVP's simple-case boundary and should be reviewed before relying on generated forms.",
-        help_text="This is a review flag for the MVP's simple-case boundary.",
+        flag_description="A prior denial is outside Lucy's standard path and should be reviewed before relying on generated forms.",
+        help_text="This is a review flag for Lucy's standard path.",
         why="A prior denial may affect the evidence and explanations needed in the packet.",
     ),
     q(
@@ -849,10 +849,10 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
         ideal_answer=False,
         flag_when=True,
         flag_code="outside_happy_path_removal_history",
-        flag_title="Removal history is outside this MVP",
+        flag_title="Removal history is outside what Lucy covers",
         flag_description="Removal or deportation history is outside the happy-path assumptions and requires careful review.",
         flag_severity="critical",
-        help_text="Removal history is outside this MVP's happy-path assumptions.",
+        help_text="Removal history is outside Lucy's standard path.",
         why="Past proceedings can change the path and should be flagged before Lucy generates a packet plan.",
     ),
     q(

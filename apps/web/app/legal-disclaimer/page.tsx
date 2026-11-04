@@ -7,15 +7,15 @@ export default function LegalDisclaimerPage() {
       title="Lucy organizes information. It does not provide legal advice."
       description="Immigration filings can be high-stakes. Lucy can help collect facts, track documents, and flag review items, but it cannot decide legal strategy or replace a licensed immigration attorney."
     >
-      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid max-w-5xl gap-6 md:grid-cols-2">
         <PublicCard title="What Lucy can do" eyebrow="Organizational support">
           <p>
-            Lucy can save factual intake answers, organize uploads, generate a conservative
-            checklist from stored rules, and surface possible inconsistencies for human review.
+            Lucy saves your answers, fills in the USCIS forms, organizes your documents, builds a checklist,
+            and points out answers that look inconsistent or unusual so you can check them.
           </p>
           <p className="mt-3">
-            It can also point to stored source references when the content layer has official URLs and
-            verification dates.
+            Where Lucy states a USCIS rule, fee, or address, it links the official USCIS page and the date it was
+            last checked, so you can confirm it yourself.
           </p>
         </PublicCard>
         <PublicCard title="What Lucy cannot do" eyebrow="Not legal advice">
@@ -24,7 +24,7 @@ export default function LegalDisclaimerPage() {
             strategy, guarantee USCIS acceptance, or confirm that a packet is safe to file.
           </p>
           <p className="mt-3">
-            Users should seek qualified legal help for unlawful entry, criminal history, prior denials,
+            Talk to an immigration attorney or accredited representative about unlawful entry, criminal history, prior denials,
             removal history, identity inconsistencies, complex finances, or any fact pattern they do not
             fully understand.
           </p>

@@ -1055,7 +1055,7 @@ def _default_supplemental_help(
         )
     if risk_code:
         return (
-            f"Answer this carefully for Form {form_code}: {_lower_first(label)}",
+            "Answer exactly as the facts are. An answer outside the usual case may need extra evidence.",
             f"The stored walkthrough for Form {form_code} treats this as a review-sensitive area. A non-standard answer may need extra evidence, official instructions review, or professional review.",
         )
     if answer_type in {"boolean", "select", "multi_select"}:

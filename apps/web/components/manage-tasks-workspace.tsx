@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { getChecklist, getUscisRequirements, listCases, updateChecklistItem } from "@/lib/api";
+import { AppShell } from "@/components/app-shell";
+import { CaseSelector } from "@/components/case-selector";
+import { Badge, Card, Notice, PageHeader, ProgressBar, SectionHeader, StatusMessage, buttonClass } from "@/components/ui";
+import { getChecklist, getUscisRequirements, listCases, listUploads, updateChecklistItem } from "@/lib/api";
+import { getSatisfiedChecklistCodes, isEvidenceItem } from "@/lib/evidence";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type {
   CaseSummary,
@@ -13,12 +17,12 @@ import type {
 } from "@/lib/types";
 
 const FORM_FILTERS = [
-  { code: "form_i485", label: "I-485" },
-  { code: "form_i765", label: "I-765" },
-  { code: "form_i131", label: "I-131" },
-  { code: "form_i864", label: "I-864" },
   { code: "form_i130", label: "I-130" },
   { code: "form_i130a", label: "I-130A" },
+  { code: "form_i485", label: "I-485" },
+  { code: "form_i864", label: "I-864" },
+  { code: "form_i765", label: "I-765" },
+  { code: "form_i131", label: "I-131" },
   { code: "form_g1145", label: "G-1145" },
 ];
 
@@ -39,9 +43,10 @@ function isDone(item?: ChecklistItem) {
 export function ManageTasksWorkspace() {
   const [caseSummary, setCaseSummary] = useState<CaseSummary | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [attachedCodes, setAttachedCodes] = useState<Set<string>>(new Set());
   const [requirements, setRequirements] = useState<UscisRequirementsPayload | null>(null);
-  const [selectedForm, setSelectedForm] = useState(FORM_FILTERS[0].code);
-  const [message, setMessage] = useState("Loading tasks.");
+  const [selectedForm, setSelectedForm] = useState("form_i485");
+  const [message, setMessage] = useState<string | null>("Loading tasks.");
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -63,21 +68,21 @@ export function ManageTasksWorkspace() {
         setRequirements(loadedRequirements);
 
         if (!activeCase) {
-          setMessage("No case exists yet. Open the current case workspace and create one first.");
+          setMessage(null);
           return;
         }
 
         rememberCaseId(activeCase.id);
-        const loadedChecklist = await getChecklist(activeCase.id).catch(() => null);
+        const [loadedChecklist, loadedUploads] = await Promise.all([
+          getChecklist(activeCase.id).catch(() => null),
+          listUploads(activeCase.id).catch(() => []),
+        ]);
+        setAttachedCodes(new Set(loadedUploads.flatMap(getSatisfiedChecklistCodes)));
         if (cancelled) {
           return;
         }
         setChecklist(loadedChecklist?.items ?? []);
-        setMessage(
-          loadedChecklist?.items.length
-            ? "Use the checkboxes to manually track what is done."
-            : "No generated checklist was found yet. Generate it from the current case workspace first.",
-        );
+        setMessage(null);
       } catch (error) {
         if (!cancelled) {
           setMessage(error instanceof Error ? error.message : "Could not load task data.");
@@ -145,124 +150,192 @@ export function ManageTasksWorkspace() {
     });
   }
 
+  // Count each checklist item once, even when several forms need it.
+  const requiredItems = checklist.filter((item) => item.applicability === "required");
+  const totalRequired = requiredItems.length;
+  const totalDone = requiredItems.filter((item) => isDone(item)).length;
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 text-ink md:px-8 md:py-8">
-      <nav className="flex flex-col gap-3 border-b border-ink/10 pb-5 md:flex-row md:items-center md:justify-between">
-        <Link href="/" className="font-display text-2xl">
-          Lucy
-        </Link>
-        <div className="flex flex-wrap gap-2">
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href="/prescreen">
-            Prescreen
-          </Link>
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href="/packet-assembly">
-            Packet assembly
-          </Link>
-        </div>
-      </nav>
+    <AppShell step="checklist" caseId={caseSummary?.id} caseName={caseSummary?.case_name} readinessLabel={caseSummary?.readiness_label}>
+      <PageHeader
+        eyebrow="Step 3"
+        title="Checklist"
+        description="Everything each form needs, from the checklist Lucy built for your answers. Tick items off as you collect them. Only attached files go into the printed packet, so attach each one on the Print packet step."
+      />
 
-      <section className="grid gap-5 border-b border-ink/10 py-6 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pine">Manage tasks</p>
-          <h1 className="mt-3 font-display text-4xl leading-tight md:text-5xl">
-            A simple form-by-form checklist.
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-ink/70">
-            This page hides the larger board-style workspace and gives you direct checkboxes for the form,
-            document, and supporting evidence tasks already generated by the backend checklist.
-          </p>
-        </div>
-        <div className="rounded-lg border border-ink/10 bg-white px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Selected case</p>
-          <p className="mt-1 font-semibold">{caseSummary?.case_name ?? "None loaded"}</p>
-        </div>
-      </section>
+      <StatusMessage message={message} />
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5">
-        <div className="flex flex-wrap gap-2">
-          {FORM_FILTERS.map((form) => {
-            const plan = formPlans.find((entry) => entry.code === form.code);
-            const pct = plan?.requiredCount ? Math.round((plan.doneRequired / plan.requiredCount) * 100) : 0;
-            return (
-              <button
-                key={form.code}
-                type="button"
-                onClick={() => setSelectedForm(form.code)}
-                className={classNames(
-                  "rounded-lg border px-4 py-3 text-left text-sm font-semibold",
-                  selectedForm === form.code ? "border-ink bg-ink text-white" : "border-ink/15 bg-white text-ink",
-                )}
-              >
-                <span className="block">{form.label}</span>
-                <span className={classNames("mt-1 block text-xs", selectedForm === form.code ? "text-white/70" : "text-ink/55")}>
-                  {pct}% required
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-4 rounded-lg border border-ink/10 bg-paper/65 px-4 py-3 text-sm text-ink/70">{message}</p>
-      </section>
-
-      {selectedPlan ? (
-        <section className="rounded-lg border border-ink/10 bg-white p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-pine">{selectedPlan.code}</p>
-              <h2 className="mt-1 text-2xl font-semibold">{selectedPlan.label}</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-ink/68">{selectedPlan.summary}</p>
-            </div>
-            <div className="rounded-lg bg-paper px-4 py-3 text-sm">
-              <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Required done</p>
-              <p className="mt-1 text-xl font-semibold">
-                {selectedPlan.doneRequired}/{selectedPlan.requiredCount}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            {selectedPlan.tasks.length ? (
-              selectedPlan.tasks.map((task) => {
-                const checked = isDone(task.item);
-                return (
-                  <label
-                    key={`${selectedPlan.code}-${task.checklist_code}`}
-                    className="grid gap-3 rounded-lg border border-ink/10 bg-paper/45 p-4 md:grid-cols-[auto_1fr] md:items-start"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={!task.item || isPending}
-                      onChange={() => toggleTask(task.item)}
-                      className="mt-1 h-5 w-5 rounded border-ink/30 text-pine"
-                    />
-                    <span>
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold">{task.label}</span>
-                        <span className="rounded-full bg-white px-2 py-1 text-xs uppercase tracking-[0.12em] text-ink/55">
-                          {task.item ? formatStatus(task.item.applicability) : task.necessity}
-                        </span>
-                        {task.item ? (
-                          <span className="rounded-full bg-white px-2 py-1 text-xs uppercase tracking-[0.12em] text-ink/55">
-                            {formatStatus(task.item.completion_status)}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="mt-2 block text-sm leading-7 text-ink/68">
-                        {task.item?.what_to_save_now || task.notes || "Review and collect this item for the selected form."}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })
-            ) : (
-              <p className="rounded-lg border border-ink/10 bg-paper/65 p-4 text-sm text-ink/70">
-                No checklist tasks are available for this form yet.
-              </p>
-            )}
-          </div>
-        </section>
+      {caseSummary && !checklist.length ? (
+        <Notice
+          tone="warning"
+          title="No checklist yet"
+          actions={
+            <Link href={`/review?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "sm")}>
+              Build it on the Review page
+            </Link>
+          }
+        >
+          Finish the prescreen, then build the checklist from your saved answers.
+        </Notice>
       ) : null}
-    </main>
+
+      {!caseSummary && message !== "Loading tasks." ? (
+        <Notice
+          title="No case open"
+          actions={
+            <Link href="/prescreen" className={buttonClass("primary", "sm")}>
+              Start a case
+            </Link>
+          }
+        >
+          <p>Open a saved case, or start a new one from the prescreen to get a checklist.</p>
+          <div className="mt-3 max-w-sm">
+            <CaseSelector
+              selectedCaseId=""
+              onSelect={(nextCase) => window.location.assign(`/manage-tasks?caseId=${encodeURIComponent(nextCase.id)}`)}
+              label="Saved cases"
+            />
+          </div>
+        </Notice>
+      ) : null}
+
+      {formPlans.length ? (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <Card as="aside" className="h-fit p-3 md:p-3">
+            <div className="px-2 pb-3 pt-1">
+              <div className="flex items-center justify-between text-xs font-semibold text-muted">
+                <span>Required items marked done</span>
+                <span className="whitespace-nowrap tabular-nums">
+                  {totalDone} of {totalRequired}
+                </span>
+              </div>
+              <ProgressBar
+                value={totalRequired ? (totalDone / totalRequired) * 100 : 0}
+                label="All required checklist items done"
+                className="mt-1.5"
+              />
+            </div>
+            <div role="tablist" aria-label="Forms" aria-orientation="vertical" className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:flex lg:flex-col">
+              {FORM_FILTERS.map((form) => {
+                const plan = formPlans.find((entry) => entry.code === form.code);
+                const isSelected = selectedForm === form.code;
+                const complete = plan ? plan.requiredCount > 0 && plan.doneRequired === plan.requiredCount : false;
+                return (
+                  <button
+                    key={form.code}
+                    type="button"
+                    role="tab"
+                    aria-selected={isSelected}
+                    onClick={() => setSelectedForm(form.code)}
+                    className={classNames(
+                      "flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                      isSelected ? "bg-pine-soft text-pine-strong" : "text-ink hover:bg-paper",
+                    )}
+                  >
+                    <span className="font-semibold">{form.label}</span>
+                    <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted">
+                      {plan?.requiredCount ? (
+                        complete ? (
+                          <span className="text-pine">Done</span>
+                        ) : (
+                          `${plan.doneRequired}/${plan.requiredCount}`
+                        )
+                      ) : (
+                        "Optional"
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {selectedPlan ? (
+            <Card aria-labelledby="plan-heading">
+              <SectionHeader
+                id="plan-heading"
+                title={selectedPlan.label}
+                description={selectedPlan.summary}
+                actions={
+                  selectedPlan.requiredCount ? (
+                    <Badge tone={selectedPlan.doneRequired === selectedPlan.requiredCount ? "success" : "neutral"}>
+                      {selectedPlan.doneRequired} of {selectedPlan.requiredCount} required done
+                    </Badge>
+                  ) : null
+                }
+              />
+
+              {selectedPlan.tasks.length ? (
+                <ul className="mt-5 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                  {selectedPlan.tasks.map((task) => {
+                    const checked = isDone(task.item);
+                    const necessity = task.item ? task.item.applicability : task.necessity;
+                    return (
+                      <li key={`${selectedPlan.code}-${task.checklist_code}`}>
+                        <label
+                          className={classNames(
+                            "grid cursor-pointer grid-cols-[auto_1fr] items-start gap-3 px-4 py-3.5 transition-colors hover:bg-paper",
+                            !task.item || isPending ? "cursor-not-allowed" : "",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!task.item || isPending}
+                            onChange={() => toggleTask(task.item)}
+                            className="mt-0.5 h-5 w-5 rounded border-line-strong"
+                          />
+                          <span className="min-w-0">
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-ink">
+                                {task.label}
+                              </span>
+                              <Badge tone={necessity === "required" ? "strong" : "neutral"} className="capitalize">
+                                {formatStatus(necessity)}
+                              </Badge>
+                              {task.item && isEvidenceItem(task.item) && !attachedCodes.has(task.item.code) ? (
+                                <>
+                                  <Badge tone={checked ? "warning" : "neutral"}>{checked ? "Ticked, no file attached" : "No file yet"}</Badge>
+                                  <Link
+                                    href={`/packet-assembly?caseId=${encodeURIComponent(caseSummary?.id ?? "")}#evidence-heading`}
+                                    className="text-xs font-semibold text-pine underline-offset-4 hover:underline"
+                                  >
+                                    Attach file
+                                  </Link>
+                                </>
+                              ) : null}
+                              {task.item && !checked && task.item.completion_status !== "not_started" ? (
+                                <Badge className="capitalize">{formatStatus(task.item.completion_status)}</Badge>
+                              ) : null}
+                            </span>
+                            <span className="mt-1 block text-sm leading-6 text-muted">
+                              {task.item?.what_to_save_now || task.notes || "Review and collect this item for the selected form."}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <Notice className="mt-5">No checklist tasks are available for this form yet.</Notice>
+              )}
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+
+      {caseSummary && checklist.length ? (
+        <div className="flex flex-col items-start justify-between gap-3 border-t border-line pt-6 sm:flex-row sm:items-center">
+          <p className="text-sm text-muted">
+            {totalDone === totalRequired ? "Every required item is ticked." : `${totalRequired - totalDone} required items left to tick.`} Next, review
+            the packet for issues.
+          </p>
+          <Link href={`/review?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "md")}>
+            Continue to review <span aria-hidden="true">{"\u2192"}</span>
+          </Link>
+        </div>
+      ) : null}
+    </AppShell>
   );
 }

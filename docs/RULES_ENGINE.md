@@ -203,6 +203,8 @@ It is intentionally separate from persisted packet QA:
   employer answers win over the history's first row.
 - A critical prescreen flag, such as a denied Form I-130, is a blocking QA issue and is named in packet warnings, and the I-485 and
   I-130 validators report it as blocking, so a case cannot read as ready while prescreen is blocked. Saving a blocked prescreen reruns QA so the stored label updates at once.
+- Saving prescreen answers or an I-485 or supplemental form page rebuilds an existing checklist, keeping completion statuses, so an
+  answer such as a prior marriage adds its evidence item without a manual rebuild. Cases with no checklist yet are left alone.
 - Missing required I-485 answers are a blocking QA issue, so a case with a started I-485 cannot read as ready to print. The
   stored readiness label updates the next time QA runs.
 - Other names entered on the I-485 are shared through intake and proposed to the I-765 and I-131 as one name per line.
