@@ -144,8 +144,10 @@ export function ManageTasksWorkspace() {
     });
   }
 
-  const totalRequired = formPlans.reduce((sum, plan) => sum + plan.requiredCount, 0);
-  const totalDone = formPlans.reduce((sum, plan) => sum + plan.doneRequired, 0);
+  // Count each checklist item once, even when several forms need it.
+  const requiredItems = checklist.filter((item) => item.applicability === "required");
+  const totalRequired = requiredItems.length;
+  const totalDone = requiredItems.filter((item) => isDone(item)).length;
 
   return (
     <AppShell step="checklist" caseId={caseSummary?.id} caseName={caseSummary?.case_name} readinessLabel={caseSummary?.readiness_label}>
@@ -318,6 +320,18 @@ export function ManageTasksWorkspace() {
               )}
             </Card>
           ) : null}
+        </div>
+      ) : null}
+
+      {caseSummary && checklist.length ? (
+        <div className="flex flex-col items-start justify-between gap-3 border-t border-line pt-6 sm:flex-row sm:items-center">
+          <p className="text-sm text-muted">
+            {totalDone === totalRequired ? "Every required item is ticked." : `${totalRequired - totalDone} required items left to tick.`} Next, review
+            the packet for issues.
+          </p>
+          <Link href={`/review?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "md")}>
+            Continue to review <span aria-hidden="true">{"\u2192"}</span>
+          </Link>
         </div>
       ) : null}
     </AppShell>

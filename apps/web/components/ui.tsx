@@ -12,7 +12,8 @@ const BUTTON_BASE =
   "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-pine text-white shadow-card hover:bg-pine-strong active:bg-pine-strong",
+  primary:
+    "bg-pine text-white shadow-card hover:bg-pine-strong active:bg-pine-strong disabled:bg-line disabled:text-muted disabled:shadow-none disabled:opacity-100",
   secondary: "border border-line-strong bg-white text-ink shadow-card hover:border-ink/40 hover:bg-paper active:bg-line/60",
   ghost: "text-pine hover:bg-pine-soft active:bg-mist",
   danger: "border border-red-300 bg-white text-red-800 hover:bg-red-50 active:bg-red-100",

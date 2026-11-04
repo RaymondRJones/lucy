@@ -75,6 +75,9 @@ function countryValue(value: string | null | undefined) {
       return value;
     }
   }
+  if (value && value === value.toUpperCase()) {
+    return value.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
   return factValue(value);
 }
 
@@ -158,6 +161,8 @@ export function ReviewWorkspace() {
   const blockingCount = openIssues.filter((issue) => severityTone(issue.severity) === "danger").length;
   const evidence = evidenceAttachment(checklist, uploads);
   const requiredEvidenceMissing = evidence.missing.filter((item) => item.applicability === "required");
+  // Missing required files are not a QA rule, but they leave documents out of the printed PDF, so they gate the same way.
+  const attentionCount = openIssues.length + (requiredEvidenceMissing.length ? 1 : 0);
   const readinessLabel = qa?.summary.label || caseSummary?.readiness_label || "Not started";
 
   function handleCaseSelect(nextCase: CaseSummary) {
@@ -232,15 +237,16 @@ export function ReviewWorkspace() {
               <p className="text-sm font-semibold text-muted">Packet readiness</p>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h2 className="font-display text-3xl text-ink">{readinessLabel}</h2>
-                {qa ? (
-                  <span className="text-sm tabular-nums text-muted" title="A rough guide from completed items and open issues. It is not legal approval.">
-                    Score {qa.summary.score} of 100
-                  </span>
+                {requiredEvidenceMissing.length ? (
+                  <Badge tone="warning">
+                    {requiredEvidenceMissing.length} required {requiredEvidenceMissing.length === 1 ? "file" : "files"} missing
+                  </Badge>
                 ) : null}
+
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                {openIssues.length
-                  ? `${openIssues.length} open ${openIssues.length === 1 ? "issue needs" : "issues need"} your attention before you print.`
+                {attentionCount
+                  ? `${attentionCount} ${attentionCount === 1 ? "item needs" : "items need"} your attention before you print.`
                   : qa?.summary.explanation || "Run the review checks to look for missing answers and mismatches."}{" "}
                 Payment and the mailing address are added on the Print packet step.
               </p>
@@ -269,25 +275,28 @@ export function ReviewWorkspace() {
                 </div>
               </div>
               {evidence.missing.length ? (
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-                  <span className={cx("font-semibold", requiredEvidenceMissing.length ? "text-amber-900" : "text-ink")}>
-                    No file attached yet:
-                  </span>{" "}
-                  {evidence.missing.map((item) => item.label).join(", ")}.{" "}
-                  <Link href={actionHref("/packet-assembly", caseSummary.id)} className="font-semibold text-pine underline-offset-4 hover:underline">
-                    Attach on the Print packet step
-                  </Link>
-                  . A ticked checklist item without a file is not included in the printed PDF.
-                </p>
+                <Notice
+                  tone="warning"
+                  className="mt-4 max-w-3xl"
+                  title={`${evidence.missing.length} ${evidence.missing.length === 1 ? "item has" : "items have"} no file attached`}
+                  actions={
+                    <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "sm")}>
+                      Attach files
+                    </Link>
+                  }
+                >
+                  {evidence.missing.map((item) => `${item.label} (${item.applicability.replaceAll("_", " ")})`).join(", ")}. A ticked
+                  checklist item without a file is not in the printed PDF, so attach it or add a paper copy yourself.
+                </Notice>
               ) : null}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:w-80 lg:flex-col">
-              {openIssues.length ? (
+              {attentionCount ? (
                 <a href="#issues-heading" className={buttonClass("primary", "lg")}>
-                  Review {openIssues.length} open {openIssues.length === 1 ? "issue" : "issues"}
+                  Review {attentionCount} open {attentionCount === 1 ? "item" : "items"}
                 </a>
               ) : null}
-              {openIssues.length ? (
+              {attentionCount ? (
                 <div className="grid gap-2 rounded-lg border border-line bg-paper p-3">
                   <label className="flex items-start gap-2 text-sm text-ink">
                     <input
@@ -299,9 +308,13 @@ export function ReviewWorkspace() {
                     <span>
                       {blockingCount
                         ? "I understand the blocking issues mean this packet is not ready, and I want to see the print step anyway."
-                        : "I have read the open issues and want to continue anyway."}
+                        : "I have read the open items and want to continue anyway."}
                     </span>
                   </label>
+                  <p className="text-xs leading-5 text-muted">
+                    Some issues may mean the case is outside what Lucy is built for. If you are unsure, talk to an immigration
+                    attorney or accredited representative before mailing.
+                  </p>
                   {acknowledgedIssues ? (
                     <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md")}>
                       Continue to print packet
@@ -317,7 +330,7 @@ export function ReviewWorkspace() {
                   Continue to print packet
                 </Link>
               )}
-              <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass(openIssues.length ? "ghost" : "secondary", "md")}>
+              <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass("secondary", "md")}>
                 {isPending ? "Checking..." : "Run review checks again"}
               </button>
             </div>
@@ -329,15 +342,35 @@ export function ReviewWorkspace() {
               <Card aria-labelledby="issues-heading">
                 <SectionHeader
                   id="issues-heading"
-                  title="Open issues"
+                  title="Open items"
                   description={
                     qa
-                      ? "From the latest review checks. Issues marked Blocking must be fixed before the packet is ready."
+                      ? "From the latest review checks and your attached files. Items marked Blocking must be fixed before the packet is ready."
                       : "Review checks have not run for this case yet."
                   }
                 />
-                {openIssues.length ? (
+                {attentionCount ? (
                   <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                    {requiredEvidenceMissing.length ? (
+                      <li className="grid gap-3 bg-white px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge tone="warning">Important</Badge>
+                            <p className="text-sm font-semibold text-ink">
+                              {requiredEvidenceMissing.length} required {requiredEvidenceMissing.length === 1 ? "file is" : "files are"} not
+                              attached
+                            </p>
+                          </div>
+                          <p className="mt-1 text-sm leading-6 text-muted">
+                            {requiredEvidenceMissing.map((item) => item.label).join(", ")}. These will be missing from the printed packet
+                            unless you attach them or add paper copies yourself.
+                          </p>
+                        </div>
+                        <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "sm", "w-fit")}>
+                          Attach files
+                        </Link>
+                      </li>
+                    ) : null}
                     {openIssues.map((issue) => {
                       const fix = issueFix(issue, caseSummary.id);
                       return (
@@ -362,7 +395,11 @@ export function ReviewWorkspace() {
                   </ul>
                 ) : (
                   <Notice tone="success" className="mt-4">
-                    {qa ? "No open issues from the latest review checks." : "Run review checks to look for issues."}
+                    {qa
+                      ? `Nothing open. The review checks found no issues and every required file is attached.${
+                          evidence.missing.length ? " Some optional or conditional files are still missing; see above." : ""
+                        }`
+                      : "Run review checks to look for issues."}
                   </Notice>
                 )}
               </Card>

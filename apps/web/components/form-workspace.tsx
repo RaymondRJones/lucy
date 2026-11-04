@@ -104,7 +104,7 @@ export function ComeBackToggle({
       )}
     >
       <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
-      {flagged ? "Marked for later" : "Mark for later"}
+      <span className={flagged ? "" : "sr-only sm:not-sr-only"}>{flagged ? "Marked for later" : "Mark for later"}</span>
     </button>
   );
 }
@@ -516,7 +516,7 @@ export function PageFooterActions({
   disabled?: boolean;
 }) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
+    <div className="-mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 sm:sticky sm:bottom-0 sm:z-10 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
       <span className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted" aria-live="polite">
         {isDirty && !isPending ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" /> : null}
         {isPending
@@ -528,14 +528,20 @@ export function PageFooterActions({
               </>
             ) : (
               <>
-                <span className="sm:hidden">Saved</span>
-                <span className="hidden sm:inline">No unsaved changes on this page.</span>
+                <span aria-hidden="true" className="text-pine">
+                  {"\u2713"}
+                </span>
+                Saved
               </>
             )}
       </span>
-      <button type="button" onClick={onSave} disabled={isPending || disabled || !isDirty} className={buttonClass("secondary", "md", "shrink-0")}>
-        Save<span className="hidden sm:inline">&nbsp;page</span>
-      </button>
+      {isDirty || isPending ? (
+        <button type="button" onClick={onSave} disabled={isPending || disabled} className={buttonClass("secondary", "md", "shrink-0")}>
+          <span>
+            Save<span className="hidden sm:inline"> page</span>
+          </span>
+        </button>
+      ) : null}
       {hasNext ? (
         <button type="button" onClick={onSaveAndNext} disabled={isPending || disabled} className={buttonClass("primary", "md", "shrink-0")}>
           {isDirty ? "Save and continue" : "Next page"}

@@ -5,11 +5,16 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { CaseSelector } from "@/components/case-selector";
 import { Badge, cx } from "@/components/ui";
-import { getCase } from "@/lib/api";
+import { getCase, getChecklist, getPrescreenState, listUploads } from "@/lib/api";
+import { evidenceAttachment } from "@/lib/evidence";
 import { clearSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type { CaseSummary } from "@/lib/types";
 
 export type WorkflowStep = "prescreen" | "forms" | "checklist" | "review" | "packet";
+type StepStatus = { state: "done" | "attention"; note: string };
+type StepStatuses = Partial<Record<WorkflowStep, StepStatus>>;
+
+const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
 
 const STEPS: Array<{ id: WorkflowStep; label: string; href: string }> = [
   { id: "prescreen", label: "Prescreen", href: "/prescreen" },
@@ -56,23 +61,52 @@ export function AppShell({
   const activeIndex = STEPS.findIndex((entry) => entry.id === step);
   const [fetchedCase, setFetchedCase] = useState<{ id: string; name: string; readiness: string } | null>(null);
 
-  // Pages that only know the case ID still show which case is open.
+  const [statuses, setStatuses] = useState<{ caseId: string; value: StepStatuses } | null>(null);
+
+  // Loads the case name for pages that only know the ID, and step marks from saved case state.
   useEffect(() => {
-    if (!caseId || caseName) {
+    if (!caseId) {
       return;
     }
     let cancelled = false;
-    getCase(caseId)
-      .then((loaded) => {
-        if (!cancelled) {
-          setFetchedCase({ id: loaded.id, name: loaded.case_name, readiness: loaded.readiness_label });
+    Promise.all([
+      getCase(caseId),
+      getPrescreenState(caseId).catch(() => null),
+      getChecklist(caseId).catch(() => null),
+      listUploads(caseId).catch(() => []),
+    ])
+      .then(([loaded, prescreen, checklist, uploads]) => {
+        if (cancelled) {
+          return;
         }
+        setFetchedCase({ id: loaded.id, name: loaded.case_name, readiness: loaded.readiness_label });
+        const value: StepStatuses = {};
+        const criticalFlags = prescreen?.evaluation.flags.filter((flag) => flag.severity === "critical").length ?? 0;
+        if (criticalFlags) {
+          value.prescreen = { state: "attention", note: `${criticalFlags} critical ${criticalFlags === 1 ? "flag" : "flags"}` };
+        } else if (prescreen?.evaluation.completion_pct === 100) {
+          value.prescreen = { state: "done", note: "complete" };
+        }
+        const required = checklist?.items.filter((item) => item.applicability === "required") ?? [];
+        if (required.length && required.every((item) => DONE_STATUSES.has(item.completion_status))) {
+          value.checklist = { state: "done", note: "all required items done" };
+        }
+        const missingFiles = evidenceAttachment(checklist?.items ?? [], uploads).missing.filter((item) => item.applicability === "required").length;
+        if (loaded.counts.qa_issues) {
+          value.review = { state: "attention", note: `${loaded.counts.qa_issues} open ${loaded.counts.qa_issues === 1 ? "issue" : "issues"}` };
+        } else if (missingFiles) {
+          value.review = { state: "attention", note: `${missingFiles} required ${missingFiles === 1 ? "file" : "files"} missing` };
+        } else if (loaded.readiness_label.startsWith("Ready to print")) {
+          value.review = { state: "done", note: "no open issues" };
+        }
+        setStatuses({ caseId, value });
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [caseId, caseName]);
+  }, [caseId]);
+  const stepStatuses = statuses && statuses.caseId === caseId ? statuses.value : {};
 
   const fallback = fetchedCase && fetchedCase.id === caseId ? fetchedCase : null;
   const shownName = caseName ?? fallback?.name ?? null;
@@ -91,18 +125,42 @@ export function AppShell({
             Lucy
           </Link>
           <nav aria-label="Packet steps" className="hidden flex-1 justify-center lg:flex">
-            <StepList activeIndex={activeIndex} caseId={caseId} />
+            <StepList activeIndex={activeIndex} caseId={caseId} statuses={stepStatuses} />
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-2 lg:ml-0">
             <CaseSwitcher caseId={caseId} name={shownName} readiness={shownReadiness} />
           </div>
         </div>
-        <MobileSteps activeIndex={activeIndex} caseId={caseId} />
+        <MobileSteps activeIndex={activeIndex} caseId={caseId} statuses={stepStatuses} />
       </header>
       <main id="main" className="mx-auto flex w-full max-w-shell flex-col gap-6 px-4 pb-16 pt-6 md:px-8 md:pt-8">
         {children}
       </main>
     </div>
+  );
+}
+
+function StepMarker({ index, isActive, isPast, status }: { index: number; isActive: boolean; isPast: boolean; status?: StepStatus }) {
+  return (
+    <span className="relative flex h-5 w-5 shrink-0" aria-hidden="true">
+      <span
+        className={cx(
+          "flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold tabular-nums",
+          isActive
+            ? "bg-pine text-white"
+            : status?.state === "done"
+              ? "bg-pine/15 text-pine-strong"
+              : isPast
+                ? "bg-pine/10 text-pine-strong"
+                : "border border-line-strong text-muted",
+        )}
+      >
+        {status?.state === "done" && !isActive ? "\u2713" : index + 1}
+      </span>
+      {status?.state === "attention" ? (
+        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500" />
+      ) : null}
+    </span>
   );
 }
 
@@ -156,7 +214,7 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
   );
 }
 
-function MobileSteps({ activeIndex, caseId }: { activeIndex: number; caseId?: string | null }) {
+function MobileSteps({ activeIndex, caseId, statuses }: { activeIndex: number; caseId?: string | null; statuses: StepStatuses }) {
   const current = STEPS[activeIndex];
   const next = STEPS[activeIndex + 1];
   return (
@@ -183,16 +241,13 @@ function MobileSteps({ activeIndex, caseId }: { activeIndex: number; caseId?: st
                     index === activeIndex ? "bg-pine-soft text-pine-strong" : "text-ink hover:bg-paper",
                   )}
                 >
-                  <span
-                    aria-hidden="true"
-                    className={cx(
-                      "flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold",
-                      index === activeIndex ? "bg-pine text-white" : "border border-line-strong text-muted",
-                    )}
-                  >
-                    {index + 1}
-                  </span>
+                  <StepMarker index={index} isActive={index === activeIndex} isPast={index < activeIndex} status={statuses[entry.id]} />
                   {entry.label}
+                  {statuses[entry.id] ? (
+                    <span className={cx("ml-auto text-xs font-medium", statuses[entry.id]?.state === "attention" ? "text-amber-800" : "text-muted")}>
+                      {statuses[entry.id]?.note}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}
@@ -208,7 +263,7 @@ function MobileSteps({ activeIndex, caseId }: { activeIndex: number; caseId?: st
   );
 }
 
-function StepList({ activeIndex, caseId }: { activeIndex: number; caseId?: string | null }) {
+function StepList({ activeIndex, caseId, statuses }: { activeIndex: number; caseId?: string | null; statuses: StepStatuses }) {
   return (
     <ol className="flex items-center gap-1">
       {STEPS.map((entry, index) => {
@@ -225,16 +280,9 @@ function StepList({ activeIndex, caseId }: { activeIndex: number; caseId?: strin
                 isActive ? "bg-pine-soft text-pine-strong" : "text-muted hover:bg-paper hover:text-ink",
               )}
             >
-              <span
-                aria-hidden="true"
-                className={cx(
-                  "flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold tabular-nums",
-                  isActive ? "bg-pine text-white" : isPast ? "bg-pine/15 text-pine-strong" : "border border-line-strong text-muted",
-                )}
-              >
-                {index + 1}
-              </span>
+              <StepMarker index={index} isActive={isActive} isPast={isPast} status={statuses[entry.id]} />
               {entry.label}
+              {statuses[entry.id] ? <span className="sr-only">, {statuses[entry.id]?.note}</span> : null}
             </Link>
           </li>
         );

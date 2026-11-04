@@ -290,6 +290,16 @@ function uniqueScenarioCases(cases: CaseSummary[]) {
   return Array.from(byName.values());
 }
 
+// Names a USCIS link from its last path segment, such as "g-1650" -> "USCIS G-1650 page".
+function sourceLinkLabel(url: string) {
+  const segment = url.replace(/\/+$/, "").split("/").pop() ?? "";
+  if (/^[a-z]-?\d+[a-z]?$/i.test(segment)) {
+    return `USCIS ${segment.toUpperCase()} page`;
+  }
+  const words = segment.replaceAll("-", " ");
+  return words ? `USCIS: ${words.charAt(0).toUpperCase()}${words.slice(1)}` : "USCIS source";
+}
+
 // Renders backend guidance text with its source URLs as links.
 function LinkedText({ text }: { text: string }) {
   const parts = text.split(/(https:\/\/[^\s]+?)(?=[.,;:]?(?:\s|$))/g);
@@ -298,8 +308,7 @@ function LinkedText({ text }: { text: string }) {
       {parts.map((part, index) =>
         part.startsWith("https://") ? (
           <a key={index} href={part} target="_blank" rel="noreferrer" className="font-semibold text-pine underline-offset-4 hover:underline">
-            USCIS source
-            <span className="sr-only"> ({part})</span>
+            {sourceLinkLabel(part)}
           </a>
         ) : (
           <span key={index}>{part}</span>
@@ -759,7 +768,7 @@ export function PacketAssemblyWorkspace() {
             onClick={() => onSelect(value)}
             className={classNames(
               "rounded-md px-3 py-2 font-semibold transition-colors",
-              current === value ? "bg-white text-ink shadow-card ring-1 ring-line-strong" : "text-muted hover:text-ink",
+              current === value ? "bg-white text-pine-strong shadow-card ring-2 ring-pine" : "text-muted hover:bg-white/60 hover:text-ink",
             )}
           >
             {optionLabel}
@@ -974,7 +983,11 @@ export function PacketAssemblyWorkspace() {
                   (item) => item.applicability === "required" && !(uploadsByCode.get(item.code) ?? []).length,
                 ).length;
                 return (
-                  <details key={group.key} open={requiredMissing > 0 || undefined} className="group/evidence rounded-lg border border-line">
+                  <details
+                    key={group.key}
+                    open={missingNames.length > 0 || undefined}
+                    className={classNames("group/evidence rounded-lg border", requiredMissing ? "border-amber-300" : "border-line")}
+                  >
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-3 hover:bg-paper [&::-webkit-details-marker]:hidden">
                       <span className="flex items-center gap-2">
                         <span aria-hidden="true" className="text-muted transition-transform group-open/evidence:rotate-90">
@@ -984,7 +997,12 @@ export function PacketAssemblyWorkspace() {
                       </span>
                       <span className="flex items-center gap-2">
                         {requiredMissing ? <Badge tone="warning">{requiredMissing} required missing</Badge> : null}
-                        <span className="text-xs tabular-nums text-muted">
+                        <span
+                          className={classNames(
+                            "text-xs font-semibold tabular-nums",
+                            missingNames.length ? "text-amber-800" : "text-muted",
+                          )}
+                        >
                           {evidenceItems.length
                             ? `${attachedCount} of ${evidenceItems.length} attached`
                             : uploadItems.length
@@ -1353,62 +1371,13 @@ export function PacketAssemblyWorkspace() {
               </div>
             )}
           </Card>
-          <form onSubmit={handleCaseSearch}>
-              <details className="group">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
-                  Test scenarios and case ID
-                  <span aria-hidden="true" className="transition-transform group-open:rotate-180">
-                    {"\u25BE"}
-                  </span>
-                </summary>
-                <div className="mt-3 grid gap-4 rounded-lg border border-line bg-white p-4 md:grid-cols-2">
-                  <label className="grid gap-1.5">
-                    <span className={labelClass}>Test scenario</span>
-                    <select
-                      value={activeScenarioCaseId}
-                      onChange={(event) => handleScenarioSelect(event.target.value)}
-                      disabled={!scenarioCases.length || isPending}
-                      className={inputClass}
-                    >
-                      <option value="">{scenarioCases.length ? "Choose a seeded scenario" : "Run npm run seed:packet-scenarios"}</option>
-                      {scenarioCases.map((scenario) => {
-                        const defaults = scenarioDefaults(scenario.case_name);
-                        const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
-                        return (
-                          <option key={scenario.id} value={scenario.id}>
-                            {`${scenarioShortLabel(scenario.case_name)} \u00b7 ${defaults?.stateCode ?? "?"} \u00b7 ${carrierLabel}`}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </label>
-                  <div className="grid gap-1.5">
-                    <label htmlFor="case-id-input" className={labelClass}>
-                      Case ID
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="case-id-input"
-                        value={caseIdInput}
-                        onChange={(event) => setCaseIdInput(event.target.value)}
-                        placeholder="Paste a case ID"
-                        className={inputClass}
-                      />
-                      <button type="submit" disabled={isPending} className={buttonClass("secondary", "md", "shrink-0")}>
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </details>
-          </form>
         </div>
 
         <aside id="assemble" aria-labelledby="assemble-heading" className="scroll-mt-24 xl:sticky xl:top-20 xl:h-fit">
           <Card className="border-pine/30">
             <SectionHeader
               id="assemble-heading"
-              eyebrow="Part 3"
+              eyebrow="Last step"
               title="Mail and assemble"
               description="Lucy uses where the filer lives to pick the USCIS lockbox."
               level={2}
@@ -1503,6 +1472,56 @@ export function PacketAssemblyWorkspace() {
           </Card>
         </aside>
       </div>
+
+      <form onSubmit={handleCaseSearch} className="border-t border-line pt-4">
+        <details className="group">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
+            Test scenarios and case ID
+            <span aria-hidden="true" className="transition-transform group-open:rotate-180">
+              {"\u25BE"}
+            </span>
+          </summary>
+          <div className="mt-3 grid gap-4 rounded-lg border border-line bg-white p-4 md:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className={labelClass}>Test scenario</span>
+              <select
+                value={activeScenarioCaseId}
+                onChange={(event) => handleScenarioSelect(event.target.value)}
+                disabled={!scenarioCases.length || isPending}
+                className={inputClass}
+              >
+                <option value="">{scenarioCases.length ? "Choose a seeded scenario" : "Run npm run seed:packet-scenarios"}</option>
+                {scenarioCases.map((scenario) => {
+                  const defaults = scenarioDefaults(scenario.case_name);
+                  const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
+                  return (
+                    <option key={scenario.id} value={scenario.id}>
+                      {`${scenarioShortLabel(scenario.case_name)} \u00b7 ${defaults?.stateCode ?? "?"} \u00b7 ${carrierLabel}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <div className="grid gap-1.5">
+              <label htmlFor="case-id-input" className={labelClass}>
+                Case ID
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="case-id-input"
+                  value={caseIdInput}
+                  onChange={(event) => setCaseIdInput(event.target.value)}
+                  placeholder="Paste a case ID"
+                  className={inputClass}
+                />
+                <button type="submit" disabled={isPending} className={buttonClass("secondary", "md", "shrink-0")}>
+                  Open
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+      </form>
     </AppShell>
   );
 }

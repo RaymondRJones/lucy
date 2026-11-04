@@ -558,6 +558,64 @@ export function PrescreenWorkspace() {
   const status = prescreen?.evaluation.status ?? "incomplete";
   const statusInfo = STATUS_DISPLAY[status] ?? { label: formatStatus(status), tone: "neutral" as const };
   const skipItems = prescreen ? [...eliminatedForms, ...(prescreen.evaluation.eliminated_questions ?? [])] : [];
+  const prescreenComplete = prescreen?.evaluation.completion_pct === 100;
+  const questionnaireGrid = (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <PageNav
+        items={pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          subtitle: `${page.answered} of ${page.total} answered`,
+          missingCount: page.total - page.answered,
+          complete: page.answered === page.total,
+          flagCount: flags.filter((flag) => page.questions.some((question) => question.id === flag.question_id)).length,
+        }))}
+        selectedId={selectedPage?.id ?? ""}
+        onSelect={goToPage}
+        completionPct={prescreen?.evaluation.completion_pct ?? 0}
+        statusLabel={statusInfo.label}
+      />
+
+      <section id="form-page" aria-labelledby="prescreen-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
+        {selectedPage ? (
+          <>
+            <div className="mb-5">
+              <p className={eyebrowClass}>
+                Page {selectedIndex + 1} of {pages.length}
+              </p>
+              <h2 id="prescreen-page-heading" className="mt-1 font-display text-2xl text-ink">
+                {selectedPage.title}
+              </h2>
+            </div>
+
+            {pageFlags.length ? (
+              <div className="mb-5 grid gap-2">
+                {pageFlags.map((flag) => (
+                  <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border px-4 py-3 text-sm", flagTone(flag))}>
+                    <p className="font-semibold">{flag.title}</p>
+                    <p className="mt-1 leading-6">{flag.description}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="grid gap-4">{selectedPage.questions.map((question) => renderQuestionCard(question))}</div>
+
+            <PageFooterActions
+              onSave={() => saveCurrentPage(false)}
+              onSaveAndNext={() => saveCurrentPage(true)}
+              isPending={isPending}
+              isDirty={isDirty}
+              hasNext={hasNextPage}
+              disabled={!caseSummary}
+            />
+          </>
+        ) : (
+          <p className="text-sm text-muted">Loading this case&apos;s questions...</p>
+        )}
+      </section>
+    </div>
+  );
 
   return (
     <AppShell
@@ -666,7 +724,7 @@ export function PrescreenWorkspace() {
             ) : null}
           </Card>
 
-          {prescreen?.evaluation.completion_pct === 100 ? (
+          {prescreenComplete ? (
             <Card aria-labelledby="next-form-heading" className="border-pine/30">
               <SectionHeader
                 id="next-form-heading"
@@ -715,61 +773,26 @@ export function PrescreenWorkspace() {
             </Card>
           ) : null}
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <PageNav
-              items={pages.map((page) => ({
-                id: page.id,
-                title: page.title,
-                subtitle: `${page.answered} of ${page.total} answered`,
-                missingCount: page.total - page.answered,
-                complete: page.answered === page.total,
-                flagCount: flags.filter((flag) => page.questions.some((question) => question.id === flag.question_id)).length,
-              }))}
-              selectedId={selectedPage?.id ?? ""}
-              onSelect={goToPage}
-              completionPct={prescreen?.evaluation.completion_pct ?? 0}
-              statusLabel={statusInfo.label}
-            />
-
-            <section id="form-page" aria-labelledby="prescreen-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
-              {selectedPage ? (
-                <>
-                  <div className="mb-5">
-                    <p className={eyebrowClass}>
-                      Page {selectedIndex + 1} of {pages.length}
-                    </p>
-                    <h2 id="prescreen-page-heading" className="mt-1 font-display text-2xl text-ink">
-                      {selectedPage.title}
-                    </h2>
-                  </div>
-
-                  {pageFlags.length ? (
-                    <div className="mb-5 grid gap-2">
-                      {pageFlags.map((flag) => (
-                        <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border px-4 py-3 text-sm", flagTone(flag))}>
-                          <p className="font-semibold">{flag.title}</p>
-                          <p className="mt-1 leading-6">{flag.description}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="grid gap-4">{selectedPage.questions.map((question) => renderQuestionCard(question))}</div>
-
-                  <PageFooterActions
-                    onSave={() => saveCurrentPage(false)}
-                    onSaveAndNext={() => saveCurrentPage(true)}
-                    isPending={isPending}
-                    isDirty={isDirty}
-                    hasNext={hasNextPage}
-                    disabled={!caseSummary}
-                  />
-                </>
-              ) : (
-                <p className="text-sm text-muted">Loading this case&apos;s questions...</p>
-              )}
-            </section>
-          </div>
+          {prescreenComplete ? (
+            <details className={classNames(cardClass, "group/answers")}>
+              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
+                <span>
+                  <span className="font-semibold text-ink">Edit your prescreen answers</span>
+                  <span className="ml-2 text-muted">
+                    {visibleQuestions.length} answered across {pages.length} pages
+                  </span>
+                </span>
+                <span aria-hidden="true" className="text-muted transition-transform group-open/answers:rotate-180">
+                  {"\u25BE"}
+                </span>
+              </summary>
+              <div className="border-t border-line p-4 md:p-5">
+                {questionnaireGrid}
+              </div>
+            </details>
+          ) : (
+            questionnaireGrid
+          )}
 
           {skipItems.length ? (
             <details className={classNames(cardClass, "group")}>
