@@ -1,9 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
+import { AppShell } from "@/components/app-shell";
 import { CaseSelector } from "@/components/case-selector";
+import {
+  Badge,
+  Card,
+  Notice,
+  PageHeader,
+  SectionHeader,
+  Spinner,
+  StatusMessage,
+  buttonClass,
+  cardClass,
+  hintClass,
+  inputClass,
+  labelClass,
+} from "@/components/ui";
 import {
   apiUrl,
   confirmUpload,
@@ -303,7 +317,7 @@ export function PacketAssemblyWorkspace() {
   const [bankForm, setBankForm] = useState<G1650BankDetails>(DEFAULT_BANK_FORM);
   const [paymentUploadFile, setPaymentUploadFile] = useState<File | null>(null);
   const [result, setResult] = useState<PacketAssemblyResponse | null>(null);
-  const [message, setMessage] = useState("Loading the current case.");
+  const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const loadCaseArtifacts = useCallback(async (caseId: string) => {
@@ -447,11 +461,9 @@ export function PacketAssemblyWorkspace() {
     }));
   }, [checklist]);
 
-  const caseQuery = caseSummary ? `?caseId=${encodeURIComponent(caseSummary.id)}` : "";
   const activeScenarioCaseId = scenarioCases.some((scenario) => scenario.id === caseSummary?.id)
     ? caseSummary?.id ?? ""
     : "";
-  const totalUploadableItems = groupedItems.reduce((sum, group) => sum + group.items.length, 0);
   const totalManualUploadItems = groupedItems.reduce(
     (sum, group) => sum + group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code)).length,
     0,
@@ -701,747 +713,698 @@ export function PacketAssemblyWorkspace() {
     });
   }
 
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 text-ink md:px-8 md:py-8">
-      <nav className="flex flex-col gap-3 border-b border-ink/10 pb-5 md:flex-row md:items-center md:justify-between">
-        <Link href="/" className="font-display text-2xl">
-          Lucy
-        </Link>
-        <div className="flex flex-wrap gap-2">
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href={`/prescreen${caseQuery}`}>
-            Prescreen
-          </Link>
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href={`/manage-tasks${caseQuery}`}>
-            Manage tasks
-          </Link>
-        </div>
-      </nav>
+  const evidenceItemsWithFiles = groupedItems.reduce(
+    (sum, group) =>
+      sum + group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code) && (uploadsByCode.get(item.code) ?? []).length).length,
+    0,
+  );
+  const paymentFormName = paymentMethod === "ach" ? "G-1650" : "G-1450";
 
-      <section className="grid gap-5 border-b border-ink/10 py-6 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pine">Generate full packet</p>
-          <h1 className="mt-3 font-display text-4xl leading-tight md:text-5xl">
-            Consolidate forms and PDF evidence into one printable file.
-          </h1>
-        </div>
-        <div className="rounded-lg border border-ink/10 bg-white px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Selected case</p>
-          <p className="mt-1 font-semibold">{caseSummary?.case_name ?? "None loaded"}</p>
-          {caseSummary ? <p className="mt-1 max-w-80 break-all text-xs text-ink/55">{caseSummary.id}</p> : null}
-        </div>
-      </section>
-
-      {message ? <p className="rounded-lg border border-ink/10 bg-white p-3 text-sm text-ink/75">{message}</p> : null}
-
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <form className="rounded-lg border border-ink/10 bg-white p-5" onSubmit={handleCaseSearch}>
-          <h2 className="text-lg font-semibold">Case</h2>
-          <div className="mt-4">
-            <CaseSelector
-              selectedCaseId={caseSummary?.id ?? caseIdInput}
-              onSelect={handleSavedCaseSelect}
-              disabled={isPending}
-              label="Choose saved case"
-            />
-          </div>
-          <label className="mt-4 block">
-            <span className="text-sm font-semibold">Test scenarios</span>
-            <select
-              value={activeScenarioCaseId}
-              onChange={(event) => handleScenarioSelect(event.target.value)}
-              disabled={!scenarioCases.length || isPending}
-              className="mt-2 h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm disabled:opacity-55"
-            >
-              <option value="">
-                {scenarioCases.length ? "Choose seeded scenario" : "Run npm run seed:packet-scenarios"}
-              </option>
-              {scenarioCases.map((scenario) => {
-                const defaults = scenarioDefaults(scenario.case_name);
-                const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
-                return (
-                  <option key={scenario.id} value={scenario.id}>
-                    {scenarioShortLabel(scenario.case_name)} · {defaults?.stateCode ?? "?"} · {carrierLabel}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={caseIdInput}
-              onChange={(event) => setCaseIdInput(event.target.value)}
-              placeholder="Paste case ID"
-              className="min-h-11 flex-1 rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
-            />
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-55"
-            >
-              Use this case
-            </button>
-          </div>
-        </form>
-
-        <div className="grid grid-cols-2 gap-3 rounded-lg border border-ink/10 bg-white p-5 text-sm">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-ink/45">Upload buckets</p>
-            <p className="mt-1 font-display text-3xl">{totalManualUploadItems}</p>
-            {totalManualUploadItems !== totalUploadableItems ? (
-              <p className="mt-1 text-xs text-ink/55">Generated forms are handled by Lucy.</p>
-            ) : null}
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-ink/45">PDF uploads</p>
-            <p className="mt-1 font-display text-3xl">{confirmedPdfUploads}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 rounded-lg border border-ink/10 bg-white p-5">
-        <div className="flex flex-col gap-3 border-b border-ink/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-pine">Payment</p>
-            <h2 className="mt-1 text-xl font-semibold">Form G-1450 or G-1650</h2>
-            {paymentOptions?.payment_note ? (
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/65">{paymentOptions.payment_note}</p>
-            ) : null}
-            {paymentOptions && !paymentOptions.template_exists ? (
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                Local template missing at {paymentOptions.template_pdf}
-              </p>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-2 rounded-lg border border-ink/15 bg-paper p-1 text-sm">
-            {[
-              ["generate", "Generate"],
-              ["existing", "Use saved/uploaded"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setPaymentMode(value as PaymentMode)}
-                className={classNames(
-                  "rounded-md px-3 py-2 font-semibold",
-                  paymentMode === value ? "bg-ink text-white" : "text-ink/65",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {paymentMode === "generate" ? (
-          <div className="grid gap-5">
-            <div className="grid gap-3 md:grid-cols-3">
-              {packetPaymentOptions.length ? (
-                packetPaymentOptions.map((option) => {
-                  const checked = selectedPaymentCodes.includes(option.checklist_code);
-                  return (
-                    <label
-                      key={option.checklist_code}
-                      className="grid gap-2 rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm"
-                    >
-                      <span className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => togglePaymentCode(option.checklist_code)}
-                          className="mt-1 h-4 w-4 rounded border-ink/30 text-pine"
-                        />
-                        <span>
-                          <span className="block font-semibold">
-                            {option.form_code} {formatCurrency(option.paper_fee)}
-                          </span>
-                          <span className="mt-1 block text-xs leading-5 text-ink/55">
-                            Verified {option.verified_on}
-                          </span>
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })
-              ) : (
-                <p className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm text-ink/65 md:col-span-3">
-                  No payable I-485 packet options are available for this case.
-                </p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 rounded-lg border border-ink/15 bg-paper p-1 text-sm sm:max-w-md">
-              {[
-                ["card", "Card (G-1450)"],
-                ["ach", "U.S. bank account (G-1650)"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setPaymentMethod(value as PaymentMethod)}
-                  className={classNames(
-                    "rounded-md px-3 py-2 font-semibold",
-                    paymentMethod === value ? "bg-ink text-white" : "text-ink/65",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {paymentMethod === "card" ? (
-              <div className="grid gap-4 rounded-lg border border-ink/10 bg-paper/45 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="font-semibold">Card and billing details</h3>
-                  <p className="text-sm font-semibold text-pine">
-                    {formatCurrency(selectedPaymentTotal.toFixed(2))}
-                  </p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm font-medium">
-                    Cardholder name
-                    <input
-                      value={paymentForm.cardholder_name}
-                      onChange={(event) => updatePaymentField("cardholder_name", event.target.value)}
-                      autoComplete="cc-name"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Card type
-                    <select
-                      value={paymentForm.credit_card_type}
-                      onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    >
-                      {CARD_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Card number
-                    <input
-                      value={paymentForm.credit_card_number}
-                      onChange={(event) => updatePaymentField("credit_card_number", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="cc-number"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <label className="grid gap-2 text-sm font-medium">
-                      Month
-                      <input
-                        value={paymentForm.expiration_month}
-                        onChange={(event) => updatePaymentField("expiration_month", event.target.value)}
-                        inputMode="numeric"
-                        autoComplete="cc-exp-month"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm font-medium">
-                      Year
-                      <input
-                        value={paymentForm.expiration_year}
-                        onChange={(event) => updatePaymentField("expiration_year", event.target.value)}
-                        inputMode="numeric"
-                        autoComplete="cc-exp-year"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm font-medium">
-                      CVV
-                      <input
-                        value={paymentForm.security_code}
-                        onChange={(event) => updatePaymentField("security_code", event.target.value)}
-                        inputMode="numeric"
-                        autoComplete="cc-csc"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                  </div>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Phone
-                    <input
-                      value={paymentForm.daytime_phone_number}
-                      onChange={(event) => updatePaymentField("daytime_phone_number", event.target.value)}
-                      autoComplete="tel"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Email
-                    <input
-                      value={paymentForm.email}
-                      onChange={(event) => updatePaymentField("email", event.target.value)}
-                      autoComplete="email"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm font-medium">
-                    Street address
-                    <input
-                      value={paymentForm.billing_address.street_1}
-                      onChange={(event) => updateBillingField("street_1", event.target.value)}
-                      autoComplete="billing street-address"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Apt, suite, or floor
-                    <input
-                      value={paymentForm.billing_address.street_2}
-                      onChange={(event) => updateBillingField("street_2", event.target.value)}
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    City
-                    <input
-                      value={paymentForm.billing_address.city}
-                      onChange={(event) => updateBillingField("city", event.target.value)}
-                      autoComplete="billing address-level2"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <div className="grid gap-4 sm:grid-cols-[0.7fr_1fr]">
-                    <label className="grid gap-2 text-sm font-medium">
-                      State
-                      <input
-                        value={paymentForm.billing_address.state}
-                        onChange={(event) => updateBillingField("state", event.target.value)}
-                        autoComplete="billing address-level1"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm font-medium">
-                      ZIP code
-                      <input
-                        value={paymentForm.billing_address.postal_code}
-                        onChange={(event) => updateBillingField("postal_code", event.target.value)}
-                        autoComplete="billing postal-code"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-4 rounded-lg border border-ink/10 bg-paper/45 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="font-semibold">Bank account details</h3>
-                  <p className="text-sm font-semibold text-pine">
-                    {formatCurrency(selectedPaymentTotal.toFixed(2))}
-                  </p>
-                </div>
-                <p className="text-sm leading-6 text-ink/65">
-                  The account must be with a U.S. bank, and the account holder signs each printed Form G-1650. Ask the
-                  bank to remove any ACH debit block for the Department of Homeland Security. Lucy keeps these details
-                  out of case records, but they are printed on the generated PDFs in local storage.
-                </p>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm font-medium">
-                    Account ownership
-                    <select
-                      value={bankForm.account_ownership}
-                      onChange={(event) => updateBankField("account_ownership", event.target.value)}
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="business">Business</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Account type
-                    <select
-                      value={bankForm.account_type}
-                      onChange={(event) => updateBankField("account_type", event.target.value)}
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    >
-                      <option value="checking">Checking</option>
-                      <option value="savings">Savings</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Account holder name, as on the account
-                    <input
-                      value={bankForm.account_holder_name}
-                      onChange={(event) => updateBankField("account_holder_name", event.target.value)}
-                      autoComplete="off"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  {bankForm.account_ownership === "business" ? (
-                    <label className="grid gap-2 text-sm font-medium">
-                      Business name
-                      <input
-                        value={bankForm.business_name}
-                        onChange={(event) => updateBankField("business_name", event.target.value)}
-                        autoComplete="off"
-                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                      />
-                    </label>
-                  ) : null}
-                  <label className="grid gap-2 text-sm font-medium">
-                    Bank name
-                    <input
-                      value={bankForm.bank_name}
-                      onChange={(event) => updateBankField("bank_name", event.target.value)}
-                      autoComplete="off"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Routing number
-                    <input
-                      value={bankForm.routing_number}
-                      onChange={(event) => updateBankField("routing_number", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Account number
-                    <input
-                      value={bankForm.account_number}
-                      onChange={(event) => updateBankField("account_number", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                </div>
-              </div>
+  function segmented<T extends string>(
+    label: string,
+    options: Array<[T, string]>,
+    current: T,
+    onSelect: (value: T) => void,
+    className?: string,
+  ) {
+    return (
+      <div role="radiogroup" aria-label={label} className={classNames("inline-grid grid-cols-2 gap-1 rounded-lg border border-line-strong bg-paper p-1 text-sm", className)}>
+        {options.map(([value, optionLabel]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={current === value}
+            onClick={() => onSelect(value)}
+            className={classNames(
+              "rounded-md px-3 py-2 font-semibold transition-colors",
+              current === value ? "bg-white text-ink shadow-card ring-1 ring-line-strong" : "text-muted hover:text-ink",
             )}
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-            <div>
-              <label className="grid gap-2 text-sm font-medium">
-                Upload signed Form G-1450 or G-1650 PDF
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={(event) => setPaymentUploadFile(event.target.files?.[0] ?? null)}
-                  className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 py-2 font-normal"
-                />
-              </label>
-              <p className="mt-2 text-xs text-ink/55">Local upload limit: {MAX_PACKET_UPLOAD_SIZE_MB} MB per file.</p>
-              {paymentUploads.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {paymentUploads.map((upload) => (
-                    <span
-                      key={upload.id}
-                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-pine/20 bg-paper px-3 py-1 text-xs text-pine"
-                    >
-                      <span className="truncate">{upload.original_filename}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeUpload(upload)}
-                        disabled={isPending}
-                        className="rounded-full border border-pine/20 px-1.5 py-0.5 text-[11px] font-semibold text-pine/80 transition hover:border-pine/40 hover:text-pine disabled:opacity-50"
-                        aria-label={`Remove ${upload.original_filename}`}
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={uploadPaymentG1450}
-              disabled={isPending || !caseSummary || !paymentUploadFile}
-              className="min-h-11 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-55"
-            >
-              Upload payment PDF
-            </button>
-          </div>
-        )}
-      </section>
-
-      <section className="grid gap-4 rounded-lg border border-ink/10 bg-white p-5 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
-        <label>
-          <span className="text-sm font-semibold">Filer location</span>
-          <select
-            value={stateCode}
-            onChange={(event) => setStateCode(event.target.value)}
-            className="mt-2 h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm"
           >
-            <option value="">Choose state or territory</option>
-            {US_LOCATIONS.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div>
-          <p className="text-sm font-semibold">Delivery method</p>
-          <div className="mt-2 grid grid-cols-2 rounded-lg border border-ink/15 bg-paper p-1">
-            {[
-              ["usps", "USPS"],
-              ["private", "FedEx / UPS / DHL"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setCarrier(value as "usps" | "private")}
-                className={classNames(
-                  "rounded-md px-3 py-2 text-sm font-semibold",
-                  carrier === value ? "bg-ink text-white" : "text-ink/65",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="grid min-h-20 gap-2 rounded-lg border border-ink/10 bg-paper/50 p-3 text-sm">
-          <span className="flex items-start justify-between gap-3">
-            <span>
-              <span className="block font-semibold">Include evidence PDFs</span>
-              <span className="mt-1 block text-xs leading-5 text-ink/55">
-                Turn off to print generated forms and payment pages only.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={includeSupportingEvidence}
-              onChange={(event) => setIncludeSupportingEvidence(event.target.checked)}
-              className="mt-1 h-5 w-5 rounded border-ink/30 text-pine"
-            />
-          </span>
-        </label>
+            {optionLabel}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function textInput(
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+    props: { autoComplete?: string; inputMode?: "numeric" | "text" | "email" | "tel"; className?: string } = {},
+  ) {
+    return (
+      <label className={classNames("grid gap-1.5", props.className)}>
+        <span className={labelClass}>{label}</span>
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={props.autoComplete}
+          inputMode={props.inputMode}
+          className={inputClass}
+        />
+      </label>
+    );
+  }
+
+  function fileChip(upload: UploadRecord, showStatus: boolean) {
+    return (
+      <li
+        key={upload.id}
+        className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-white py-1 pl-3 pr-1 text-xs text-ink"
+      >
+        <span aria-hidden="true" className="text-pine">
+          {"▤"}
+        </span>
+        <span className="truncate font-medium">{upload.original_filename}</span>
+        {showStatus ? <Badge tone="success" className="capitalize">{formatStatus(upload.upload_status)}</Badge> : null}
         <button
           type="button"
-          onClick={generateFullPacket}
-          disabled={!caseSummary || !stateCode || isPending}
-          className="min-h-11 rounded-lg bg-pine px-5 py-3 text-sm font-semibold text-white disabled:opacity-55"
+          onClick={() => removeUpload(upload)}
+          disabled={isPending}
+          className="rounded-md px-2 py-1 font-semibold text-muted transition-colors hover:bg-red-50 hover:text-red-800 disabled:opacity-50"
+          aria-label={`Remove ${upload.original_filename}`}
         >
-          {isPending ? "Working..." : includeSupportingEvidence ? "Generate full packet" : "Generate forms only"}
+          Remove
         </button>
-      </section>
+      </li>
+    );
+  }
+
+  return (
+    <AppShell step="packet" caseId={caseSummary?.id} caseName={caseSummary?.case_name} readinessLabel={caseSummary?.readiness_label}>
+      <PageHeader
+        eyebrow="Step 5"
+        title="Print packet"
+        description="Attach your evidence, add payment, and choose where you mail it. Lucy assembles one printable PDF in USCIS order."
+        actions={
+          caseSummary ? (
+            <a href="#assemble" className={buttonClass("primary", "md")}>
+              Go to assemble
+            </a>
+          ) : null
+        }
+      />
+
+      <StatusMessage message={message} />
 
       {result ? (
-        <section className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-          <div className="rounded-lg border border-pine/25 bg-white p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-pine">Packet ready</p>
-                <h2 className="mt-1 text-xl font-semibold">Full packet PDF</h2>
-                <p className="mt-2 break-all text-sm text-ink/65">{result.generated_pdf}</p>
-                <p className="mt-1 text-xs text-ink/55">{result.total_page_count} total pages</p>
-              </div>
-              <div className="flex flex-col gap-2 sm:min-w-36">
-                <a
-                  href={apiUrl(result.download_url)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-pine bg-pine px-4 py-2 text-center text-sm font-semibold text-white"
-                >
-                  Open PDF
-                </a>
-                <a
-                  href={apiUrl(result.manifest_download_url)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-center text-sm font-semibold text-ink"
-                >
-                  Manifest JSON
-                </a>
-              </div>
-            </div>
-            <div className="mt-4 rounded-lg border border-ink/10 bg-paper/60 p-3 text-sm">
-              <p className="font-semibold">Packet manifest</p>
-              <p className="mt-1 break-all text-xs text-ink/55">{result.manifest_json}</p>
-            </div>
-            <div className="mt-4 grid gap-2">
+        <section aria-labelledby="result-heading" className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+          <Card className="border-pine/30">
+            <SectionHeader
+              id="result-heading"
+              eyebrow="Packet ready"
+              title={`${includeSupportingEvidence ? "Full packet" : "Forms-only packet"} · ${result.total_page_count} pages`}
+              description="Open the PDF and check every page before printing single-sided on letter paper."
+              actions={
+                <>
+                  <a href={apiUrl(result.manifest_download_url)} target="_blank" rel="noreferrer" className={buttonClass("secondary", "md")}>
+                    Manifest
+                  </a>
+                  <a href={apiUrl(result.download_url)} target="_blank" rel="noreferrer" className={buttonClass("primary", "md")}>
+                    Open packet PDF
+                  </a>
+                </>
+              }
+            />
+            <ol className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
               {result.included_documents.map((document, index) => (
-                <div key={packetDocumentKey(document, index)} className="rounded-lg border border-ink/10 bg-paper/60 p-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold">{document.label}</span>
-                    <span className="text-xs uppercase tracking-[0.14em] text-ink/45">
-                      {document.page_count} page{document.page_count === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  {document.section ? <p className="mt-1 text-xs font-semibold text-pine">{document.section}</p> : null}
-                  <p className="mt-1 break-all text-xs text-ink/55">{document.filename}</p>
-                </div>
+                <li key={packetDocumentKey(document, index)} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3 bg-white px-4 py-2.5 text-sm">
+                  <span className="text-xs font-semibold tabular-nums text-muted">{index + 1}</span>
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-ink">{document.label}</span>
+                    {document.section ? <span className="block text-xs text-muted">{document.section}</span> : null}
+                  </span>
+                  <span className="whitespace-nowrap text-xs tabular-nums text-muted">
+                    {document.page_count} page{document.page_count === 1 ? "" : "s"}
+                  </span>
+                </li>
               ))}
-            </div>
-          </div>
+            </ol>
+            <p className="mt-3 break-all text-xs text-muted">Saved to {result.generated_pdf}</p>
+          </Card>
 
-          <div className="rounded-lg border border-ink/10 bg-white p-5">
-            <p className="text-xs uppercase tracking-[0.16em] text-pine">Mailing</p>
+          <Card as="aside" aria-labelledby="mailing-heading" className="h-fit">
+            <SectionHeader id="mailing-heading" eyebrow="Mail to" title={result.mailing_recommendation?.lockbox ?? "Mailing address"} level={3} />
             {result.mailing_recommendation ? (
               <>
-                <h2 className="mt-1 text-xl font-semibold">{result.mailing_recommendation.lockbox}</h2>
-                <div className="mt-4 rounded-lg border border-ink/10 bg-paper/70 p-4 text-sm leading-7">
+                <address className="mt-3 rounded-lg border border-line bg-paper px-4 py-3 text-sm not-italic leading-7 text-ink">
                   {result.mailing_recommendation.address_lines.map((line, index) => (
-                    <p key={`${index}-${line}`}>{line}</p>
+                    <span key={`${index}-${line}`} className="block">
+                      {line}
+                    </span>
                   ))}
-                </div>
-                <p className="mt-3 text-xs leading-5 text-ink/55">
-                  Source last reviewed by USCIS {result.mailing_recommendation.source_last_reviewed}; app verified {result.mailing_recommendation.verified_on}.
+                </address>
+                <p className="mt-3 text-xs leading-5 text-muted">
+                  USCIS last reviewed this page {result.mailing_recommendation.source_last_reviewed}. Lucy checked it{" "}
+                  {result.mailing_recommendation.verified_on}.
                 </p>
                 <a
                   href={result.mailing_recommendation.source_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 inline-flex rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold"
+                  className={buttonClass("ghost", "sm", "mt-2 -ml-3")}
                 >
-                  USCIS lockbox source
+                  Check the USCIS address page {"↗"}
                 </a>
               </>
             ) : (
-              <p className="mt-2 text-sm text-ink/65">Choose a filer location to see lockbox guidance.</p>
+              <p className="mt-2 text-sm text-muted">Choose a filer location to see where to mail the packet.</p>
             )}
-          </div>
+          </Card>
+
+          {result.warnings.length ? (
+            <Notice tone="warning" title="Before you print and mail" className="lg:col-span-2">
+              <ul className="mt-1 list-disc space-y-1.5 pl-5">
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </Notice>
+          ) : null}
+
+          {result.skipped_documents.length ? (
+            <details className={classNames(cardClass, "group lg:col-span-2")}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
+                <span>
+                  <span className="font-semibold text-ink">Files left out of the packet</span>
+                  <span className="ml-2 text-muted">{result.skipped_documents.length} with reasons</span>
+                </span>
+                <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
+                  {"▾"}
+                </span>
+              </summary>
+              <ul className="grid gap-2 border-t border-line px-5 py-4">
+                {result.skipped_documents.map((document, index) => (
+                  <li key={`${packetDocumentKey(document, index)}|${document.reason}`} className="rounded-lg border border-line bg-paper px-4 py-3 text-sm">
+                    <p className="font-semibold text-ink">{document.label}</p>
+                    <p className="mt-0.5 leading-6 text-muted">{document.reason}</p>
+                    {document.filename ? <p className="mt-0.5 break-all text-xs text-muted">{document.filename}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </section>
       ) : null}
 
-      {result?.warnings.length ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-7 text-amber-950">
-          <p className="font-semibold">Review notes</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {result.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {result?.skipped_documents.length ? (
-        <section className="rounded-lg border border-ink/10 bg-white p-5">
-          <h2 className="text-lg font-semibold">Skipped files</h2>
-          <div className="mt-4 grid gap-2">
-            {result.skipped_documents.map((document, index) => (
-              <div key={`${packetDocumentKey(document, index)}|${document.reason}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-semibold">{document.label}</p>
-                <p className="mt-1">{document.reason}</p>
-                {document.filename ? <p className="mt-1 break-all text-xs opacity-75">{document.filename}</p> : null}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid min-w-0 content-start gap-6">
+          <Card aria-labelledby="case-heading">
+            <SectionHeader id="case-heading" eyebrow="1" title="Case" />
+            <form className="mt-4 grid gap-4" onSubmit={handleCaseSearch}>
+              <div className="max-w-xl">
+                <CaseSelector
+                  selectedCaseId={caseSummary?.id ?? caseIdInput}
+                  onSelect={handleSavedCaseSelect}
+                  disabled={isPending}
+                  label="Saved case"
+                />
               </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-4">
-        {groupedItems.map((group) => (
-          <div key={group.key} className="rounded-lg border border-ink/10 bg-white p-5">
-            <div className="flex flex-col gap-2 border-b border-ink/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-pine">Evidence category</p>
-                <h2 className="mt-1 text-xl font-semibold">{group.label}</h2>
-              </div>
-              <span className="text-sm text-ink/55">
-                {group.items.length} item{group.items.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="mt-4 grid gap-3">
-              {group.items.map((item) => {
-                const itemUploads = uploadsByCode.get(item.code) ?? [];
-                const draft = uploadDrafts[item.code] ?? defaultUploadDraft();
-                const generatedOnly = GENERATED_ONLY_UPLOAD_CODES.has(item.code);
-                return (
-                  <div key={item.id} className="rounded-lg border border-ink/10 bg-paper/50 p-4">
-                    <div className="grid gap-4 lg:grid-cols-[1fr_1.25fr]">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-semibold">{item.label}</h3>
-                          <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-ink/55">
-                            {formatStatus(item.applicability)}
-                          </span>
-                          <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-ink/55">
-                            {formatStatus(item.completion_status)}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-ink/65">
-                          {item.what_to_save_now || item.description}
-                        </p>
-                        {itemUploads.length ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {itemUploads.map((upload) => (
-                              <span
-                                key={upload.id}
-                                className="inline-flex max-w-full items-center gap-2 rounded-full border border-pine/20 bg-white px-3 py-1 text-xs text-pine"
-                              >
-                                <span className="truncate">{upload.original_filename}</span>
-                                <span className="rounded-full bg-pine/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em]">
-                                  {formatStatus(upload.upload_status)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeUpload(upload)}
-                                  disabled={isPending}
-                                  className="rounded-full border border-pine/20 px-1.5 py-0.5 text-[11px] font-semibold text-pine/80 transition hover:border-pine/40 hover:text-pine disabled:opacity-50"
-                                  aria-label={`Remove ${upload.original_filename}`}
-                                >
-                                  Remove
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                      {generatedOnly ? (
-                        <div className="rounded-lg border border-pine/15 bg-white p-3 text-sm leading-6 text-ink/68">
-                          This form is generated from the saved case answers. Uploaded copies are shown here only so you can remove old files; they are skipped during packet assembly.
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            onChange={(event) => updateDraft(item.code, { file: event.target.files?.[0] ?? null })}
-                            className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => uploadForItem(item)}
-                            disabled={isPending || !caseSummary || !draft.file}
-                            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-55"
-                          >
-                            Upload
-                          </button>
-                          <p className="text-xs text-ink/55 sm:col-span-2">
-                            Local upload limit: {MAX_PACKET_UPLOAD_SIZE_MB} MB per file.
-                          </p>
-                          <select
-                            value={draft.documentLanguage}
-                            onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
-                            className="h-10 rounded-lg border border-ink/15 bg-white px-3 text-sm"
-                          >
-                            <option value="english">English</option>
-                            <option value="spanish">Spanish</option>
-                            <option value="other">Other</option>
-                            <option value="unknown">Unknown</option>
-                          </select>
-                          <label className="flex min-h-10 items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={draft.hasTranslation}
-                              onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
-                            />
-                            Translation attached
-                          </label>
-                        </div>
-                      )}
+              <details className="group">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-pine hover:underline [&::-webkit-details-marker]:hidden">
+                  More ways to open a case
+                  <span aria-hidden="true" className="transition-transform group-open:rotate-180">
+                    {"▾"}
+                  </span>
+                </summary>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className={labelClass}>Test scenario</span>
+                    <select
+                      value={activeScenarioCaseId}
+                      onChange={(event) => handleScenarioSelect(event.target.value)}
+                      disabled={!scenarioCases.length || isPending}
+                      className={inputClass}
+                    >
+                      <option value="">{scenarioCases.length ? "Choose a seeded scenario" : "Run npm run seed:packet-scenarios"}</option>
+                      {scenarioCases.map((scenario) => {
+                        const defaults = scenarioDefaults(scenario.case_name);
+                        const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
+                        return (
+                          <option key={scenario.id} value={scenario.id}>
+                            {scenarioShortLabel(scenario.case_name)} · {defaults?.stateCode ?? "?"} · {carrierLabel}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <div className="grid gap-1.5">
+                    <label htmlFor="case-id-input" className={labelClass}>
+                      Case ID
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="case-id-input"
+                        value={caseIdInput}
+                        onChange={(event) => setCaseIdInput(event.target.value)}
+                        placeholder="Paste a case ID"
+                        className={inputClass}
+                      />
+                      <button type="submit" disabled={isPending} className={buttonClass("secondary", "md", "shrink-0")}>
+                        Open
+                      </button>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              </details>
+            </form>
+          </Card>
+
+          <Card aria-labelledby="evidence-heading">
+            <SectionHeader
+              id="evidence-heading"
+              eyebrow="2"
+              title="Evidence"
+              description="Attach a PDF for each item. Lucy generates the USCIS forms itself, so those rows need no upload."
+              actions={
+                <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
+                  {evidenceItemsWithFiles} of {totalManualUploadItems} items have a file
+                </Badge>
+              }
+            />
+            <p className="mt-2 text-xs text-muted">
+              PDF only, up to {MAX_PACKET_UPLOAD_SIZE_MB} MB per file. {confirmedPdfUploads} PDF{confirmedPdfUploads === 1 ? "" : "s"} uploaded so far.
+            </p>
+            {!groupedItems.length ? (
+              <Notice tone="warning" className="mt-4" title="No checklist yet">
+                Build the checklist on the Review page to see which evidence to attach.
+              </Notice>
+            ) : null}
+            <div className="mt-5 grid gap-6">
+              {groupedItems.map((group) => (
+                <section key={group.key} aria-label={group.label}>
+                  <div className="flex items-baseline justify-between gap-3 border-b border-line pb-2">
+                    <h3 className="text-base font-semibold text-ink">{group.label}</h3>
+                    <span className="text-xs text-muted">
+                      {group.items.length} item{group.items.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {group.items.map((item) => {
+                      const itemUploads = uploadsByCode.get(item.code) ?? [];
+                      const draft = uploadDrafts[item.code] ?? defaultUploadDraft();
+                      const generatedOnly = GENERATED_ONLY_UPLOAD_CODES.has(item.code);
+                      const fileInputId = `upload-${item.code}`;
+                      return (
+                        <li key={item.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:gap-6">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-semibold text-ink">{item.label}</h4>
+                              <Badge tone={item.applicability === "required" ? "warning" : "neutral"} className="capitalize">
+                                {formatStatus(item.applicability)}
+                              </Badge>
+                              {itemUploads.length || generatedOnly ? (
+                                <Badge tone="success">{generatedOnly ? "Generated by Lucy" : "Attached"}</Badge>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
+                            {itemUploads.length ? (
+                              <ul className="mt-2 flex flex-wrap gap-2">{itemUploads.map((upload) => fileChip(upload, !generatedOnly))}</ul>
+                            ) : null}
+                          </div>
+                          {item.code === "payment_g1450" ? (
+                            <p className="self-center text-sm leading-6 text-muted">
+                              Add payment in the{" "}
+                              <a href="#payment-heading" className="font-semibold text-pine underline-offset-4 hover:underline">
+                                Payment
+                              </a>{" "}
+                              section below.
+                            </p>
+                          ) : generatedOnly ? (
+                            <p className="self-center text-sm leading-6 text-muted">
+                              Built from your saved answers.{itemUploads.length ? " Uploaded copies are skipped, so you can remove them." : ""}
+                            </p>
+                          ) : (
+                            <div className="grid content-start gap-2 rounded-lg border border-line bg-paper p-3">
+                              <label htmlFor={fileInputId} className="sr-only">
+                                PDF for {item.label}
+                              </label>
+                              <input
+                                id={fileInputId}
+                                type="file"
+                                accept="application/pdf,.pdf"
+                                onChange={(event) => updateDraft(item.code, { file: event.target.files?.[0] ?? null })}
+                                className="w-full min-w-0 text-sm text-muted"
+                              />
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                                <label className="flex min-w-0 items-center gap-2 text-xs font-medium text-ink">
+                                  <span className="shrink-0">Language</span>
+                                  <select
+                                    value={draft.documentLanguage}
+                                    onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
+                                    className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-white px-2 text-xs"
+                                  >
+                                    <option value="english">English</option>
+                                    <option value="spanish">Spanish</option>
+                                    <option value="other">Other</option>
+                                    <option value="unknown">Unknown</option>
+                                  </select>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => uploadForItem(item)}
+                                  disabled={isPending || !caseSummary || !draft.file}
+                                  className={buttonClass("primary", "sm")}
+                                >
+                                  Upload
+                                </button>
+                              </div>
+                              <label className="flex items-center gap-2 text-xs font-medium text-ink">
+                                <input
+                                  type="checkbox"
+                                  checked={draft.hasTranslation}
+                                  onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
+                                  className="h-4 w-4"
+                                />
+                                Certified English translation is included
+                              </label>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
             </div>
-          </div>
-        ))}
-      </section>
-    </main>
+          </Card>
+
+          <Card aria-labelledby="payment-heading">
+            <SectionHeader
+              id="payment-heading"
+              eyebrow="3"
+              title="Payment"
+              description={paymentOptions?.payment_note}
+              actions={segmented<PaymentMode>(
+                "Payment source",
+                [
+                  ["generate", "Fill in for me"],
+                  ["existing", "I have a signed PDF"],
+                ],
+                paymentMode,
+                setPaymentMode,
+              )}
+            />
+            {paymentOptions && !paymentOptions.template_exists ? (
+              <Notice tone="warning" className="mt-4">
+                Local template missing at {paymentOptions.template_pdf}
+              </Notice>
+            ) : null}
+
+            {paymentMode === "generate" ? (
+              <div className="mt-5 grid gap-5">
+                <fieldset>
+                  <legend className={labelClass}>Fees to pay</legend>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {packetPaymentOptions.length ? (
+                      packetPaymentOptions.map((option) => {
+                        const checked = selectedPaymentCodes.includes(option.checklist_code);
+                        return (
+                          <label
+                            key={option.checklist_code}
+                            className={classNames(
+                              "flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors",
+                              checked ? "border-pine bg-pine-soft" : "border-line bg-white hover:bg-paper",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => togglePaymentCode(option.checklist_code)}
+                              className="mt-0.5 h-4 w-4"
+                            />
+                            <span>
+                              <span className="block font-semibold text-ink">{option.form_code}</span>
+                              <span className="block text-base font-semibold tabular-nums text-ink">{formatCurrency(option.paper_fee)}</span>
+                              <span className="block text-xs text-muted">Fee verified {option.verified_on}</span>
+                            </span>
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <p className="rounded-lg border border-line bg-paper p-3 text-sm text-muted sm:col-span-2 lg:col-span-4">
+                        No payable forms are in this packet.
+                      </p>
+                    )}
+                  </div>
+                </fieldset>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  {segmented<PaymentMethod>(
+                    "Payment method",
+                    [
+                      ["card", "Card (G-1450)"],
+                      ["ach", "U.S. bank account (G-1650)"],
+                    ],
+                    paymentMethod,
+                    setPaymentMethod,
+                    "w-full sm:w-auto",
+                  )}
+                  <p className="text-sm text-muted">
+                    Total <span className="text-lg font-semibold tabular-nums text-ink">{formatCurrency(selectedPaymentTotal.toFixed(2))}</span>
+                  </p>
+                </div>
+
+                {paymentMethod === "card" ? (
+                  <fieldset className="grid gap-4">
+                    <legend className="sr-only">Card and billing details</legend>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {textInput("Cardholder name", paymentForm.cardholder_name, (value) => updatePaymentField("cardholder_name", value), {
+                        autoComplete: "cc-name",
+                      })}
+                      <label className="grid gap-1.5">
+                        <span className={labelClass}>Card type</span>
+                        <select
+                          value={paymentForm.credit_card_type}
+                          onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
+                          className={inputClass}
+                        >
+                          {CARD_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {textInput("Card number", paymentForm.credit_card_number, (value) => updatePaymentField("credit_card_number", value), {
+                        autoComplete: "cc-number",
+                        inputMode: "numeric",
+                      })}
+                      <div className="grid grid-cols-3 gap-3">
+                        {textInput("Month", paymentForm.expiration_month, (value) => updatePaymentField("expiration_month", value), {
+                          autoComplete: "cc-exp-month",
+                          inputMode: "numeric",
+                        })}
+                        {textInput("Year", paymentForm.expiration_year, (value) => updatePaymentField("expiration_year", value), {
+                          autoComplete: "cc-exp-year",
+                          inputMode: "numeric",
+                        })}
+                        {textInput("CVV", paymentForm.security_code, (value) => updatePaymentField("security_code", value), {
+                          autoComplete: "cc-csc",
+                          inputMode: "numeric",
+                        })}
+                      </div>
+                      {textInput("Daytime phone", paymentForm.daytime_phone_number, (value) => updatePaymentField("daytime_phone_number", value), {
+                        autoComplete: "tel",
+                        inputMode: "tel",
+                      })}
+                      {textInput("Email", paymentForm.email, (value) => updatePaymentField("email", value), {
+                        autoComplete: "email",
+                        inputMode: "email",
+                      })}
+                    </div>
+                    <p className="pt-2 text-sm font-semibold text-ink">Billing address</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {textInput("Street address", paymentForm.billing_address.street_1, (value) => updateBillingField("street_1", value), {
+                        autoComplete: "billing address-line1",
+                      })}
+                      {textInput("Apt, suite, or floor", paymentForm.billing_address.street_2, (value) => updateBillingField("street_2", value), {
+                        autoComplete: "billing address-line2",
+                      })}
+                      {textInput("City", paymentForm.billing_address.city, (value) => updateBillingField("city", value), {
+                        autoComplete: "billing address-level2",
+                      })}
+                      <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)] gap-3">
+                        {textInput("State", paymentForm.billing_address.state, (value) => updateBillingField("state", value), {
+                          autoComplete: "billing address-level1",
+                        })}
+                        {textInput("ZIP code", paymentForm.billing_address.postal_code, (value) => updateBillingField("postal_code", value), {
+                          autoComplete: "billing postal-code",
+                          inputMode: "numeric",
+                        })}
+                      </div>
+                    </div>
+                    <p className={hintClass}>Leave the card fields blank to assemble the packet without a payment form.</p>
+                  </fieldset>
+                ) : (
+                  <fieldset className="grid gap-4">
+                    <legend className="sr-only">Bank account details</legend>
+                    <Notice tone="info">
+                      The account must be with a U.S. bank, and the account holder signs each printed Form G-1650. Ask the bank to
+                      remove any ACH debit block for the Department of Homeland Security. Lucy keeps these details out of case records,
+                      but they are printed on the generated PDFs in local storage.
+                    </Notice>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="grid gap-1.5">
+                        <span className={labelClass}>Account ownership</span>
+                        <select
+                          value={bankForm.account_ownership}
+                          onChange={(event) => updateBankField("account_ownership", event.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="personal">Personal</option>
+                          <option value="business">Business</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className={labelClass}>Account type</span>
+                        <select
+                          value={bankForm.account_type}
+                          onChange={(event) => updateBankField("account_type", event.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="checking">Checking</option>
+                          <option value="savings">Savings</option>
+                        </select>
+                      </label>
+                      {textInput("Account holder name, as on the account", bankForm.account_holder_name, (value) => updateBankField("account_holder_name", value), {
+                        autoComplete: "off",
+                      })}
+                      {bankForm.account_ownership === "business"
+                        ? textInput("Business name", bankForm.business_name, (value) => updateBankField("business_name", value), { autoComplete: "off" })
+                        : null}
+                      {textInput("Bank name", bankForm.bank_name, (value) => updateBankField("bank_name", value), { autoComplete: "off" })}
+                      {textInput("Routing number", bankForm.routing_number, (value) => updateBankField("routing_number", value), {
+                        autoComplete: "off",
+                        inputMode: "numeric",
+                      })}
+                      {textInput("Account number", bankForm.account_number, (value) => updateBankField("account_number", value), {
+                        autoComplete: "off",
+                        inputMode: "numeric",
+                      })}
+                    </div>
+                  </fieldset>
+                )}
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                <div className="min-w-0">
+                  <label className="grid gap-1.5">
+                    <span className={labelClass}>Signed Form G-1450 or G-1650 (PDF)</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={(event) => setPaymentUploadFile(event.target.files?.[0] ?? null)}
+                      className="w-full min-w-0 rounded-lg border border-line-strong bg-white p-2 text-sm text-muted"
+                    />
+                  </label>
+                  <p className="mt-1.5 text-xs text-muted">Up to {MAX_PACKET_UPLOAD_SIZE_MB} MB.</p>
+                  {paymentUploads.length ? <ul className="mt-3 flex flex-wrap gap-2">{paymentUploads.map((upload) => fileChip(upload, false))}</ul> : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={uploadPaymentG1450}
+                  disabled={isPending || !caseSummary || !paymentUploadFile}
+                  className={buttonClass("primary", "md")}
+                >
+                  Upload payment PDF
+                </button>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <aside id="assemble" aria-labelledby="assemble-heading" className="scroll-mt-24 xl:sticky xl:top-20 xl:h-fit">
+          <Card className="border-pine/30">
+            <SectionHeader
+              id="assemble-heading"
+              eyebrow="4"
+              title="Mail and assemble"
+              description="Lucy uses where the filer lives to pick the USCIS lockbox."
+              level={2}
+            />
+            <div className="mt-4 grid gap-4">
+              <label className="grid gap-1.5">
+                <span className={labelClass}>Where the filer lives</span>
+                <select value={stateCode} onChange={(event) => setStateCode(event.target.value)} className={inputClass}>
+                  <option value="">Choose a state or territory</option>
+                  {US_LOCATIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid gap-1.5">
+                <span className={labelClass} id="carrier-label">
+                  Delivery method
+                </span>
+                {segmented<"usps" | "private">(
+                  "Delivery method",
+                  [
+                    ["usps", "USPS"],
+                    ["private", "FedEx, UPS, DHL"],
+                  ],
+                  carrier,
+                  setCarrier,
+                  "w-full",
+                )}
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-paper p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeSupportingEvidence}
+                  onChange={(event) => setIncludeSupportingEvidence(event.target.checked)}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span>
+                  <span className="block font-semibold text-ink">Include evidence PDFs</span>
+                  <span className="block text-xs leading-5 text-muted">Turn off to print only the forms and payment pages.</span>
+                </span>
+              </label>
+              <dl className="grid gap-1 rounded-lg border border-line px-3 py-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Evidence attached</dt>
+                  <dd className="font-semibold tabular-nums text-ink">
+                    {evidenceItemsWithFiles} of {totalManualUploadItems}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Payment</dt>
+                  <dd className="font-semibold text-ink">
+                    {paymentMode === "existing"
+                      ? paymentUploads.length
+                        ? "Uploaded PDF"
+                        : "No PDF yet"
+                      : (paymentMethod === "ach" ? bankFormHasUserInput(bankForm) : paymentFormHasUserInput(paymentForm))
+                        ? `${paymentFormName}, ${formatCurrency(selectedPaymentTotal.toFixed(2))}`
+                        : "Not added"}
+                  </dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={generateFullPacket}
+                disabled={!caseSummary || !stateCode || isPending}
+                className={buttonClass("primary", "lg", "w-full")}
+              >
+                {isPending ? (
+                  <>
+                    <Spinner /> Working...
+                  </>
+                ) : includeSupportingEvidence ? (
+                  "Assemble full packet"
+                ) : (
+                  "Assemble forms only"
+                )}
+              </button>
+              {!stateCode && caseSummary ? <p className={hintClass}>Choose where the filer lives to continue.</p> : null}
+            </div>
+          </Card>
+        </aside>
+      </div>
+    </AppShell>
   );
 }

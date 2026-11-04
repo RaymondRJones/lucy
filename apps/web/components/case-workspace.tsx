@@ -142,9 +142,9 @@ function getStatusTone(status: string) {
     return "bg-pine/15 text-pine ring-pine/20";
   }
   if (status === "not_applicable") {
-    return "bg-ink/6 text-ink/55 ring-ink/10";
+    return "bg-ink/6 text-muted ring-ink/10";
   }
-  return "bg-white/70 text-ink/70 ring-ink/10";
+  return "bg-white/70 text-ink/80 ring-ink/10";
 }
 
 function formatRequirementType(value: string) {
@@ -357,11 +357,11 @@ function BooleanField({
   description?: string;
 }) {
   return (
-    <label className="rounded-[1.4rem] border border-ink/10 bg-white/72 p-4 shadow-sm">
+    <label className="rounded-[1.4rem] border border-line bg-white/72 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-ink">{label}</p>
-          {description ? <p className="mt-1 text-sm leading-6 text-ink/65">{description}</p> : null}
+          {description ? <p className="mt-1 text-sm leading-6 text-muted">{description}</p> : null}
         </div>
         <input
           type="checkbox"
@@ -396,7 +396,7 @@ function Card({
     >
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          {eyebrow ? <p className="text-xs uppercase tracking-[0.24em] text-pine/80">{eyebrow}</p> : null}
+          {eyebrow ? <p className="text-xs uppercase tracking-[0.24em] text-pine">{eyebrow}</p> : null}
           <h2 className="font-display text-2xl text-ink">{title}</h2>
         </div>
         {action}
@@ -416,10 +416,10 @@ function FieldGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[1.75rem] border border-ink/10 bg-paper/55 p-5">
+    <section className="rounded-[1.75rem] border border-line bg-paper p-5">
       <div className="mb-4">
         <h3 className="font-semibold text-ink">{title}</h3>
-        {description ? <p className="mt-1 text-sm leading-6 text-ink/68">{description}</p> : null}
+        {description ? <p className="mt-1 text-sm leading-6 text-muted">{description}</p> : null}
       </div>
       {children}
     </section>
@@ -436,10 +436,10 @@ function MetricTile({
   detail?: string;
 }) {
   return (
-    <div className="rounded-[1.4rem] border border-ink/10 bg-white/72 px-4 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-ink/45">{label}</p>
+    <div className="rounded-[1.4rem] border border-line bg-white/72 px-4 py-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
-      {detail ? <p className="mt-1 text-sm text-ink/62">{detail}</p> : null}
+      {detail ? <p className="mt-1 text-sm text-muted">{detail}</p> : null}
     </div>
   );
 }
@@ -447,7 +447,7 @@ function MetricTile({
 function SnapshotRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-ink/8 py-3 last:border-b-0 last:pb-0">
-      <span className="text-sm text-ink/60">{label}</span>
+      <span className="text-sm text-muted">{label}</span>
       <span className="text-right text-sm font-medium text-ink">{value}</span>
     </div>
   );
@@ -472,12 +472,12 @@ function TabButton({
         "min-w-[10.5rem] rounded-full px-4 py-3 text-left transition",
         isActive
           ? "bg-ink text-white shadow-sm"
-          : "bg-transparent text-ink/72 hover:bg-white/75 hover:text-ink",
+          : "bg-transparent text-ink/80 hover:bg-white/75 hover:text-ink",
       )}
       aria-current={isActive ? "page" : undefined}
     >
       <p className="text-sm font-semibold">{label}</p>
-      <p className={classNames("mt-1 text-xs", isActive ? "text-white/72" : "text-ink/55")}>{detail}</p>
+      <p className={classNames("mt-1 text-xs", isActive ? "text-white/72" : "text-muted")}>{detail}</p>
     </button>
   );
 }
@@ -504,7 +504,7 @@ function ChoiceChips<T extends string>({
               "rounded-full border px-2.5 py-1.5 text-xs transition",
               isActive
                 ? "border-ink bg-ink text-white"
-                : "border-ink/10 bg-white text-ink/68 hover:border-ink/20 hover:text-ink",
+                : "border-line bg-white text-muted hover:border-ink/20 hover:text-ink",
             )}
             aria-pressed={isActive}
           >
@@ -540,7 +540,7 @@ function DisclosurePanel({
   }, [defaultOpen]);
 
   return (
-    <div className="overflow-hidden rounded-[1.75rem] border border-ink/10 bg-white/72">
+    <div className="overflow-hidden rounded-[1.75rem] border border-line bg-white/72">
       <button
         type="button"
         onClick={() => setIsOpen((current) => !current)}
@@ -551,16 +551,16 @@ function DisclosurePanel({
             <h3 className="font-semibold text-ink">{title}</h3>
             {meta}
           </div>
-          {subtitle ? <p className="mt-2 text-sm leading-6 text-ink/70">{subtitle}</p> : null}
+          {subtitle ? <p className="mt-2 text-sm leading-6 text-ink/80">{subtitle}</p> : null}
         </div>
         <div className="flex items-center gap-3 self-start md:self-center">
           {aside}
-          <span className="rounded-full border border-ink/10 bg-paper/75 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/62">
+          <span className="rounded-full border border-line bg-paper/75 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted">
             {isOpen ? "Hide" : "Show"}
           </span>
         </div>
       </button>
-      {isOpen ? <div className="border-t border-ink/10 px-5 pb-5 pt-4">{children}</div> : null}
+      {isOpen ? <div className="border-t border-line px-5 pb-5 pt-4">{children}</div> : null}
     </div>
   );
 }
@@ -1293,7 +1293,7 @@ export function CaseWorkspace() {
         }}
         onDragEnd={handleChecklistCardDragEnd}
         className={classNames(
-          "rounded-3xl border border-ink/10 bg-white/70 p-4",
+          "rounded-3xl border border-line bg-white/70 p-4",
           compact ? "cursor-grab shadow-sm active:cursor-grabbing" : "",
           draggedChecklistItemId === item.id ? "opacity-70 ring-2 ring-pine/20" : "",
         )}
@@ -1315,7 +1315,7 @@ export function CaseWorkspace() {
               >
                 {formatStatus(item.applicability)}
               </span>
-              <span className="rounded-full bg-ink/6 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/70">
+              <span className="rounded-full bg-ink/6 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/80">
                 {item.owner_role}
               </span>
               <span
@@ -1327,9 +1327,9 @@ export function CaseWorkspace() {
                 Docs {formatStatus(item.documentStatus)}
               </span>
             </div>
-            <p className="mt-2 text-sm leading-6 text-ink/72">{item.description}</p>
+            <p className="mt-2 text-sm leading-6 text-ink/80">{item.description}</p>
             {item.formLabels.length ? (
-              <div className="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-[0.14em] text-ink/60">
+              <div className="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-[0.14em] text-muted">
                 {item.formLabels.map((label) => (
                   <span
                     key={`${item.code}-${label}`}
@@ -1349,16 +1349,16 @@ export function CaseWorkspace() {
                   .join(", ")}
               </p>
             ) : !REVIEW_ONLY_CODES.has(item.code) ? (
-              <p className="mt-3 text-sm text-ink/58">No linked upload yet.</p>
+              <p className="mt-3 text-sm text-muted">No linked upload yet.</p>
             ) : null}
           </div>
           <div
             className={classNames(
-              "rounded-3xl border border-ink/10 bg-paper/75 p-4",
+              "rounded-3xl border border-line bg-paper/75 p-4",
               compact ? "min-w-0" : "min-w-52",
             )}
           >
-            <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Workflow status</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted">Workflow status</p>
             {compact ? (
               <>
                 <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1366,7 +1366,7 @@ export function CaseWorkspace() {
                     type="button"
                     onClick={() => handleChecklistCardMove(item, -1)}
                     disabled={!previousStatus || isPending}
-                    className="rounded-2xl border border-ink/10 bg-white px-3 py-2 text-sm text-ink transition hover:border-ink/20 hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                    className="rounded-2xl border border-line bg-white px-3 py-2 text-sm text-ink transition hover:border-ink/20 hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     Back
                   </button>
@@ -1379,7 +1379,7 @@ export function CaseWorkspace() {
                     Advance
                   </button>
                 </div>
-                <p className="mt-3 text-xs text-ink/55">Drag to another lane or use the buttons above.</p>
+                <p className="mt-3 text-xs text-muted">Drag to another lane or use the buttons above.</p>
               </>
             ) : (
               <select
@@ -1387,7 +1387,7 @@ export function CaseWorkspace() {
                 onChange={(event) =>
                   handleChecklistStatus(item.id, event.target.value as ChecklistWorkflowStatus)
                 }
-                className="mt-3 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink"
+                className="mt-3 w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink"
               >
                 {CHECKLIST_STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -1417,7 +1417,7 @@ export function CaseWorkspace() {
         </div>
         {!compact ? (
           <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
-            <div className="rounded-2xl bg-paper/70 px-4 py-3 text-sm text-ink/75">
+            <div className="rounded-2xl bg-paper px-4 py-3 text-sm text-ink/80">
               <p className="font-semibold text-ink">Why this is needed</p>
               <p className="mt-1">{item.why_needed}</p>
               <p className="mt-3 font-semibold text-ink">What to save now</p>
@@ -1430,7 +1430,7 @@ export function CaseWorkspace() {
               ) : null}
             </div>
             {item.primaryRequirement ? (
-              <div className="rounded-2xl border border-pine/10 bg-pine/6 px-4 py-3 text-sm text-ink/72 md:w-80">
+              <div className="rounded-2xl border border-pine/10 bg-pine/6 px-4 py-3 text-sm text-ink/80 md:w-80">
                 <p>
                   USCIS accepted edition:{" "}
                   <span className="font-semibold text-ink">
@@ -1445,7 +1445,7 @@ export function CaseWorkspace() {
                     {item.editionMatches ? " • matches USCIS reference" : ""}
                   </p>
                 ) : (
-                  <p className="mt-1 text-ink/65">
+                  <p className="mt-1 text-muted">
                     No imported form edition detected yet for this checklist item.
                   </p>
                 )}
@@ -1523,7 +1523,7 @@ export function CaseWorkspace() {
         <input
           value={createForm.case_name}
           onChange={(event) => setCreateForm((current) => ({ ...current, case_name: event.target.value }))}
-          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
+          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
         />
       </label>
       <label>
@@ -1532,7 +1532,7 @@ export function CaseWorkspace() {
           type="email"
           value={createForm.petitioner_email}
           onChange={(event) => setCreateForm((current) => ({ ...current, petitioner_email: event.target.value }))}
-          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
+          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
         />
       </label>
       <label>
@@ -1541,7 +1541,7 @@ export function CaseWorkspace() {
           type="email"
           value={createForm.beneficiary_email}
           onChange={(event) => setCreateForm((current) => ({ ...current, beneficiary_email: event.target.value }))}
-          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
+          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
         />
       </label>
       <label className="md:col-span-2">
@@ -1549,11 +1549,11 @@ export function CaseWorkspace() {
         <input
           value={createForm.country_of_focus}
           onChange={(event) => setCreateForm((current) => ({ ...current, country_of_focus: event.target.value }))}
-          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
+          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink outline-none transition focus:border-pine"
         />
       </label>
-      <div className="md:col-span-2 flex flex-col gap-4 rounded-[1.75rem] border border-ink/10 bg-paper/70 p-4 md:flex-row md:items-center md:justify-between">
-        <p className="max-w-xl text-sm leading-6 text-ink/68">
+      <div className="md:col-span-2 flex flex-col gap-4 rounded-[1.75rem] border border-line bg-paper p-4 md:flex-row md:items-center md:justify-between">
+        <p className="max-w-xl text-sm leading-6 text-muted">
           A new case starts with an empty checklist, no uploads, and its own intake workspace.
         </p>
         <button
@@ -1573,11 +1573,11 @@ export function CaseWorkspace() {
         <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top,rgba(37,103,93,0.16),transparent_54%)]" />
         <div className="relative z-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-pine/75">Phase 1 packet workspace</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-pine">Phase 1 packet workspace</p>
             <h1 className="mt-3 max-w-3xl font-display text-4xl leading-tight text-ink md:text-5xl">
               A shorter, calmer way to prepare the packet.
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-ink/72 md:text-lg">
+            <p className="mt-4 max-w-2xl text-base leading-7 text-ink/80 md:text-lg">
               Keep the next action visible, tuck the long reference material behind focused sections,
               and only open the details you need for the task in front of you.
             </p>
@@ -1592,37 +1592,37 @@ export function CaseWorkspace() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="rounded-full border border-ink/10 bg-white/72 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink/62 transition hover:border-pine/30 hover:text-pine"
+                  className="rounded-full border border-line bg-white/72 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted transition hover:border-pine/30 hover:text-pine"
                 >
                   {link.label}
                 </Link>
               ))}
             </div>
-            <div className="mt-5 rounded-[1.6rem] border border-ink/10 bg-white/72 px-4 py-3 text-sm leading-6 text-ink/75">
+            <div className="mt-5 rounded-[1.6rem] border border-line bg-white/72 px-4 py-3 text-sm leading-6 text-ink/80">
               {isBootstrapping ? "Loading the latest workspace, packet state, and source references." : message}
             </div>
             {caseSummary ? (
-              <div className="mt-5 grid gap-3 rounded-[1.8rem] border border-ink/10 bg-white/72 p-4 md:grid-cols-2">
+              <div className="mt-5 grid gap-3 rounded-[1.8rem] border border-line bg-white/72 p-4 md:grid-cols-2">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Open case</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted">Open case</p>
                   <p className="mt-2 font-semibold text-ink">{caseSummary.case_name}</p>
-                  <p className="mt-1 text-sm text-ink/62">
+                  <p className="mt-1 text-sm text-muted">
                     {petitionerName} + {beneficiaryName}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-[1.25rem] bg-paper/70 px-3 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/45">Country</p>
+                  <div className="rounded-[1.25rem] bg-paper px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted">Country</p>
                     <p className="mt-1 font-medium text-ink">{countryFocusLabel}</p>
                   </div>
-                  <div className="rounded-[1.25rem] bg-paper/70 px-3 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/45">Workflow</p>
+                  <div className="rounded-[1.25rem] bg-paper px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted">Workflow</p>
                     <p className="mt-1 font-medium text-ink">{caseSummary.workflow_type.replaceAll("_", " ")}</p>
                   </div>
                 </div>
               </div>
             ) : null}
-            <div className="mt-4 rounded-[1.5rem] border border-ink/10 bg-white/72 p-4">
+            <div className="mt-4 rounded-[1.5rem] border border-line bg-white/72 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                 <div className="flex-1">
                   <CaseSelector
@@ -1644,7 +1644,7 @@ export function CaseWorkspace() {
                 ) : null}
               </div>
               {caseSummary && isCreateCaseOpen ? (
-                <div className="mt-4 border-t border-ink/10 pt-4">{createCaseForm}</div>
+                <div className="mt-4 border-t border-line pt-4">{createCaseForm}</div>
               ) : null}
             </div>
             {caseSummary && nextAction ? (
@@ -1660,14 +1660,14 @@ export function CaseWorkspace() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("overview")}
-                  className="rounded-full border border-ink/12 bg-white/72 px-5 py-3 text-sm font-semibold text-ink/75 transition hover:border-ink/25 hover:text-ink"
+                  className="rounded-full border border-ink/12 bg-white/72 px-5 py-3 text-sm font-semibold text-ink/80 transition hover:border-ink/25 hover:text-ink"
                 >
                   Open action plan
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("references")}
-                  className="rounded-full border border-ink/12 bg-white/72 px-5 py-3 text-sm font-semibold text-ink/75 transition hover:border-ink/25 hover:text-ink"
+                  className="rounded-full border border-ink/12 bg-white/72 px-5 py-3 text-sm font-semibold text-ink/80 transition hover:border-ink/25 hover:text-ink"
                 >
                   Check sources
                 </button>
@@ -1675,15 +1675,15 @@ export function CaseWorkspace() {
             ) : null}
           </div>
 
-          <div className="rounded-[2rem] border border-ink/10 bg-white/74 p-6 backdrop-blur">
+          <div className="rounded-[2rem] border border-line bg-white/74 p-6 backdrop-blur">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-pine/80">Readiness</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-pine">Readiness</p>
                 <p className="mt-3 font-display text-4xl text-ink">
                   {caseSummary?.readiness_score ?? 0}
-                  <span className="text-lg text-ink/45">/100</span>
+                  <span className="text-lg text-muted">/100</span>
                 </p>
-                <p className="mt-1 text-base text-ink/70">
+                <p className="mt-1 text-base text-ink/80">
                   {qa?.summary.label ?? caseSummary?.readiness_label ?? "Not started"}
                 </p>
               </div>
@@ -1712,7 +1712,7 @@ export function CaseWorkspace() {
 
       {isBootstrapping ? (
         <Card title="Restoring the workspace" eyebrow="Please wait">
-          <p className="text-sm leading-6 text-ink/72">
+          <p className="text-sm leading-6 text-ink/80">
             Pulling the latest case, checklist, uploads, QA state, and official-reference content into one view.
           </p>
         </Card>
@@ -1767,10 +1767,10 @@ export function CaseWorkspace() {
                         key={note.title}
                         type="button"
                         onClick={() => setActiveTab(note.tab)}
-                        className="rounded-[1.5rem] border border-ink/10 bg-paper/70 px-4 py-4 text-left transition hover:border-pine/30 hover:bg-white/78"
+                        className="rounded-[1.5rem] border border-line bg-paper px-4 py-4 text-left transition hover:border-pine/30 hover:bg-white/78"
                       >
                         <p className="font-semibold text-ink">{note.title}</p>
-                        <p className="mt-1 text-sm leading-6 text-ink/68">{note.detail}</p>
+                        <p className="mt-1 text-sm leading-6 text-muted">{note.detail}</p>
                       </button>
                     ))}
                   </div>
@@ -1783,7 +1783,7 @@ export function CaseWorkspace() {
                     <button
                       type="button"
                       onClick={() => setActiveTab("packet")}
-                      className="rounded-full border border-ink/12 bg-white/72 px-4 py-2 text-sm font-semibold text-ink/75 transition hover:border-ink/25 hover:text-ink"
+                      className="rounded-full border border-ink/12 bg-white/72 px-4 py-2 text-sm font-semibold text-ink/80 transition hover:border-ink/25 hover:text-ink"
                     >
                       Open packet view
                     </button>
@@ -1801,12 +1801,12 @@ export function CaseWorkspace() {
                             key={packet.code}
                             type="button"
                             onClick={() => setActiveTab("packet")}
-                            className="rounded-[1.5rem] border border-ink/10 bg-white/74 p-4 text-left transition hover:border-pine/30"
+                            className="rounded-[1.5rem] border border-line bg-white/74 p-4 text-left transition hover:border-pine/30"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-ink">{packet.label}</p>
-                                <p className="mt-1 text-sm text-ink/62">
+                                <p className="mt-1 text-sm text-muted">
                                   {packet.completedRequired}/{packet.requiredCount} required milestones covered
                                 </p>
                               </div>
@@ -1814,7 +1814,7 @@ export function CaseWorkspace() {
                                 {packetProgress}%
                               </span>
                             </div>
-                            <p className="mt-3 text-sm leading-6 text-ink/68">
+                            <p className="mt-3 text-sm leading-6 text-muted">
                               {packet.nextMissing.length
                                 ? `Still needed: ${packet.nextMissing.join(", ")}`
                                 : "Required milestones for this packet are currently covered."}
@@ -1824,7 +1824,7 @@ export function CaseWorkspace() {
                       })}
                     </div>
                   ) : (
-                    <p className="text-sm leading-6 text-ink/72">
+                    <p className="text-sm leading-6 text-ink/80">
                       Generate the checklist after saving intake to see the form-by-form packet plan.
                     </p>
                   )}
@@ -1833,7 +1833,7 @@ export function CaseWorkspace() {
 
               <div className="flex flex-col gap-6">
                 <Card title="Case snapshot" eyebrow="Checklist-driving facts">
-                  <div className="rounded-[1.75rem] border border-ink/10 bg-paper/65 px-5 py-4">
+                  <div className="rounded-[1.75rem] border border-line bg-paper px-5 py-4">
                     <SnapshotRow label="Case" value={caseSummary.case_name} />
                     <SnapshotRow label="Petitioner" value={petitionerName} />
                     <SnapshotRow label="Beneficiary" value={beneficiaryName} />
@@ -1845,19 +1845,19 @@ export function CaseWorkspace() {
                     <SnapshotRow label="Filing track" value={filingTrackLabel} />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/68 ring-1 ring-ink/10">
+                    <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted ring-1 ring-ink/10">
                       {intakeValues.first_marriage_for_both ? "First marriage" : "Prior marriage history"}
                     </span>
-                    <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/68 ring-1 ring-ink/10">
+                    <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted ring-1 ring-ink/10">
                       {intakeValues.needs_translation ? "Needs translations" : "English-ready"}
                     </span>
                     {intakeValues.wants_i765 ? (
-                      <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/68 ring-1 ring-ink/10">
+                      <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted ring-1 ring-ink/10">
                         Includes I-765
                       </span>
                     ) : null}
                     {intakeValues.wants_i131 ? (
-                      <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/68 ring-1 ring-ink/10">
+                      <span className="rounded-full bg-white/78 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted ring-1 ring-ink/10">
                         Includes I-131
                       </span>
                     ) : null}
@@ -1885,16 +1885,16 @@ export function CaseWorkspace() {
                   <div className="mt-4 space-y-3">
                     {recentUploads.length ? (
                       recentUploads.map((upload) => (
-                        <div key={upload.id} className="rounded-[1.4rem] border border-ink/10 bg-white/74 px-4 py-4">
+                        <div key={upload.id} className="rounded-[1.4rem] border border-line bg-white/74 px-4 py-4">
                           <p className="font-semibold text-ink">{upload.original_filename}</p>
-                          <p className="mt-1 text-sm text-ink/62">
+                          <p className="mt-1 text-sm text-muted">
                             {getSatisfiedChecklistCodes(upload).join(", ") || "unassigned"} •{" "}
                             {upload.document_language}
                           </p>
                         </div>
                       ))
                     ) : (
-                      <div className="rounded-[1.4rem] border border-ink/10 bg-white/74 px-4 py-4 text-sm leading-6 text-ink/68">
+                      <div className="rounded-[1.4rem] border border-line bg-white/74 px-4 py-4 text-sm leading-6 text-muted">
                         No uploads are linked yet. The review tab is the quickest place to start assigning files.
                       </div>
                     )}
@@ -1936,7 +1936,7 @@ export function CaseWorkspace() {
                               petitioner_first_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -1949,7 +1949,7 @@ export function CaseWorkspace() {
                               petitioner_middle_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -1962,7 +1962,7 @@ export function CaseWorkspace() {
                               petitioner_last_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -1976,7 +1976,7 @@ export function CaseWorkspace() {
                               petitioner_date_of_birth: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -1990,7 +1990,7 @@ export function CaseWorkspace() {
                               petitioner_email: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2003,7 +2003,7 @@ export function CaseWorkspace() {
                               petitioner_phone: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label className="md:col-span-2">
@@ -2017,7 +2017,7 @@ export function CaseWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2032,7 +2032,7 @@ export function CaseWorkspace() {
                               annual_income: Number(event.target.value),
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2045,7 +2045,7 @@ export function CaseWorkspace() {
                               beneficiary_first_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2058,7 +2058,7 @@ export function CaseWorkspace() {
                               beneficiary_middle_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2071,7 +2071,7 @@ export function CaseWorkspace() {
                               beneficiary_last_name: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2085,7 +2085,7 @@ export function CaseWorkspace() {
                               beneficiary_date_of_birth: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2099,7 +2099,7 @@ export function CaseWorkspace() {
                               beneficiary_email: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2112,7 +2112,7 @@ export function CaseWorkspace() {
                               beneficiary_phone: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                     </div>
@@ -2131,7 +2131,7 @@ export function CaseWorkspace() {
                           onChange={(event) =>
                             setIntakeValues((current) => ({ ...current, marriage_date: event.target.value }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2144,7 +2144,7 @@ export function CaseWorkspace() {
                               beneficiary_country_of_birth: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2157,7 +2157,7 @@ export function CaseWorkspace() {
                               beneficiary_country_of_citizenship: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2170,7 +2170,7 @@ export function CaseWorkspace() {
                               beneficiary_location: event.target.value as "usa" | "abroad",
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         >
                           <option value="usa">Already in the U.S.</option>
                           <option value="abroad">Outside the U.S.</option>
@@ -2186,7 +2186,7 @@ export function CaseWorkspace() {
                               beneficiary_current_immigration_status: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2199,7 +2199,7 @@ export function CaseWorkspace() {
                               beneficiary_a_number: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2212,7 +2212,7 @@ export function CaseWorkspace() {
                               beneficiary_i94_number: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2225,7 +2225,7 @@ export function CaseWorkspace() {
                               beneficiary_passport_number: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2238,7 +2238,7 @@ export function CaseWorkspace() {
                               beneficiary_passport_country: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2252,7 +2252,7 @@ export function CaseWorkspace() {
                               beneficiary_passport_expiration: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2267,7 +2267,7 @@ export function CaseWorkspace() {
                               household_size: Number(event.target.value),
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                     </div>
@@ -2309,7 +2309,7 @@ export function CaseWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2323,7 +2323,7 @@ export function CaseWorkspace() {
                               beneficiary_current_address_since: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label className="md:col-span-2">
@@ -2337,7 +2337,7 @@ export function CaseWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2351,7 +2351,7 @@ export function CaseWorkspace() {
                               beneficiary_prior_address_1_from: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2365,7 +2365,7 @@ export function CaseWorkspace() {
                               beneficiary_prior_address_1_to: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label className="md:col-span-2">
@@ -2379,7 +2379,7 @@ export function CaseWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2393,7 +2393,7 @@ export function CaseWorkspace() {
                               beneficiary_prior_address_2_from: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label>
@@ -2407,7 +2407,7 @@ export function CaseWorkspace() {
                               beneficiary_prior_address_2_to: event.target.value,
                             }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                       <label className="md:col-span-2">
@@ -2421,7 +2421,7 @@ export function CaseWorkspace() {
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                           placeholder="Employer names, dates, and gaps to review before form fill."
                         />
                       </label>
@@ -2564,7 +2564,7 @@ export function CaseWorkspace() {
                     </div>
                   </DisclosurePanel>
 
-                  <div className="flex flex-col gap-4 rounded-[1.75rem] border border-ink/10 bg-white/75 p-4">
+                  <div className="flex flex-col gap-4 rounded-[1.75rem] border border-line bg-white/75 p-4">
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="submit"
@@ -2591,7 +2591,7 @@ export function CaseWorkspace() {
                         Required intake fields are filled in.
                       </div>
                     )}
-                    <p className="text-sm leading-6 text-ink/65">
+                    <p className="text-sm leading-6 text-muted">
                       Keep the intake factual and calm. When higher-risk answers stay visible here,
                       the QA pass can surface strategy-review warnings without burying the essentials.
                     </p>
@@ -2617,7 +2617,7 @@ export function CaseWorkspace() {
                       detail="Selected from intake"
                     />
                   </div>
-                  <div className="mt-4 rounded-[1.5rem] border border-ink/10 bg-paper/70 px-4 py-4 text-sm leading-6 text-ink/68">
+                  <div className="mt-4 rounded-[1.5rem] border border-line bg-paper px-4 py-4 text-sm leading-6 text-muted">
                     <p className="font-semibold text-ink">What changes after saving</p>
                     <p className="mt-2">
                       The backend uses these facts to decide form applicability, evidence needs,
@@ -2627,15 +2627,15 @@ export function CaseWorkspace() {
                 </Card>
 
                 <Card title="Reference reminders" eyebrow="Keep claims careful">
-                  <div className="space-y-3 text-sm leading-6 text-ink/74">
+                  <div className="space-y-3 text-sm leading-6 text-ink/80">
                     {(explanations?.disclaimers ?? []).slice(0, 3).map((item) => (
-                      <p key={item} className="rounded-[1.4rem] border border-ink/10 bg-paper/70 px-4 py-3">
+                      <p key={item} className="rounded-[1.4rem] border border-line bg-paper px-4 py-3">
                         {item}
                       </p>
                     ))}
                     <div className="rounded-[1.4rem] border border-clay/15 bg-clay/8 px-4 py-4">
                       <p className="font-semibold text-ink">Escalate for legal review when you see:</p>
-                      <p className="mt-2 text-ink/70">
+                      <p className="mt-2 text-ink/80">
                         {explanations?.escalation_triggers.join(", ") || "higher-risk answers in intake"}
                       </p>
                     </div>
@@ -2650,7 +2650,7 @@ export function CaseWorkspace() {
               <Card title="Form packet milestones" eyebrow="Workflow 2">
                 {formPacketPlans.length ? (
                   <div className="space-y-3">
-                    <p className="text-sm leading-6 text-ink/72">
+                    <p className="text-sm leading-6 text-ink/80">
                       Each packet below follows the official USCIS references currently stored in the
                       workspace. The milestones stay folded until you want the detail.
                     </p>
@@ -2672,8 +2672,8 @@ export function CaseWorkspace() {
                           ) : undefined
                         }
                         aside={
-                          <div className="rounded-[1.25rem] border border-ink/10 bg-paper/75 px-4 py-3 text-center">
-                            <p className="text-xs uppercase tracking-[0.16em] text-ink/45">Required</p>
+                          <div className="rounded-[1.25rem] border border-line bg-paper/75 px-4 py-3 text-center">
+                            <p className="text-xs uppercase tracking-[0.16em] text-muted">Required</p>
                             <p className="mt-1 text-lg font-semibold text-ink">
                               {packet.completedRequired}/{packet.requiredCount || 0}
                             </p>
@@ -2685,7 +2685,7 @@ export function CaseWorkspace() {
                             href={packet.official_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
+                            className="rounded-full border border-line bg-paper px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
                           >
                             USCIS source
                           </a>
@@ -2694,7 +2694,7 @@ export function CaseWorkspace() {
                               href={packet.fee_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
+                              className="rounded-full border border-line bg-paper px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
                             >
                               Fee reference
                             </a>
@@ -2704,7 +2704,7 @@ export function CaseWorkspace() {
                           {packet.milestones.map((milestone) => (
                             <div
                               key={`${packet.code}-${milestone.checklist_code}`}
-                              className="rounded-[1.5rem] border border-ink/10 bg-paper/65 p-4"
+                              className="rounded-[1.5rem] border border-line bg-paper p-4"
                             >
                               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div>
@@ -2718,13 +2718,13 @@ export function CaseWorkspace() {
                                     >
                                       {formatStatus(milestone.necessity)}
                                     </span>
-                                    <span className="rounded-full bg-white/85 px-3 py-1 text-xs uppercase tracking-[0.16em] text-ink/65 ring-1 ring-ink/10">
+                                    <span className="rounded-full bg-white/85 px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted ring-1 ring-ink/10">
                                       {formatRequirementType(milestone.requirement_type)}
                                     </span>
                                   </div>
-                                  <p className="mt-2 text-sm leading-6 text-ink/72">{milestone.notes}</p>
+                                  <p className="mt-2 text-sm leading-6 text-ink/80">{milestone.notes}</p>
                                   {milestone.conditional_note ? (
-                                    <p className="mt-2 text-sm leading-6 text-ink/62">
+                                    <p className="mt-2 text-sm leading-6 text-muted">
                                       {milestone.conditional_note}
                                     </p>
                                   ) : null}
@@ -2739,7 +2739,7 @@ export function CaseWorkspace() {
                                   ) : null}
                                 </div>
                                 <div className="min-w-40">
-                                  <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Status</p>
+                                  <p className="text-xs uppercase tracking-[0.18em] text-muted">Status</p>
                                   <p
                                     className={classNames(
                                       "mt-2 inline-flex rounded-full px-3 py-1 text-sm capitalize ring-1",
@@ -2757,7 +2757,7 @@ export function CaseWorkspace() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-ink/72">
+                  <p className="text-sm leading-6 text-ink/80">
                     Generate the checklist after saving intake to see form-by-form packet milestones.
                   </p>
                 )}
@@ -2773,7 +2773,7 @@ export function CaseWorkspace() {
                           value={searchQuery}
                           onChange={(event) => setSearchQuery(event.target.value)}
                           placeholder="Search forms, evidence, owners, or notes"
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink"
                         />
                       </label>
                       <div className="xl:col-span-5">
@@ -2789,7 +2789,7 @@ export function CaseWorkspace() {
                         <select
                           value={documentFilter}
                           onChange={(event) => setDocumentFilter(event.target.value as ChecklistDocumentFilter)}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink"
                         >
                           <option value="all">All document states</option>
                           <option value="missing">Missing</option>
@@ -2803,7 +2803,7 @@ export function CaseWorkspace() {
                         <select
                           value={categoryFilter}
                           onChange={(event) => setCategoryFilter(event.target.value)}
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-ink"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-ink"
                         >
                           <option value="all">All categories</option>
                           {Array.from(new Set(visibleChecklistCards.map((item) => item.category))).map((category) => (
@@ -2815,7 +2815,7 @@ export function CaseWorkspace() {
                       </label>
                       <div>
                         <span className="mb-2 block text-sm font-semibold text-ink">View</span>
-                        <div className="flex rounded-2xl border border-ink/10 bg-white p-1">
+                        <div className="flex rounded-2xl border border-line bg-white p-1">
                           {(["board", "list"] as ChecklistViewMode[]).map((view) => (
                             <button
                               key={view}
@@ -2823,7 +2823,7 @@ export function CaseWorkspace() {
                               onClick={() => setChecklistView(view)}
                               className={classNames(
                                 "flex-1 rounded-[1rem] px-4 py-3 text-sm transition",
-                                checklistView === view ? "bg-ink text-white" : "text-ink/65",
+                                checklistView === view ? "bg-ink text-white" : "text-muted",
                               )}
                             >
                               {view === "board" ? "Board" : "List"}
@@ -2834,18 +2834,18 @@ export function CaseWorkspace() {
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-4">
-                      <div className="rounded-2xl border border-ink/10 bg-paper/80 px-4 py-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Visible tasks</p>
+                      <div className="rounded-2xl border border-line bg-paper/80 px-4 py-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted">Visible tasks</p>
                         <p className="mt-2 text-3xl font-semibold text-ink">{filteredChecklistCards.length}</p>
                       </div>
-                      <div className="rounded-2xl border border-ink/10 bg-paper/80 px-4 py-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Need uploads</p>
+                      <div className="rounded-2xl border border-line bg-paper/80 px-4 py-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted">Need uploads</p>
                         <p className="mt-2 text-3xl font-semibold text-ink">
                           {filteredChecklistCards.filter((item) => item.documentStatus === "missing").length}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-ink/10 bg-paper/80 px-4 py-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Ready to review</p>
+                      <div className="rounded-2xl border border-line bg-paper/80 px-4 py-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted">Ready to review</p>
                         <p className="mt-2 text-3xl font-semibold text-ink">
                           {
                             filteredChecklistCards.filter((item) =>
@@ -2854,8 +2854,8 @@ export function CaseWorkspace() {
                           }
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-ink/10 bg-paper/80 px-4 py-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Confirmed docs</p>
+                      <div className="rounded-2xl border border-line bg-paper/80 px-4 py-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted">Confirmed docs</p>
                         <p className="mt-2 text-3xl font-semibold text-ink">
                           {filteredChecklistCards.filter((item) => item.documentStatus === "confirmed").length}
                         </p>
@@ -2883,13 +2883,13 @@ export function CaseWorkspace() {
                               handleChecklistBoardDrop(status);
                             }}
                             className={classNames(
-                              "rounded-[1.8rem] border border-ink/10 bg-paper/70 p-4 transition",
+                              "rounded-[1.8rem] border border-line bg-paper p-4 transition",
                               dragTargetStatus === status ? "border-pine/35 bg-pine/8" : "",
                             )}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Lane</p>
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted">Lane</p>
                                 <h3 className="mt-1 font-display text-xl text-ink">{formatStatus(status)}</h3>
                               </div>
                               <span
@@ -2905,7 +2905,7 @@ export function CaseWorkspace() {
                               {checklistBoardColumns[status].length ? (
                                 checklistBoardColumns[status].map((item) => renderChecklistCard(item, true))
                               ) : (
-                                <div className="rounded-3xl border border-dashed border-ink/12 bg-white/60 px-4 py-6 text-sm text-ink/55">
+                                <div className="rounded-3xl border border-dashed border-ink/12 bg-white/60 px-4 py-6 text-sm text-muted">
                                   Drop a task here or use the lane for status changes.
                                 </div>
                               )}
@@ -2919,7 +2919,7 @@ export function CaseWorkspace() {
                           <div key={category}>
                             <div className="mb-3 flex items-center justify-between">
                               <h3 className="font-display text-xl capitalize text-ink">{formatCategory(category)}</h3>
-                              <span className="text-sm text-ink/55">{items.length} items</span>
+                              <span className="text-sm text-muted">{items.length} items</span>
                             </div>
                             <div className="space-y-3">{items.map((item) => renderChecklistCard(item))}</div>
                           </div>
@@ -2928,13 +2928,13 @@ export function CaseWorkspace() {
                     )}
 
                     {!filteredChecklistCards.length ? (
-                      <div className="rounded-3xl border border-dashed border-ink/15 bg-white/60 px-4 py-6 text-sm text-ink/60">
+                      <div className="rounded-3xl border border-dashed border-line-strong bg-white/60 px-4 py-6 text-sm text-muted">
                         No checklist items match the current filters.
                       </div>
                     ) : null}
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-ink/72">
+                  <p className="text-sm leading-6 text-ink/80">
                     Generate the checklist after saving intake. The rules engine will split forms,
                     civil records, financial evidence, marriage evidence, optional filings, and later-stage items.
                   </p>
@@ -2968,7 +2968,7 @@ export function CaseWorkspace() {
                         onChange={(event) =>
                           setUploadForm((current) => ({ ...current, checklistCode: event.target.value }))
                         }
-                        className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                        className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                       >
                         <option value="">Select an item</option>
                         {uploadableItems.map((item) => (
@@ -2986,7 +2986,7 @@ export function CaseWorkspace() {
                           onChange={(event) =>
                             setUploadForm((current) => ({ ...current, language: event.target.value }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         >
                           <option value="english">English</option>
                           <option value="spanish">Spanish</option>
@@ -3000,7 +3000,7 @@ export function CaseWorkspace() {
                           onChange={(event) =>
                             setUploadForm((current) => ({ ...current, documentType: event.target.value }))
                           }
-                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                          className="w-full rounded-2xl border border-line bg-white px-4 py-3"
                         />
                       </label>
                     </div>
@@ -3019,7 +3019,7 @@ export function CaseWorkspace() {
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
                         onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                        className="block w-full rounded-2xl border border-dashed border-ink/20 bg-paper/75 px-4 py-4 text-sm text-ink/70"
+                        className="block w-full rounded-2xl border border-dashed border-ink/20 bg-paper/75 px-4 py-4 text-sm text-ink/80"
                       />
                     </label>
                   </div>
@@ -3031,21 +3031,21 @@ export function CaseWorkspace() {
                       uploads.map((upload) => {
                         const linkedCodes = getSatisfiedChecklistCodes(upload);
                         return (
-                          <div key={upload.id} className="rounded-[1.5rem] border border-ink/10 bg-white/74 p-4">
+                          <div key={upload.id} className="rounded-[1.5rem] border border-line bg-white/74 p-4">
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                               <div>
                                 <p className="font-semibold text-ink">{upload.original_filename}</p>
-                                <p className="mt-1 text-sm text-ink/62">
+                                <p className="mt-1 text-sm text-muted">
                                   {(linkedCodes.join(", ") || "unassigned")} • {upload.document_language} • version{" "}
                                   {upload.version}
                                 </p>
                                 {upload.extracted_fields.source_path ? (
-                                  <p className="mt-1 text-xs text-ink/55">
+                                  <p className="mt-1 text-xs text-muted">
                                     Imported from {String(upload.extracted_fields.source_path)}
                                   </p>
                                 ) : null}
                                 {upload.extracted_fields.form_edition ? (
-                                  <p className="mt-1 text-xs text-ink/55">
+                                  <p className="mt-1 text-xs text-muted">
                                     Detected edition {String(upload.extracted_fields.form_edition)}
                                   </p>
                                 ) : null}
@@ -3072,7 +3072,7 @@ export function CaseWorkspace() {
                         );
                       })
                     ) : (
-                      <p className="text-sm text-ink/70">No uploads yet.</p>
+                      <p className="text-sm text-ink/80">No uploads yet.</p>
                     )}
                   </div>
                 </Card>
@@ -3094,14 +3094,14 @@ export function CaseWorkspace() {
               >
                 {qa ? (
                   <div className="space-y-5">
-                    <div className="rounded-[1.75rem] border border-ink/10 bg-paper/80 p-4">
+                    <div className="rounded-[1.75rem] border border-line bg-paper/80 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <p className="font-display text-3xl text-ink">{qa.summary.label}</p>
-                          <p className="mt-2 text-sm leading-6 text-ink/72">{qa.summary.explanation}</p>
+                          <p className="mt-2 text-sm leading-6 text-ink/80">{qa.summary.explanation}</p>
                         </div>
                         <div className="rounded-[1.5rem] bg-white/75 px-5 py-4 text-center">
-                          <p className="text-xs uppercase tracking-[0.18em] text-ink/45">Required completion</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted">Required completion</p>
                           <p className="mt-2 text-3xl font-semibold text-ink">
                             {qa.summary.required_completion_pct}%
                           </p>
@@ -3110,16 +3110,16 @@ export function CaseWorkspace() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3 text-center">
                       {Object.entries(qa.summary.issue_counts).map(([key, value]) => (
-                        <div key={key} className="rounded-[1.4rem] border border-ink/10 bg-white/75 px-3 py-4">
+                        <div key={key} className="rounded-[1.4rem] border border-line bg-white/75 px-3 py-4">
                           <p className="text-2xl font-semibold text-ink">{value}</p>
-                          <p className="text-sm capitalize text-ink/65">{key}</p>
+                          <p className="text-sm capitalize text-muted">{key}</p>
                         </div>
                       ))}
                     </div>
                     <div className="space-y-3">
                       {qa.issues.length ? (
                         qa.issues.map((issue) => (
-                          <div key={issue.id} className="rounded-[1.5rem] border border-ink/10 bg-white/75 p-4">
+                          <div key={issue.id} className="rounded-[1.5rem] border border-line bg-white/75 p-4">
                             <div className="flex flex-wrap items-center gap-2">
                               <span
                                 className={classNames(
@@ -3131,7 +3131,7 @@ export function CaseWorkspace() {
                               </span>
                               <p className="font-semibold text-ink">{issue.title}</p>
                             </div>
-                            <p className="mt-2 text-sm leading-6 text-ink/72">{issue.description}</p>
+                            <p className="mt-2 text-sm leading-6 text-ink/80">{issue.description}</p>
                           </div>
                         ))
                       ) : (
@@ -3142,7 +3142,7 @@ export function CaseWorkspace() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-ink/72">
+                  <p className="text-sm leading-6 text-ink/80">
                     Run QA after a few uploads are in place. The backend will check missing required
                     items, translation gaps, likely signature issues, and escalation triggers from intake.
                   </p>
@@ -3155,26 +3155,26 @@ export function CaseWorkspace() {
             <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
               <div className="flex flex-col gap-6">
                 <Card title="Guardrails" eyebrow="Keep claims careful">
-                  <div className="space-y-3 text-sm leading-6 text-ink/75">
+                  <div className="space-y-3 text-sm leading-6 text-ink/80">
                     {(explanations?.disclaimers ?? []).map((item) => (
-                      <p key={item} className="rounded-[1.4rem] border border-ink/10 bg-paper/70 px-4 py-3">
+                      <p key={item} className="rounded-[1.4rem] border border-line bg-paper px-4 py-3">
                         {item}
                       </p>
                     ))}
                     <div className="rounded-[1.4rem] border border-clay/15 bg-clay/8 px-4 py-4">
                       <p className="font-semibold text-ink">Escalate for legal review when you see:</p>
-                      <p className="mt-2 text-ink/70">
+                      <p className="mt-2 text-ink/80">
                         {explanations?.escalation_triggers.join(", ") || "higher-risk answers in intake"}
                       </p>
                     </div>
                     {Object.entries(explanations?.issue_severity_help ?? {}).length ? (
-                      <div className="rounded-[1.4rem] border border-ink/10 bg-white/72 px-4 py-4">
+                      <div className="rounded-[1.4rem] border border-line bg-white/72 px-4 py-4">
                         <p className="font-semibold text-ink">Severity guide</p>
                         <div className="mt-3 space-y-2">
                           {Object.entries(explanations?.issue_severity_help ?? {}).map(([severity, detail]) => (
-                            <div key={severity} className="rounded-[1.1rem] bg-paper/70 px-3 py-3">
-                              <p className="text-xs uppercase tracking-[0.16em] text-ink/48">{severity}</p>
-                              <p className="mt-1 text-sm text-ink/68">{detail}</p>
+                            <div key={severity} className="rounded-[1.1rem] bg-paper px-3 py-3">
+                              <p className="text-xs uppercase tracking-[0.16em] text-muted">{severity}</p>
+                              <p className="mt-1 text-sm text-muted">{detail}</p>
                             </div>
                           ))}
                         </div>
@@ -3186,9 +3186,9 @@ export function CaseWorkspace() {
                 <Card title="Country guidance" eyebrow="Civil documents and translations">
                   {guidance ? (
                     <div className="space-y-4">
-                      <div className="rounded-[1.5rem] border border-ink/10 bg-paper/70 px-4 py-4">
+                      <div className="rounded-[1.5rem] border border-line bg-paper px-4 py-4">
                         <p className="text-sm uppercase tracking-[0.2em] text-pine/70">{guidance.country_name}</p>
-                        <p className="mt-2 text-sm leading-6 text-ink/75">{guidance.overview}</p>
+                        <p className="mt-2 text-sm leading-6 text-ink/80">{guidance.overview}</p>
                       </div>
                       <div className="space-y-3">
                         {guidance.documents.map((document) => (
@@ -3197,14 +3197,14 @@ export function CaseWorkspace() {
                             title={document.label}
                             subtitle={`Translation required: ${document.translation_required ? "Yes" : "No"}`}
                             meta={
-                              <span className="rounded-full bg-sand/35 px-3 py-1 text-xs uppercase tracking-[0.15em] text-ink/75">
+                              <span className="rounded-full bg-sand/35 px-3 py-1 text-xs uppercase tracking-[0.15em] text-ink/80">
                                 {document.common_name}
                               </span>
                             }
                           >
-                            <ul className="space-y-2 text-sm text-ink/70">
+                            <ul className="space-y-2 text-sm text-ink/80">
                               {document.tips.map((tip) => (
-                                <li key={tip} className="rounded-[1.2rem] bg-paper/70 px-3 py-3">
+                                <li key={tip} className="rounded-[1.2rem] bg-paper px-3 py-3">
                                   {tip}
                                 </li>
                               ))}
@@ -3212,12 +3212,12 @@ export function CaseWorkspace() {
                           </DisclosurePanel>
                         ))}
                       </div>
-                      <div className="rounded-[1.5rem] border border-ink/10 bg-mist/50 px-4 py-4 text-sm leading-6 text-ink/75">
+                      <div className="rounded-[1.5rem] border border-line bg-mist/50 px-4 py-4 text-sm leading-6 text-ink/80">
                         <p>{guidance.translation_note}</p>
                         <p className="mt-2">{guidance.availability_note}</p>
                       </div>
                       {(guidance.sources ?? []).length ? (
-                        <div className="rounded-[1.5rem] border border-ink/10 bg-white/74 px-4 py-4">
+                        <div className="rounded-[1.5rem] border border-line bg-white/74 px-4 py-4">
                           <p className="font-semibold text-ink">Country sources</p>
                           <div className="mt-3 flex flex-wrap gap-3 text-sm">
                             {guidance.sources.map((source) =>
@@ -3227,14 +3227,14 @@ export function CaseWorkspace() {
                                   href={source.url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
+                                  className="rounded-full border border-line bg-paper px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
                                 >
                                   {source.label}
                                 </a>
                               ) : (
                                 <span
                                   key={source.label}
-                                  className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink/70"
+                                  className="rounded-full border border-line bg-paper px-3 py-2 text-ink/80"
                                 >
                                   {source.label}
                                 </span>
@@ -3245,7 +3245,7 @@ export function CaseWorkspace() {
                       ) : null}
                     </div>
                   ) : (
-                    <p className="text-sm text-ink/70">Country guidance will appear once a case is created.</p>
+                    <p className="text-sm text-ink/80">Country guidance will appear once a case is created.</p>
                   )}
                 </Card>
               </div>
@@ -3253,7 +3253,7 @@ export function CaseWorkspace() {
               <Card title="USCIS requirement references" eyebrow="Source-backed form details">
                 {uscisRequirements ? (
                   <div className="space-y-4">
-                    <div className="rounded-[1.5rem] border border-ink/10 bg-paper/70 px-4 py-4 text-sm leading-6 text-ink/72">
+                    <div className="rounded-[1.5rem] border border-line bg-paper px-4 py-4 text-sm leading-6 text-ink/80">
                       Verified from official USCIS pages on {formatDateLabel(uscisRequirements.verified_on)}.
                       Filing fees should still be confirmed again right before mailing.
                     </div>
@@ -3265,17 +3265,17 @@ export function CaseWorkspace() {
                       >
                         <div className="space-y-3">
                           {uscisRequirements.general_rules.map((rule) => (
-                            <div key={rule.code} className="rounded-[1.4rem] border border-ink/10 bg-white/74 p-4">
+                            <div key={rule.code} className="rounded-[1.4rem] border border-line bg-white/74 p-4">
                               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div>
                                   <p className="font-semibold text-ink">{rule.label}</p>
-                                  <p className="mt-1 text-sm leading-6 text-ink/70">{rule.summary}</p>
+                                  <p className="mt-1 text-sm leading-6 text-ink/80">{rule.summary}</p>
                                 </div>
                                 <a
                                   href={rule.official_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-sm text-ink transition hover:border-pine hover:text-pine"
+                                  className="rounded-full border border-line bg-paper px-3 py-2 text-sm text-ink transition hover:border-pine hover:text-pine"
                                 >
                                   USCIS source
                                 </a>
@@ -3283,7 +3283,7 @@ export function CaseWorkspace() {
                               {(rule.important_notes ?? []).length ? (
                                 <div className="mt-3 space-y-2">
                                   {rule.important_notes.map((note) => (
-                                    <p key={note} className="rounded-[1.1rem] bg-paper/70 px-3 py-3 text-sm text-ink/68">
+                                    <p key={note} className="rounded-[1.1rem] bg-paper px-3 py-3 text-sm text-muted">
                                       {note}
                                     </p>
                                   ))}
@@ -3313,7 +3313,7 @@ export function CaseWorkspace() {
                               href={requirement.official_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
+                              className="rounded-full border border-line bg-paper px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
                             >
                               USCIS source
                             </a>
@@ -3322,16 +3322,16 @@ export function CaseWorkspace() {
                                 href={requirement.fee_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="rounded-full border border-ink/10 bg-paper/70 px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
+                                className="rounded-full border border-line bg-paper px-3 py-2 text-ink transition hover:border-pine hover:text-pine"
                               >
                                 Fee reference
                               </a>
                             ) : null}
                           </div>
                           {(requirement.important_notes ?? []).length ? (
-                            <div className="mt-4 space-y-2 text-sm text-ink/70">
+                            <div className="mt-4 space-y-2 text-sm text-ink/80">
                               {requirement.important_notes.map((note) => (
-                                <p key={note} className="rounded-[1.1rem] bg-paper/70 px-3 py-3">
+                                <p key={note} className="rounded-[1.1rem] bg-paper px-3 py-3">
                                   {note}
                                 </p>
                               ))}
@@ -3339,14 +3339,14 @@ export function CaseWorkspace() {
                           ) : null}
                           {requirement.initial_evidence.length ? (
                             <div className="mt-4 space-y-2">
-                              <p className="text-xs uppercase tracking-[0.18em] text-ink/45">
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted">
                                 Tracked packet evidence
                               </p>
-                              <div className="space-y-2 text-sm text-ink/70">
+                              <div className="space-y-2 text-sm text-ink/80">
                                 {requirement.initial_evidence.map((evidence) => (
                                   <div
                                     key={`${requirement.code}-${evidence.checklist_code}`}
-                                    className="rounded-[1.2rem] border border-ink/10 bg-paper/70 px-3 py-3"
+                                    className="rounded-[1.2rem] border border-line bg-paper px-3 py-3"
                                   >
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="font-semibold text-ink">{evidence.label}</span>
@@ -3361,7 +3361,7 @@ export function CaseWorkspace() {
                                     </div>
                                     <p className="mt-2">{evidence.notes}</p>
                                     {evidence.conditional_note ? (
-                                      <p className="mt-2 text-ink/60">{evidence.conditional_note}</p>
+                                      <p className="mt-2 text-muted">{evidence.conditional_note}</p>
                                     ) : null}
                                   </div>
                                 ))}
@@ -3373,7 +3373,7 @@ export function CaseWorkspace() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-ink/70">USCIS requirement references are loading.</p>
+                  <p className="text-sm text-ink/80">USCIS requirement references are loading.</p>
                 )}
               </Card>
             </div>

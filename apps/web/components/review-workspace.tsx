@@ -1,17 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
+import { AppShell } from "@/components/app-shell";
 import { CaseSelector } from "@/components/case-selector";
+import {
+  Badge,
+  Card,
+  Notice,
+  PageHeader,
+  ProgressBar,
+  SectionHeader,
+  Stat,
+  StatusMessage,
+  buttonClass,
+  cx,
+} from "@/components/ui";
 import { generateChecklist, getCase, getChecklist, getPrescreenState, getQa, listUploads, runQa } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
-import type { CaseSummary, ChecklistItem, PrescreenState, QaResults, UploadRecord } from "@/lib/types";
-const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
+import type { CaseSummary, ChecklistItem, PrescreenState, QaIssue, QaResults, UploadRecord } from "@/lib/types";
 
-function classNames(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
-}
+const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
+const SEVERITY_ORDER = ["blocking", "critical", "important", "recommended"];
 
 function actionHref(baseHref: string, caseId: string) {
   const separator = baseHref.includes("?") ? "&" : "?";
@@ -22,16 +33,42 @@ function isDone(item: ChecklistItem) {
   return DONE_STATUSES.has(item.completion_status);
 }
 
+function severityTone(severity: string) {
+  if (severity === "blocking" || severity === "critical") {
+    return "danger" as const;
+  }
+  if (severity === "important") {
+    return "warning" as const;
+  }
+  return "neutral" as const;
+}
+
+function severityRank(severity: string) {
+  const index = SEVERITY_ORDER.indexOf(severity);
+  return index < 0 ? SEVERITY_ORDER.length : index;
+}
+
+function readinessTone(label: string) {
+  if (label.startsWith("Ready to print")) {
+    return "success" as const;
+  }
+  if (label.startsWith("Not ready")) {
+    return "danger" as const;
+  }
+  return "warning" as const;
+}
+
 export function ReviewWorkspace() {
   const [caseSummary, setCaseSummary] = useState<CaseSummary | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const [qa, setQa] = useState<QaResults | null>(null);
   const [prescreen, setPrescreen] = useState<PrescreenState | null>(null);
-  const [message, setMessage] = useState("Load a case to review the packet.");
+  const [message, setMessage] = useState<string | null>("Choose a case to review the packet.");
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const loadCase = useCallback(async (caseId: string, successMessage: string) => {
+  const loadCase = useCallback(async (caseId: string, successMessage: string | null) => {
     try {
       const [loadedCase, loadedChecklist, loadedUploads, loadedQa, loadedPrescreen] = await Promise.all([
         getCase(caseId),
@@ -52,13 +89,17 @@ export function ReviewWorkspace() {
       setMessage(successMessage);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load this case.");
+    } finally {
+      setIsLoaded(true);
     }
   }, []);
 
   useEffect(() => {
     const caseId = new URLSearchParams(window.location.search).get("caseId") || getSavedCaseId();
     if (caseId) {
-      void loadCase(caseId, "Review state loaded.");
+      void loadCase(caseId, null);
+    } else {
+      setIsLoaded(true);
     }
   }, [loadCase]);
 
@@ -66,28 +107,16 @@ export function ReviewWorkspace() {
   const completedRequired = requiredItems.filter(isDone).length;
   const checklistPct = requiredItems.length ? Math.round((completedRequired / requiredItems.length) * 100) : 0;
   const flags = prescreen?.evaluation.flags ?? [];
-  const criticalFlags = flags.filter((flag) => flag.severity === "critical");
-  const missingRequired = requiredItems.filter((item) => !isDone(item)).slice(0, 6);
-
-  const reviewStatus = useMemo(() => {
-    if (!caseSummary) {
-      return "No case";
-    }
-    if (criticalFlags.length) {
-      return "Review needed";
-    }
-    if (!checklist.length) {
-      return "Checklist not generated";
-    }
-    if (checklistPct < 100) {
-      return "Collecting evidence";
-    }
-    return "Ready for final check";
-  }, [caseSummary, checklist.length, checklistPct, criticalFlags.length]);
+  const missingRequired = requiredItems.filter((item) => !isDone(item));
+  const openIssues: QaIssue[] = (qa?.issues ?? [])
+    .filter((issue) => !issue.is_resolved)
+    .sort((left, right) => severityRank(left.severity) - severityRank(right.severity));
+  const blockingCount = openIssues.filter((issue) => severityTone(issue.severity) === "danger").length;
+  const readinessLabel = qa?.summary.label || caseSummary?.readiness_label || "Not started";
 
   function handleCaseSelect(nextCase: CaseSummary) {
     startTransition(() => {
-      void loadCase(nextCase.id, `Loaded ${nextCase.case_name}.`);
+      void loadCase(nextCase.id, `Opened ${nextCase.case_name}.`);
     });
   }
 
@@ -100,7 +129,7 @@ export function ReviewWorkspace() {
         try {
           const generated = await generateChecklist(caseSummary.id);
           setChecklist(generated.items);
-          setMessage("Checklist regenerated from the saved intake branch.");
+          setMessage("Checklist rebuilt from the saved answers.");
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Could not generate the checklist.");
         }
@@ -117,6 +146,9 @@ export function ReviewWorkspace() {
         try {
           const results = await runQa(caseSummary.id);
           setQa(results);
+          setCaseSummary((current) =>
+            current ? { ...current, readiness_label: results.summary.label, readiness_score: results.summary.score } : current,
+          );
           setMessage("Review checks finished.");
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Could not run review checks.");
@@ -126,170 +158,222 @@ export function ReviewWorkspace() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f7f2] text-zinc-950">
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-5 lg:grid-cols-[280px_1fr]">
-        <aside className="rounded-lg border border-zinc-200 bg-white p-4">
-          <Link href="/" className="block text-lg font-bold">
-            Lucy
-          </Link>
-          <p className="mt-1 text-sm text-zinc-600">Checklist, review, and document handoff</p>
-          <div className="mt-4 grid gap-2 text-sm font-semibold">
-            <Link href="/" className="rounded-lg border border-zinc-200 px-3 py-2 text-zinc-700 hover:border-emerald-700">
-              Landing
-            </Link>
-            <Link
-              href={caseSummary ? actionHref("/prescreen", caseSummary.id) : "/prescreen"}
-              className="rounded-lg border border-zinc-200 px-3 py-2 text-zinc-700 hover:border-emerald-700"
-            >
-              Prescreen
-            </Link>
-            <Link href="/review" className="rounded-lg border border-emerald-700 bg-emerald-50 px-3 py-2 text-emerald-900">
-              Checklist + review
-            </Link>
-          </div>
-          <div className="mt-5">
+    <AppShell step="review" caseId={caseSummary?.id} caseName={caseSummary?.case_name} readinessLabel={caseSummary?.readiness_label}>
+      <PageHeader
+        eyebrow="Step 4"
+        title="Review the packet"
+        description="See what still needs attention before you print. Fix open issues here, then continue to the print packet."
+        actions={
+          <div className="w-full min-w-64 sm:w-80">
             <CaseSelector selectedCaseId={caseSummary?.id ?? ""} onSelect={handleCaseSelect} disabled={isPending} label="Case" />
           </div>
-          <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
-            <p className="font-semibold text-zinc-950">Saved progress</p>
-            <p className="mt-1">{caseSummary ? "This case is saved locally and can be resumed from the landing page." : "No case loaded yet."}</p>
-          </div>
-        </aside>
+        }
+      />
 
-        <section className="grid gap-6">
-          <section className="rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Checklist + review</p>
-                <h1 className="mt-2 text-3xl font-bold tracking-normal md:text-4xl">Review the packet before generation.</h1>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-600">
-                  Check the branch flags, required evidence, uploads, and QA results before opening packet assembly.
-                </p>
+      <StatusMessage message={message} />
+
+      {!caseSummary ? (
+        isLoaded ? (
+          <Notice
+            title="No case open"
+            actions={
+              <Link href="/prescreen" className={buttonClass("primary", "sm")}>
+                Start a case
+              </Link>
+            }
+          >
+            Choose a saved case above, or start a new one from the prescreen.
+          </Notice>
+        ) : null
+      ) : (
+        <>
+          <Card className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-muted">Packet readiness</p>
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <h2 className="font-display text-3xl text-ink">{readinessLabel}</h2>
+                {qa ? <Badge tone={readinessTone(readinessLabel)}>Score {qa.summary.score}</Badge> : null}
               </div>
-              <div className="min-w-56 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Status</p>
-                <p className="mt-2 text-2xl font-bold">{reviewStatus}</p>
-                <p className="mt-2 text-xs text-zinc-600">{completedRequired}/{requiredItems.length} required checklist items done</p>
+              {qa?.summary.explanation ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{qa.summary.explanation}</p> : null}
+              <div className="mt-4 max-w-xl">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted">
+                  <span>Required checklist items</span>
+                  <span className="tabular-nums">
+                    {completedRequired} of {requiredItems.length}
+                  </span>
+                </div>
+                <ProgressBar value={checklistPct} label="Required checklist items done" className="mt-1.5" />
               </div>
             </div>
-            <div className="mt-4 rounded-lg border border-zinc-200 bg-[#fbfbf8] px-3 py-2 text-sm text-zinc-700">
-              {message}
+            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+              <Link
+                href={actionHref("/packet-assembly", caseSummary.id)}
+                className={buttonClass(blockingCount ? "secondary" : "primary", "lg")}
+              >
+                Continue to print packet
+              </Link>
+              <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass("secondary", "md")}>
+                {isPending ? "Checking..." : "Run review checks again"}
+              </button>
             </div>
+          </Card>
+
+          <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Required items done" value={`${checklistPct}%`} detail={`${completedRequired} of ${requiredItems.length}`} />
+            <Stat
+              label="Open issues"
+              value={openIssues.length}
+              detail={blockingCount ? `${blockingCount} must be fixed first` : "None blocking"}
+              tone={blockingCount ? "danger" : "neutral"}
+            />
+            <Stat label="Prescreen flags" value={flags.length} detail="From your prescreen answers" tone={flags.length ? "warning" : "neutral"} />
+            <Stat label="Files uploaded" value={uploads.length} detail="Linked to checklist items" />
           </section>
 
-          <section className="grid gap-4 md:grid-cols-4">
-            {[
-              { label: "Checklist", value: `${checklistPct}%`, detail: "required evidence done" },
-              { label: "Uploads", value: String(uploads.length), detail: "files linked" },
-              { label: "QA issues", value: String(qa?.issues.filter((issue) => !issue.is_resolved).length ?? 0), detail: "open review items" },
-              { label: "Branch flags", value: String(flags.length), detail: criticalFlags.length ? "critical review present" : "from intake" },
-            ].map((metric) => (
-              <div key={metric.label} className="rounded-lg border border-zinc-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">{metric.label}</p>
-                <p className="mt-2 text-2xl font-bold">{metric.value}</p>
-                <p className="mt-1 text-sm text-zinc-600">{metric.detail}</p>
-              </div>
-            ))}
-          </section>
-
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="grid gap-6">
-              {flags.length ? (
-                <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
-                  <h2 className="text-xl font-bold text-amber-950">Review flags</h2>
-                  <div className="mt-4 grid gap-3">
-                    {flags.map((flag) => (
-                      <div key={flag.code} className="rounded-lg border border-amber-200 bg-white p-3">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid content-start gap-6">
+              <Card aria-labelledby="issues-heading">
+                <SectionHeader
+                  id="issues-heading"
+                  title="Open issues"
+                  description={
+                    qa
+                      ? "From the latest review checks. Issues marked Blocking must be fixed before the packet is ready."
+                      : "Review checks have not run for this case yet."
+                  }
+                />
+                {openIssues.length ? (
+                  <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                    {openIssues.map((issue) => (
+                      <li key={issue.id} className="grid gap-1 bg-white px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-amber-950">{flag.title}</p>
-                          <span
-                            className={classNames(
-                              "rounded-lg px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
-                              flag.severity === "critical" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900",
-                            )}
-                          >
-                            {flag.severity}
-                          </span>
+                          <Badge tone={severityTone(issue.severity)} className="capitalize">
+                            {issue.severity}
+                          </Badge>
+                          <p className="text-sm font-semibold text-ink">{issue.title}</p>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-amber-900">{flag.description}</p>
-                      </div>
+                        <p className="text-sm leading-6 text-muted">{issue.description}</p>
+                      </li>
                     ))}
-                  </div>
-                </section>
+                  </ul>
+                ) : (
+                  <Notice tone="success" className="mt-4">
+                    {qa ? "No open issues from the latest review checks." : "Run review checks to look for issues."}
+                  </Notice>
+                )}
+              </Card>
+
+              {flags.length ? (
+                <Card aria-labelledby="flags-heading">
+                  <SectionHeader
+                    id="flags-heading"
+                    title="Prescreen flags"
+                    description="These answers fall outside the standard path. Review them before relying on the generated forms."
+                    actions={
+                      <Link href={actionHref("/prescreen", caseSummary.id)} className={buttonClass("secondary", "sm")}>
+                        Edit prescreen
+                      </Link>
+                    }
+                  />
+                  <ul className="mt-4 grid gap-2">
+                    {flags.map((flag) => (
+                      <li
+                        key={flag.code}
+                        className={cx(
+                          "rounded-lg border px-4 py-3",
+                          flag.severity === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={flag.severity === "critical" ? "danger" : "warning"} className="capitalize">
+                            {flag.severity}
+                          </Badge>
+                          <p className="text-sm font-semibold text-ink">{flag.title}</p>
+                        </div>
+                        <p className="mt-1 text-sm leading-6 text-ink/80">{flag.description}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
               ) : null}
 
-              <section className="rounded-lg border border-zinc-200 bg-white p-5">
-                <h2 className="text-xl font-bold">Required checklist items</h2>
-                <div className="mt-4 h-2 overflow-hidden rounded bg-zinc-200">
-                  <div className="h-full rounded bg-emerald-700" style={{ width: `${checklistPct}%` }} />
-                </div>
-                <div className="mt-4 grid gap-3">
-                  {missingRequired.length ? (
-                    missingRequired.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                        <p className="text-sm font-semibold">{item.label}</p>
-                        <p className="mt-1 text-xs leading-5 text-zinc-600">{item.what_to_save_now}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-                      Required checklist items are either done or not generated yet.
-                    </p>
-                  )}
-                </div>
-              </section>
+              <Card aria-labelledby="missing-heading">
+                <SectionHeader
+                  id="missing-heading"
+                  title="Required items still missing"
+                  actions={
+                    <Link href={actionHref("/manage-tasks", caseSummary.id)} className={buttonClass("secondary", "sm")}>
+                      Open checklist
+                    </Link>
+                  }
+                />
+                {!checklist.length ? (
+                  <Notice
+                    tone="warning"
+                    className="mt-4"
+                    title="No checklist yet"
+                    actions={
+                      <button type="button" onClick={handleGenerateChecklist} disabled={isPending} className={buttonClass("primary", "sm")}>
+                        Build checklist
+                      </button>
+                    }
+                  >
+                    Build the checklist from your saved answers to see what to collect.
+                  </Notice>
+                ) : missingRequired.length ? (
+                  <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                    {missingRequired.map((item) => (
+                      <li key={item.id} className="bg-white px-4 py-3">
+                        <p className="text-sm font-semibold text-ink">{item.label}</p>
+                        {item.what_to_save_now ? <p className="mt-0.5 text-sm leading-6 text-muted">{item.what_to_save_now}</p> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <Notice tone="success" className="mt-4">
+                    Every required checklist item is done.
+                  </Notice>
+                )}
+              </Card>
             </div>
 
-            <aside className="grid gap-4">
-              <section className="rounded-lg border border-zinc-200 bg-white p-4">
-                <h2 className="font-bold">Review actions</h2>
-                <div className="mt-3 grid gap-2">
-                  <button
-                    type="button"
-                    onClick={handleGenerateChecklist}
-                    disabled={!caseSummary || isPending}
-                    className="rounded-lg bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-60"
-                  >
-                    Generate checklist
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRunQa}
-                    disabled={!caseSummary || isPending}
-                    className="rounded-lg border border-zinc-200 px-4 py-3 text-sm font-semibold transition hover:border-emerald-700 disabled:opacity-60"
-                  >
-                    Run review checks
-                  </button>
-                  <Link
-                    href={caseSummary ? actionHref("/packet-assembly", caseSummary.id) : "/packet-assembly"}
-                    className="rounded-lg border border-zinc-200 px-4 py-3 text-sm font-semibold transition hover:border-emerald-700"
-                  >
-                    Generate documents
+            <aside className="grid content-start gap-4">
+              <Card>
+                <SectionHeader title="Go back and edit" level={3} />
+                <nav aria-label="Edit sections" className="mt-3 grid gap-2">
+                  <Link href={actionHref("/prescreen", caseSummary.id)} className={buttonClass("secondary", "md", "justify-start")}>
+                    Prescreen answers
                   </Link>
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-zinc-200 bg-white p-4">
-                <h2 className="font-bold">Continue collecting</h2>
-                <div className="mt-3 grid gap-2">
-                  <Link
-                    href={caseSummary ? actionHref("/prescreen", caseSummary.id) : "/prescreen"}
-                    className="rounded-lg border border-zinc-200 px-4 py-3 text-sm font-semibold transition hover:border-emerald-700"
-                  >
-                    Back to questions
+                  <Link href={actionHref("/i485-ingestion", caseSummary.id)} className={buttonClass("secondary", "md", "justify-start")}>
+                    Form answers
                   </Link>
-                  <Link
-                    href={caseSummary ? actionHref("/manage-tasks", caseSummary.id) : "/manage-tasks"}
-                    className="rounded-lg border border-zinc-200 px-4 py-3 text-sm font-semibold transition hover:border-emerald-700"
-                  >
-                    Detailed task board
+                  <Link href={actionHref("/manage-tasks", caseSummary.id)} className={buttonClass("secondary", "md", "justify-start")}>
+                    Checklist
                   </Link>
-                </div>
-              </section>
+                  <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md", "justify-start")}>
+                    Evidence uploads
+                  </Link>
+                </nav>
+              </Card>
+              <Card>
+                <SectionHeader
+                  title="Rebuild the checklist"
+                  level={3}
+                  description="Use this after changing prescreen or form answers so the checklist matches."
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateChecklist}
+                  disabled={isPending}
+                  className={buttonClass("secondary", "md", "mt-3 w-full")}
+                >
+                  Rebuild checklist
+                </button>
+              </Card>
             </aside>
-          </section>
-        </section>
-      </div>
-    </main>
+          </div>
+        </>
+      )}
+    </AppShell>
   );
 }

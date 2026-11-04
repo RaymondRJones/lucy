@@ -1,0 +1,489 @@
+"use client";
+
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+import { CaseSelector } from "@/components/case-selector";
+import { Badge, Notice, ProgressBar, buttonClass, cardClass, cx } from "@/components/ui";
+import { packetFormHref, type PacketFormFlowOption } from "@/lib/packet-form-flow";
+import type { CaseSummary } from "@/lib/types";
+
+export function FormTabs({
+  options,
+  activeKey,
+  caseId,
+}: {
+  options: PacketFormFlowOption[];
+  activeKey: string;
+  caseId?: string | null;
+}) {
+  return (
+    <nav aria-label="Packet forms" className="-mx-1 overflow-x-auto px-1">
+      <ul className="relative flex min-w-max gap-1 border-b border-line">
+        {options.map((option) => {
+          const isActive = option.formKey === activeKey;
+          return (
+            <li key={option.formKey}>
+              <Link
+                href={packetFormHref(option.formKey, caseId)}
+                aria-current={isActive ? "page" : undefined}
+                className={cx(
+                  "-mb-px flex flex-col border-b-2 px-3 pb-2.5 pt-1 text-sm transition-colors",
+                  isActive ? "border-pine text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink",
+                )}
+              >
+                <span className="font-semibold">{option.label}</span>
+                <span className="text-xs">{option.detail}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+export function HelpPopover({ label, title, children }: { label: string; title: string; children: ReactNode }) {
+  return (
+    <details className="group/help relative">
+      <summary
+        aria-label={label}
+        className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-line-strong bg-white text-xs font-bold text-pine transition-colors hover:border-pine group-open/help:border-pine group-open/help:bg-pine-soft [&::-webkit-details-marker]:hidden"
+      >
+        ?
+      </summary>
+      <div className="absolute right-0 top-9 z-20 w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-line bg-white p-3 text-left text-sm font-normal leading-6 text-ink shadow-pop">
+        <p className="font-semibold text-ink">{title}</p>
+        <div className="mt-1 text-ink/80">{children}</div>
+      </div>
+    </details>
+  );
+}
+
+export function ComeBackToggle({
+  flagged,
+  onToggle,
+  disabled,
+  compact = false,
+}: {
+  flagged: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={flagged}
+      onClick={onToggle}
+      disabled={disabled}
+      title={flagged ? "Marked to come back to. Select to clear." : "Mark this question to come back to later."}
+      className={cx(
+        "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
+        compact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs",
+        flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
+      )}
+    >
+      <span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span>
+      {flagged ? "Marked" : "Come back"}
+    </button>
+  );
+}
+
+export function QuestionCard({
+  label,
+  required,
+  missing,
+  flagged,
+  actions,
+  plainLanguage,
+  children,
+  meta,
+  source,
+  className,
+}: {
+  label: ReactNode;
+  required?: boolean;
+  missing?: boolean;
+  flagged?: boolean;
+  actions?: ReactNode;
+  plainLanguage?: ReactNode;
+  children: ReactNode;
+  meta?: ReactNode;
+  source?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "grid gap-3 rounded-lg border bg-white p-4 transition-colors",
+        missing ? "border-clay/40 shadow-[inset_3px_0_0_0_#a8522f]" : flagged ? "border-amber-300 shadow-[inset_3px_0_0_0_#d97706]" : "border-line",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-64">
+          <p className="text-sm font-semibold leading-6 text-ink">
+            {label}
+            {required ? (
+              <span className="text-clay" aria-label="required">
+                {" "}
+                *
+              </span>
+            ) : null}
+          </p>
+          {plainLanguage ? <p className="mt-0.5 text-sm leading-6 text-muted">{plainLanguage}</p> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {missing ? <Badge tone="danger">Missing</Badge> : null}
+          {actions}
+        </div>
+      </div>
+      {children}
+      {meta || source ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+          {meta ? <span>{meta}</span> : null}
+          {source ? <span className="font-semibold text-pine">{source}</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export type PageNavItem = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  missingCount: number;
+  complete: boolean;
+  flagCount: number;
+};
+
+export function PageNav({
+  items,
+  selectedId,
+  onSelect,
+  completionPct,
+  statusLabel,
+}: {
+  items: PageNavItem[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  completionPct: number;
+  statusLabel: string;
+}) {
+  return (
+    <aside className={cx(cardClass, "h-fit p-3 lg:sticky lg:top-20")}>
+      <div className="px-2 pb-3 pt-1">
+        <div className="flex items-center justify-between text-xs font-semibold text-muted">
+          <span>{statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1)}</span>
+          <span className="tabular-nums">{completionPct}%</span>
+        </div>
+        <ProgressBar value={completionPct} label="Required answers complete" className="mt-1.5" />
+      </div>
+      <nav aria-label="Form pages">
+        <ol className="relative flex gap-1 overflow-x-auto pb-1 lg:max-h-[calc(100vh-12rem)] lg:flex-col lg:overflow-y-auto lg:pb-0">
+          {items.map((item, index) => {
+            const isSelected = item.id === selectedId;
+            return (
+              <li key={item.id} className="min-w-52 lg:min-w-0">
+                <button
+                  type="button"
+                  onClick={() => onSelect(item.id)}
+                  aria-current={isSelected ? "step" : undefined}
+                  className={cx(
+                    "grid w-full grid-cols-[1.5rem_1fr_auto] items-start gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                    isSelected ? "bg-pine-soft" : "hover:bg-paper",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold tabular-nums",
+                      item.missingCount
+                        ? "border border-clay/50 text-clay"
+                        : item.complete
+                          ? "bg-pine text-white"
+                          : isSelected
+                            ? "border border-pine text-pine"
+                            : "border border-line-strong text-muted",
+                    )}
+                  >
+                    {item.complete && !item.missingCount ? "✓" : index + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={cx("block font-semibold leading-5", isSelected ? "text-pine-strong" : "text-ink")}>{item.title}</span>
+                    {item.subtitle ? <span className="mt-0.5 block text-xs leading-4 text-muted">{item.subtitle}</span> : null}
+                    <span className="sr-only">
+                      {item.missingCount ? `, ${item.missingCount} missing` : item.complete ? ", complete" : ""}
+                    </span>
+                  </span>
+                  <span className="flex flex-col items-end gap-1">
+                    {item.missingCount ? (
+                      <span className="text-xs font-semibold tabular-nums text-clay" aria-hidden="true">
+                        {item.missingCount} left
+                      </span>
+                    ) : null}
+                    {item.flagCount ? (
+                      <span className="text-xs font-semibold text-amber-800" title={`${item.flagCount} marked to come back to`}>
+                        {"⚑"} {item.flagCount}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </aside>
+  );
+}
+
+export function CaseBar({
+  caseId,
+  onSelect,
+  disabled,
+  stats,
+}: {
+  caseId: string;
+  onSelect: (caseSummary: CaseSummary) => void;
+  disabled?: boolean;
+  stats?: Array<{ label: string; value: ReactNode; tone?: "danger" | "warning" }>;
+}) {
+  return (
+    <div
+      className={cx(
+        cardClass,
+        "grid gap-4 p-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:items-end",
+        !caseId ? "border-amber-200 bg-amber-50" : "",
+      )}
+    >
+      <CaseSelector selectedCaseId={caseId} onSelect={onSelect} disabled={disabled} label={caseId ? "Case" : "Choose a case to start"} />
+      {stats?.length ? (
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className={cx(
+                "rounded-lg border px-3 py-2",
+                stat.tone === "danger" ? "border-red-200 bg-red-50" : stat.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-line bg-paper",
+              )}
+            >
+              <dt className="text-xs font-semibold text-muted">{stat.label}</dt>
+              <dd className="text-lg font-semibold tabular-nums text-ink">{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : !caseId ? (
+        <p className="text-sm leading-6 text-amber-950">Choose a saved case before answering. Answers save to that case.</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function MissingAnswers({
+  items,
+  hiddenCount,
+  onSelect,
+}: {
+  items: Array<{ question_id: string; page_id: string; label: string }>;
+  hiddenCount: number;
+  onSelect: (pageId: string) => void;
+}) {
+  if (!items.length) {
+    return null;
+  }
+  return (
+    <Notice tone="warning" title={`${items.length + hiddenCount} required ${items.length + hiddenCount === 1 ? "answer" : "answers"} left`}>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <button
+            key={item.question_id}
+            type="button"
+            onClick={() => onSelect(item.page_id)}
+            className="max-w-full rounded-full border border-amber-300 bg-white px-3 py-1 text-left text-xs font-semibold text-amber-950 transition-colors hover:border-amber-500 hover:bg-amber-100"
+          >
+            {item.label}
+          </button>
+        ))}
+        {hiddenCount ? (
+          <span className="rounded-full px-2 py-1 text-xs font-semibold text-amber-900">+{hiddenCount} more in the page list</span>
+        ) : null}
+      </div>
+    </Notice>
+  );
+}
+
+export function ComeBackList({
+  items,
+  onSelect,
+}: {
+  items: Array<{ questionId: string; pageId: string; pageTitle: string; label: string }>;
+  onSelect: (pageId: string) => void;
+}) {
+  if (!items.length) {
+    return null;
+  }
+  return (
+    <Notice tone="warning" title={`${items.length} marked to come back to`} className="mb-5">
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <button
+            key={item.questionId}
+            type="button"
+            onClick={() => onSelect(item.pageId)}
+            className="max-w-full rounded-full border border-amber-300 bg-white px-3 py-1 text-left text-xs font-semibold text-amber-950 transition-colors hover:border-amber-500 hover:bg-amber-100"
+          >
+            {item.pageTitle}: {item.label}
+          </button>
+        ))}
+      </div>
+    </Notice>
+  );
+}
+
+export function GeneratedPdfNotice({
+  path,
+  href,
+  fieldCount,
+  mappedCount,
+  ready,
+}: {
+  path: string;
+  href: string;
+  fieldCount: number;
+  mappedCount: number;
+  ready: boolean;
+}) {
+  return (
+    <Notice
+      tone="success"
+      title="Draft PDF ready"
+      actions={
+        <a href={href} target="_blank" rel="noreferrer" className={buttonClass("primary", "sm")}>
+          Open PDF
+        </a>
+      }
+    >
+      <p>
+        Filled {fieldCount} form fields from {mappedCount} answers.
+        {ready ? "" : " Some required answers are still missing, so review this draft carefully."}
+      </p>
+      <p className="mt-1 break-all text-xs text-muted">{path}</p>
+    </Notice>
+  );
+}
+
+export function FormCompleteNotice({
+  formCode,
+  nextHref,
+  nextLabel,
+  onGeneratePdf,
+  canGeneratePdf,
+  disabled,
+}: {
+  formCode: string;
+  nextHref: string;
+  nextLabel: string;
+  onGeneratePdf: () => void;
+  canGeneratePdf: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Notice
+      tone="success"
+      title={`${formCode} has every required answer`}
+      actions={
+        <>
+          <button type="button" onClick={onGeneratePdf} disabled={disabled || !canGeneratePdf} className={buttonClass("secondary", "sm")}>
+            Preview draft PDF
+          </button>
+          <Link href={nextHref} className={buttonClass("primary", "sm")}>
+            {nextLabel}
+          </Link>
+        </>
+      }
+    >
+      Preview the filled draft, or move on to the next form.
+    </Notice>
+  );
+}
+
+export function SourcesDisclosure({
+  version,
+  verifiedOn,
+  officialUrl,
+  sources,
+}: {
+  version: string;
+  verifiedOn: string;
+  officialUrl?: string;
+  sources: Array<{ label: string; url: string; notes?: string | null }>;
+}) {
+  return (
+    <details className={cx(cardClass, "group p-0")}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="font-semibold text-ink">Sources and version</span>
+          <span className="ml-2 text-muted">Verified {verifiedOn}</span>
+        </span>
+        <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
+          {"▾"}
+        </span>
+      </summary>
+      <div className="border-t border-line px-5 py-4">
+        <p className="text-xs text-muted">Questionnaire version {version}</p>
+        <ul className="mt-3 grid gap-3 md:grid-cols-3">
+          {sources.map((source) => (
+            <li key={source.label} className="rounded-lg border border-line bg-paper p-3 text-sm">
+              {source.url.startsWith("http") ? (
+                <a href={source.url} target="_blank" rel="noreferrer" className="font-semibold text-pine underline-offset-4 hover:underline">
+                  {source.label}
+                </a>
+              ) : (
+                <span className="font-semibold text-ink">{source.label}</span>
+              )}
+              {source.notes ? <p className="mt-1 leading-6 text-muted">{source.notes}</p> : null}
+            </li>
+          ))}
+        </ul>
+        {officialUrl ? (
+          <a href={officialUrl} target="_blank" rel="noreferrer" className={buttonClass("ghost", "sm", "mt-3 -ml-3")}>
+            Open the official USCIS page {"↗"}
+          </a>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+export function PageFooterActions({
+  onSave,
+  onSaveAndNext,
+  isPending,
+  hasNext,
+  disabled,
+}: {
+  onSave: () => void;
+  onSaveAndNext: () => void;
+  isPending: boolean;
+  hasNext: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
+      <span className="mr-auto text-xs text-muted" aria-live="polite">
+        {isPending ? "Saving..." : "Answers save to this case when you select Save."}
+      </span>
+      <button type="button" onClick={onSave} disabled={isPending || disabled} className={buttonClass("secondary", "md")}>
+        Save page
+      </button>
+      {hasNext ? (
+        <button type="button" onClick={onSaveAndNext} disabled={isPending || disabled} className={buttonClass("primary", "md")}>
+          Save and continue
+        </button>
+      ) : null}
+    </div>
+  );
+}

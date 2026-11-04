@@ -4,22 +4,43 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { buttonClass, cardClass, cx, eyebrowClass } from "@/components/ui";
 import { clearSavedCaseId, getSavedCaseId } from "@/lib/case-storage";
 
-const PROJECT_LINKS = [
-  { href: "/prescreen", label: "Start packet" },
-  { href: "/manage-tasks", label: "Checklist" },
-  { href: "/packet-assembly", label: "Print packet" },
+const NAV_LINKS = [
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/legal-disclaimer", label: "Not legal advice" },
 ];
 
 const HAPPY_PATH = [
-  "U.S. citizen spouse petitioner",
-  "Foreign spouse is already in the United States",
-  "Marriage-based Form I-485 adjustment packet",
-  "Simple first-marriage, no-children MVP path",
+  "A U.S. citizen spouse is the petitioner",
+  "The foreign spouse already lives in the United States",
+  "A marriage-based Form I-485 adjustment packet",
+  "A first marriage with no children",
 ];
 
-const PACKET_STEPS = ["Prescreen", "I-485", "I-864", "I-765", "I-131", "Mailing review"];
+const STEPS = [
+  { title: "Prescreen", body: "Check the case fits the standard path and see which forms you need." },
+  { title: "Forms", body: "Answer each form once. Shared facts carry over to the others." },
+  { title: "Checklist", body: "Track every document and piece of evidence each form needs." },
+  { title: "Review", body: "Catch missing answers and mismatches before print day." },
+  { title: "Print packet", body: "Assemble one PDF in USCIS order with the right mailing address." },
+];
+
+const VALUES = [
+  {
+    title: "Free and open source",
+    body: "No subscription, hosted account, or filing service. The code is yours to inspect and change.",
+  },
+  {
+    title: "Stays on your computer",
+    body: "Case data, uploads, and generated forms are saved on your own machine, not in a hosted account.",
+  },
+  {
+    title: "Built for one clear path",
+    body: "Lucy focuses on the common marriage case, and flags unusual answers instead of guessing.",
+  },
+];
 
 export function LucyLanding() {
   const router = useRouter();
@@ -40,121 +61,122 @@ export function LucyLanding() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f7f2] text-ink">
-      <nav className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-8">
-        <Link href="/" className="font-display text-3xl font-semibold tracking-normal">
-          Lucy
-        </Link>
-        <div className="flex flex-wrap gap-2">
-          {PROJECT_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold transition hover:border-pine/45"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="border-b border-line bg-white/80">
+        <nav aria-label="Main" className="mx-auto flex max-w-shell items-center gap-4 px-4 py-3 md:px-8">
+          <Link href="/" className="font-display text-2xl font-semibold leading-none">
+            Lucy
+          </Link>
+          <ul className="ml-auto hidden items-center gap-1 sm:flex">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-paper hover:text-ink">
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={resumePacket} className={buttonClass("secondary", "sm", "ml-auto sm:ml-2")}>
+            {savedCaseId ? "Open my case" : "Open workspace"}
+          </button>
+        </nav>
+      </header>
 
-      <section className="mx-auto grid w-full max-w-7xl gap-8 px-4 pb-8 pt-3 md:px-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-center lg:pb-14">
-        <div className="py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pine">
-            Free local I-485 packet workspace
-          </p>
-          <h1 className="mt-4 font-display text-5xl leading-tight md:text-7xl">
-            Lucy helps happy-path married couples prepare a mail-ready spouse packet.
-          </h1>
-          <p className="mt-5 max-w-3xl text-base leading-8 text-ink/72 md:text-lg">
-            Lucy is a completely free, open-source application that runs on your own personal computer. It keeps
-            your case data local while helping you answer the core questions, organize the forms, review gaps, and
-            generate a printable Form I-485-centered packet for mailing. The local workflow includes intake,
-            checklist, draft forms, evidence organization, packet review, and print-ready assembly.
-          </p>
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={startPacket}
-              className="min-h-12 rounded-lg bg-ink px-5 py-3 text-left text-sm font-semibold text-white transition hover:bg-pine"
-            >
-              Start packet
-            </button>
-            <button
-              type="button"
-              onClick={resumePacket}
-              className="min-h-12 rounded-lg border border-ink/15 bg-white px-5 py-3 text-left text-sm font-semibold text-ink transition hover:border-pine/45"
-            >
-              Continue / Resume
-            </button>
+      <main id="main">
+        <section className="mx-auto grid max-w-shell gap-10 px-4 pb-12 pt-10 md:px-8 md:pt-16 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-16">
+          <div>
+            <p className={eyebrowClass}>Free, local I-485 packet workspace</p>
+            <h1 className="mt-4 max-w-3xl font-display text-4xl leading-[1.08] text-ink sm:text-5xl lg:text-6xl">
+              Prepare your marriage green card packet with confidence.
+            </h1>
+            <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
+              Lucy walks you through the questions, fills in the USCIS forms, tracks your evidence, and assembles a
+              printable packet, all on your own computer.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button type="button" onClick={startPacket} className={buttonClass("primary", "lg")}>
+                Start a new packet
+              </button>
+              <button type="button" onClick={resumePacket} className={buttonClass("secondary", "lg")}>
+                {savedCaseId ? "Continue my packet" : "Open a saved case"}
+              </button>
+            </div>
+            <p className="mt-6 max-w-2xl text-sm leading-6 text-muted">
+              Lucy is not legal advice. It covers the common case of a U.S. citizen spouse and a foreign spouse living in
+              the United States, and flags answers outside that path for review.
+            </p>
           </div>
-          <p className="mt-5 max-w-3xl text-xs leading-6 text-ink/55">
-            Lucy is not legal advice. It is intentionally scoped to the common happy path: a U.S. citizen spouse and
-            a foreign spouse residing in the United States. Unusual answers are flagged for review instead of being
-            treated as a simple packet.
-          </p>
-        </div>
 
-        <div className="overflow-hidden rounded-lg border border-ink/10 bg-white shadow-sm">
-          <div className="border-b border-ink/10 bg-[#e6efe9] px-5 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pine">Local workspace</p>
-            <h2 className="mt-1 font-display text-2xl">I-485 packet draft</h2>
+          <div className={cx(cardClass, "overflow-hidden shadow-panel")}>
+            <div className="border-b border-line bg-paper px-5 py-4">
+              <p className="text-sm font-semibold text-ink">Five steps to a mail-ready packet</p>
+            </div>
+            <ol className="divide-y divide-line">
+              {STEPS.map((step, index) => (
+                <li key={step.title} className="grid grid-cols-[2rem_1fr] gap-3 px-5 py-3.5">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-pine-soft text-sm font-bold tabular-nums text-pine-strong"
+                  >
+                    {index + 1}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-ink">{step.title}</span>
+                    <span className="mt-0.5 block text-sm leading-6 text-muted">{step.body}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div className="grid gap-3 p-5">
-            {PACKET_STEPS.map((step, index) => (
-              <div key={step} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 rounded-lg border border-ink/10 bg-paper/70 px-3 py-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded bg-white text-sm font-semibold text-pine">
-                  {index + 1}
-                </span>
-                <span className="text-sm font-semibold">{step}</span>
-                <span className="h-3 w-3 rounded-full bg-pine/70" />
+        </section>
+
+        <section aria-label="Why Lucy" className="border-y border-line bg-white">
+          <div className="mx-auto grid max-w-shell gap-8 px-4 py-12 md:grid-cols-3 md:px-8">
+            {VALUES.map((value) => (
+              <div key={value.title}>
+                <h2 className="text-base font-semibold text-ink">{value.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">{value.body}</p>
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-3 border-t border-ink/10 bg-paper text-center text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
-            <span className="border-r border-ink/10 px-2 py-3">Forms</span>
-            <span className="border-r border-ink/10 px-2 py-3">Review</span>
-            <span className="px-2 py-3">Mail</span>
+        </section>
+
+        <section aria-labelledby="scope-heading" className="mx-auto max-w-shell px-4 py-12 md:px-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+            <div>
+              <h2 id="scope-heading" className="font-display text-2xl text-ink">
+                Who Lucy is for
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Lucy is designed for this case. If yours is different, the prescreen tells you early.
+              </p>
+            </div>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {HAPPY_PATH.map((point) => (
+                <li key={point} className={cx(cardClass, "flex items-start gap-3 px-4 py-3 text-sm font-medium text-ink")}>
+                  <span aria-hidden="true" className="mt-0.5 text-pine">
+                    {"✓"}
+                  </span>
+                  {point}
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <section className="mx-auto grid w-full max-w-7xl gap-4 px-4 pb-10 md:px-8 lg:grid-cols-3">
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
-          <h2 className="font-display text-2xl">Free and open source</h2>
-          <p className="mt-3 text-sm leading-7 text-ink/68">
-            No subscription, no hosted account, and no paid filing service. The code and local workflow are meant to
-            be inspectable, modifiable, and run from your own machine.
-          </p>
-        </div>
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
-          <h2 className="font-display text-2xl">Built for one clear path</h2>
-          <p className="mt-3 text-sm leading-7 text-ink/68">
-            Lucy focuses on the happy-path married couple case so the questions, checklist, and document generation
-            stay simple and predictable.
-          </p>
-        </div>
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
-          <h2 className="font-display text-2xl">Ready to print and review</h2>
-          <p className="mt-3 text-sm leading-7 text-ink/68">
-            Generate draft USCIS forms, choose forms-only or full packet assembly, and review the mailing packet
-            before anything is printed or sent.
-          </p>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-7xl px-4 pb-14 md:px-8">
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
-          <h2 className="font-display text-2xl">Happy-path scope</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {HAPPY_PATH.map((point) => (
-              <div key={point} className="rounded-lg border border-ink/10 bg-paper/60 px-4 py-3 text-sm font-medium">
-                {point}
-              </div>
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-shell flex-col gap-2 px-4 py-6 text-sm text-muted sm:flex-row sm:justify-between md:px-8">
+          <p>Lucy organizes information. It does not give legal advice.</p>
+          <nav aria-label="Footer" className="flex gap-4">
+            {NAV_LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className="font-semibold hover:text-ink">
+                {link.label}
+              </Link>
             ))}
-          </div>
+          </nav>
         </div>
-      </section>
-    </main>
+      </footer>
+    </div>
   );
 }

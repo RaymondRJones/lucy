@@ -1,9 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { CaseSelector } from "@/components/case-selector";
+import { AppShell } from "@/components/app-shell";
+import {
+  CaseBar,
+  ComeBackList,
+  ComeBackToggle,
+  FormCompleteNotice,
+  FormTabs,
+  GeneratedPdfNotice,
+  HelpPopover,
+  MissingAnswers,
+  PageFooterActions,
+  PageNav,
+  QuestionCard,
+  SourcesDisclosure,
+} from "@/components/form-workspace";
 import { StructuredAddressControl } from "@/components/i485-ingestion-workspace";
 import {
   apiUrl,
@@ -15,6 +28,7 @@ import {
   importFormFromCaseData,
   saveFormPage,
 } from "@/lib/api";
+import { Badge, LoadingState, YesNoControl, PageHeader, StatusMessage, buttonClass, cardClass, eyebrowClass } from "@/components/ui";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import {
   manualFlagCountForPage,
@@ -248,7 +262,7 @@ function flagTone(flag: FormFlag) {
   if (flag.category === "outside_niche") {
     return "border-amber-200 bg-amber-50 text-amber-950";
   }
-  return "border-ink/10 bg-white text-ink";
+  return "border-line bg-white text-ink";
 }
 
 function isChecked(value: unknown, option: string) {
@@ -260,9 +274,12 @@ function sourceLabel(source: FormIngestionState["answer_sources"][string] | unde
     return null;
   }
   if (source.source_type === "user") {
-    return "User entered";
+    return null;
   }
-  return formatStatus(source.source_type);
+  if (source.source_type === "case_intake") {
+    return "Filled from your other answers";
+  }
+  return `Filled from ${formatStatus(source.source_type)}`;
 }
 
 function buildQuestionDisplayItems(formKey: string, page: FormQuestionnairePage): QuestionDisplayItem[] {
@@ -300,27 +317,14 @@ function QuestionHelpButton({ question }: { question: FormQuestion }) {
   }
 
   return (
-    <span className="group/help relative inline-flex">
-      <button
-        type="button"
-        aria-label={`More context for ${question.label}`}
-        className="flex h-6 w-6 items-center justify-center rounded-full border border-pine/35 bg-white text-xs font-bold text-pine transition hover:border-pine focus:border-pine"
-      >
-        ?
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute right-0 top-8 z-20 hidden w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-ink/15 bg-white p-3 text-left text-xs font-normal leading-5 text-ink shadow-lg group-focus-within/help:block group-hover/help:block"
-      >
-        <span className="block font-semibold text-ink">How to answer this</span>
-        <span className="mt-1 block">{question.deep_explanation}</span>
-        {question.teaching_source ? (
-          <span className="mt-2 block border-t border-ink/10 pt-2 text-ink/55">
-            Based on {question.teaching_source.label}, fetched {question.teaching_source.fetched_on}.
-          </span>
-        ) : null}
-      </span>
-    </span>
+    <HelpPopover label={`How to answer: ${question.label}`} title="How to answer this">
+      <p>{question.deep_explanation}</p>
+      {question.teaching_source ? (
+        <p className="mt-2 border-t border-line pt-2 text-xs text-muted">
+          Based on {question.teaching_source.label}, fetched {question.teaching_source.fetched_on}.
+        </p>
+      ) : null}
+    </HelpPopover>
   );
 }
 
@@ -334,38 +338,16 @@ function QuestionControl({
   onChange: (value: unknown) => void;
 }) {
   if (question.answer_type === "boolean") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onChange(true)}
-          className={classNames(
-            "h-10 rounded-lg border px-4 text-sm font-semibold",
-            value === true ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
-          )}
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange(false)}
-          className={classNames(
-            "h-10 rounded-lg border px-4 text-sm font-semibold",
-            value === false ? "border-pine bg-pine text-white" : "border-ink/15 bg-white text-ink",
-          )}
-        >
-          No
-        </button>
-      </div>
-    );
+    return <YesNoControl value={value} onChange={onChange} label={question.label} />;
   }
 
   if (question.answer_type === "select") {
     return (
       <select
+        aria-label={question.label}
         value={fieldValue(value)}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+        className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
       >
         <option value="">Select</option>
         {question.options.map((option) => (
@@ -381,7 +363,7 @@ function QuestionControl({
     return (
       <div className="grid gap-2 sm:grid-cols-2">
         {question.options.map((option) => (
-          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white p-3 text-sm">
+          <label key={option.value} className="flex items-center gap-2 rounded-lg border border-line bg-white p-3 text-sm">
             <input
               type="checkbox"
               checked={isChecked(value, option.value)}
@@ -401,9 +383,10 @@ function QuestionControl({
   if (isAddressStateQuestion(question)) {
     return (
       <select
+        aria-label={question.label}
         value={normalizeUsStateCode(value)}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+        className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
       >
         <option value="">Select</option>
         {US_STATE_OPTIONS.map((option) => (
@@ -418,12 +401,13 @@ function QuestionControl({
   if (isPositiveIntegerQuestion(question)) {
     return (
       <input
+        aria-label={question.label}
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
         value={fieldValue(value).replace(/\D/g, "")}
         onChange={(event) => onChange(normalizeInputValue(question, event.target.value))}
-        className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+        className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
       />
     );
   }
@@ -435,10 +419,11 @@ function QuestionControl({
   if (["textarea", "address", "address_list"].includes(question.answer_type)) {
     return (
       <textarea
+        aria-label={question.label}
         value={fieldValue(value)}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        className="w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm leading-6 text-ink"
+        className="w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm leading-6 text-ink transition-colors hover:border-ink/40"
       />
     );
   }
@@ -446,10 +431,11 @@ function QuestionControl({
   const inputType = question.answer_type === "date" ? "date" : question.answer_type === "number" ? "number" : "text";
   return (
     <input
+      aria-label={question.label}
       type={inputType}
       value={fieldValue(value)}
       onChange={(event) => onChange(normalizeInputValue(question, event.target.value))}
-      className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+      className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink transition-colors hover:border-ink/40"
     />
   );
 }
@@ -638,7 +624,7 @@ export function FormIngestionWorkspace({
     );
   }
 
-  function saveCurrentPage() {
+  function saveCurrentPage(moveNext = false) {
     if (!caseId || !selectedPage) {
       setMessage("Create or open a case first, then return to this form page.");
       return;
@@ -648,7 +634,15 @@ export function FormIngestionWorkspace({
       saveFormPage(caseId, formKey, selectedPage.id, pageAnswers, manualFlagsForPage(selectedPage, manualFlags))
         .then((state) => {
           applyState(state);
-          setMessage(`Saved this ${questionnaire?.form_code ?? "form"} page and refreshed the case mapping.`);
+          setMessage(`Saved "${selectedPage.title}".`);
+          if (moveNext && questionnaire) {
+            const index = questionnaire.pages.findIndex((page) => page.id === selectedPage.id);
+            const nextPage = questionnaire.pages[index + 1];
+            if (nextPage) {
+              setSelectedPageId(nextPage.id);
+              document.getElementById("form-page")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          }
         })
         .catch((error) => setMessage(error instanceof Error ? error.message : "Could not save this form page."));
     });
@@ -684,57 +678,24 @@ export function FormIngestionWorkspace({
 
   function renderQuestionCard(question: FormQuestion) {
     return (
-      <div
+      <QuestionCard
         key={question.id}
-        className={classNames(
-          "grid gap-2 rounded-lg border p-4",
-          missingRequiredQuestionIds.has(question.id)
-            ? "border-clay/35 bg-clay/5"
-            : manualFlags[question.id]
-              ? "border-sand/60 bg-sand/15"
-              : "border-ink/10 bg-paper/55",
-        )}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <span className="text-sm font-semibold text-ink">
-            {question.label}
-            {question.required ? <span className="text-clay"> *</span> : null}
-          </span>
-          <div className="flex shrink-0 items-center gap-2">
-            {missingRequiredQuestionIds.has(question.id) ? (
-              <span className="rounded-full bg-clay/10 px-2.5 py-1 text-xs font-semibold text-clay">
-                Missing
-              </span>
-            ) : null}
-            <button
-              type="button"
-              aria-pressed={Boolean(manualFlags[question.id])}
-              onClick={() => toggleManualFlag(question)}
-              disabled={isPending}
-              className={classNames(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition disabled:opacity-55",
-                manualFlags[question.id]
-                  ? "border-sand bg-sand/45 text-ink"
-                  : "border-ink/10 bg-white text-ink/55 hover:border-sand/70 hover:text-ink",
-              )}
-            >
-              {manualFlags[question.id] ? "Flagged" : "Come back"}
-            </button>
+        label={question.label}
+        required={question.required}
+        missing={missingRequiredQuestionIds.has(question.id)}
+        flagged={Boolean(manualFlags[question.id])}
+        plainLanguage={question.plain_language}
+        meta={question.pdf_ref}
+        source={sourceLabel(answerSources[question.id])}
+        actions={
+          <>
+            <ComeBackToggle flagged={Boolean(manualFlags[question.id])} onToggle={() => toggleManualFlag(question)} disabled={isPending} />
             <QuestionHelpButton question={question} />
-          </div>
-        </div>
-        {question.plain_language ? (
-          <span className="text-xs leading-5 text-ink/70">{question.plain_language}</span>
-        ) : null}
+          </>
+        }
+      >
         <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
-        <span className="text-xs text-ink/55">
-          {question.pdf_ref}
-          {question.db_path ? ` · maps to ${question.db_path}` : ""}
-        </span>
-        {sourceLabel(answerSources[question.id]) ? (
-          <span className="text-xs font-semibold text-pine">{sourceLabel(answerSources[question.id])}</span>
-        ) : null}
-      </div>
+      </QuestionCard>
     );
   }
 
@@ -743,83 +704,53 @@ export function FormIngestionWorkspace({
     const manualFlagCount = questions.filter((question) => manualFlags[question.id]).length;
 
     return (
-      <div
+      <fieldset
         key={group.id}
         className={classNames(
-          "grid gap-3 rounded-lg border p-4",
-          missingCount ? "border-clay/30 bg-clay/5" : manualFlagCount ? "border-sand/55 bg-sand/10" : "border-ink/10 bg-paper/55",
+          "grid gap-4 rounded-lg border bg-white p-4",
+          missingCount ? "border-clay/40 shadow-[inset_3px_0_0_0_#a8522f]" : manualFlagCount ? "border-amber-300" : "border-line",
         )}
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-ink">{group.title}</p>
-            <p className="mt-1 text-xs leading-5 text-ink/62">{group.description}</p>
+            <legend className="text-sm font-semibold text-ink">{group.title}</legend>
+            <p className="mt-0.5 text-sm leading-6 text-muted">{group.description}</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-1">
-            {missingCount ? (
-              <span className="rounded-full bg-clay/10 px-2.5 py-1 text-xs font-semibold text-clay">
-                {missingCount} missing
-              </span>
-            ) : null}
-            {manualFlagCount ? (
-              <span className="rounded-full bg-sand/55 px-2.5 py-1 text-xs font-semibold text-ink/70">
-                {manualFlagCount} flagged
-              </span>
-            ) : null}
+            {missingCount ? <Badge tone="danger">{missingCount} missing</Badge> : null}
+            {manualFlagCount ? <Badge tone="warning">{manualFlagCount} marked</Badge> : null}
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
           {questions.map((question) => (
-            <div
-              key={question.id}
-              className={classNames(
-                "grid gap-1 rounded-lg border p-3",
-                question.answer_type === "boolean" ? "md:col-span-2" : "",
-                missingRequiredQuestionIds.has(question.id)
-                  ? "border-clay/25 bg-white"
-                  : manualFlags[question.id]
-                    ? "border-sand/50 bg-white"
-                    : "border-ink/10 bg-white/80",
-              )}
-            >
+            <div key={question.id} className={classNames("grid content-start gap-1.5", question.answer_type === "boolean" ? "md:col-span-2" : "")}>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold leading-5 text-ink/68">
+                <span className="text-sm font-semibold leading-5 text-ink">
                   {question.label}
                   {question.required ? <span className="text-clay"> *</span> : null}
+                  {missingRequiredQuestionIds.has(question.id) ? <span className="sr-only"> (missing)</span> : null}
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
-                  {missingRequiredQuestionIds.has(question.id) ? (
-                    <span className="rounded-full bg-clay/10 px-2 py-0.5 text-[11px] font-semibold text-clay">
-                      Missing
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    aria-pressed={Boolean(manualFlags[question.id])}
-                    onClick={() => toggleManualFlag(question)}
+                  <ComeBackToggle
+                    compact
+                    flagged={Boolean(manualFlags[question.id])}
+                    onToggle={() => toggleManualFlag(question)}
                     disabled={isPending}
-                    className={classNames(
-                      "rounded-full border px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-55",
-                      manualFlags[question.id]
-                        ? "border-sand bg-sand/45 text-ink"
-                        : "border-ink/10 bg-white text-ink/50 hover:border-sand/70 hover:text-ink",
-                    )}
-                  >
-                    {manualFlags[question.id] ? "Flagged" : "Come back"}
-                  </button>
+                  />
                   <QuestionHelpButton question={question} />
                 </div>
               </div>
               <QuestionControl question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
-              <span className="text-xs text-ink/50">
+              <span className={classNames("text-xs", missingRequiredQuestionIds.has(question.id) ? "font-semibold text-clay" : "text-muted")}>
+                {missingRequiredQuestionIds.has(question.id) ? "Required. " : ""}
                 {question.pdf_ref}
-                {sourceLabel(answerSources[question.id]) ? ` · ${sourceLabel(answerSources[question.id])}` : ""}
+                {sourceLabel(answerSources[question.id]) ? ` \u00b7 ${sourceLabel(answerSources[question.id])}` : ""}
               </span>
             </div>
           ))}
         </div>
-      </div>
+      </fieldset>
     );
   }
 
@@ -855,364 +786,158 @@ export function FormIngestionWorkspace({
     });
   }
 
-  function navigateToForm(nextFormKey: string) {
-    const option = formFlowOptions.find((candidate) => candidate.formKey === nextFormKey);
-    if (!option) {
-      return;
-    }
-    window.location.assign(packetFormHref(option.formKey, caseId));
-  }
-
   function selectCase(nextCase: CaseSummary) {
     rememberCaseId(nextCase.id);
     window.location.assign(`/form-ingestion?form=${encodeURIComponent(formKey)}&caseId=${encodeURIComponent(nextCase.id)}`);
   }
 
   if (!questionnaire) {
-    return <main className="mx-auto max-w-5xl px-6 py-10 text-ink">Loading form questionnaire...</main>;
+    return (
+      <AppShell step="forms" caseId={caseId}>
+        <LoadingState label="Loading form questions..." />
+      </AppShell>
+    );
   }
 
+  const pageIndex = questionnaire.pages.findIndex((page) => page.id === selectedPage?.id);
+  const hasNextPage = pageIndex >= 0 && pageIndex < questionnaire.pages.length - 1;
+  const nextStepHref = nextFormOption
+    ? packetFormHref(nextFormOption.formKey, caseId)
+    : caseId
+      ? `/manage-tasks?caseId=${encodeURIComponent(caseId)}`
+      : "/manage-tasks";
+
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 text-ink">
-      <header className="flex flex-col gap-4 border-b border-ink/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-pine/80">{questionnaire.form_code} ingestion</p>
-          <h1 className="font-display text-4xl text-ink">{questionnaire.title}</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
-            Source-dated questionnaire pages for collecting answers, mapping case fields, flagging niche risks, and generating a local review-draft PDF.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            value={formKey}
-            onChange={(event) => navigateToForm(event.target.value)}
-            className="h-10 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold text-ink"
-          >
-            {formFlowOptions.map((option) => (
-              <option key={option.formKey} value={option.formKey}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={importFromCaseData}
-            disabled={!caseId || isPending}
-            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
-          >
-            Pull from case data
-          </button>
-          <button
-            type="button"
-            onClick={generatePdf}
-            disabled={!caseId || isPending || !canGeneratePdf}
-            className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-55"
-          >
-            {canGeneratePdf ? "Generate draft PDF" : "PDF template pending"}
-          </button>
-          <Link
-            href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
-            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
-          >
-            Generate full packet
-          </Link>
-          <Link href="/" className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold text-ink">
-            Case workspace
-          </Link>
-          <a
-            href={questionnaire.official_url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-semibold text-white"
-          >
-            USCIS source
-          </a>
-        </div>
-      </header>
+    <AppShell step="forms" caseId={caseId}>
+      <FormTabs options={formFlowOptions} activeKey={formKey} caseId={caseId} />
 
-      {message ? <p className="rounded-lg border border-ink/10 bg-white p-3 text-sm text-ink/75">{message}</p> : null}
-
-      {generatedPdf ? (
-        <section className="rounded-lg border border-pine/20 bg-white p-4 text-sm text-ink/75">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="font-semibold text-ink">Draft PDF generated</p>
-              <p className="mt-1 break-all">{generatedPdf.generated_pdf}</p>
-            </div>
-            <a
-              href={apiUrl(generatedPdf.download_url)}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-pine bg-pine px-4 py-2 text-center text-sm font-semibold text-white"
-            >
-              Open PDF
-            </a>
-          </div>
-          <p className="mt-2">
-            Filled {generatedPdf.field_count} template fields from {generatedPdf.mapped_question_count} mapped questions.
-            {generatedPdf.ready_for_pdf_generation ? "" : " This draft still needs questionnaire completion and review."}
-          </p>
-        </section>
-      ) : null}
-
-      {isFormComplete ? (
-        <section className="rounded-lg border border-pine/20 bg-white p-5">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Form complete</p>
-              <h2 className="font-display text-2xl text-ink">Choose what to do next</h2>
-              <p className="mt-1 text-sm leading-6 text-ink/65">
-                {questionnaire.form_code} has its required answers. Generate a draft, continue the packet path, or assemble the full packet.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
+      <PageHeader
+        eyebrow={`Step 2 \u00b7 ${questionnaire.form_code}`}
+        title={questionnaire.title}
+        description="Answer each page, then save. Answers you gave on other forms are filled in for you to confirm."
+        actions={
+          <>
+            <button type="button" onClick={importFromCaseData} disabled={!caseId || isPending} className={buttonClass("secondary", "md")}>
+              Refill from case data
+            </button>
             <button
               type="button"
               onClick={generatePdf}
               disabled={!caseId || isPending || !canGeneratePdf}
-              className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-left text-sm font-semibold text-ink transition hover:border-pine/35 hover:bg-white disabled:opacity-55"
+              className={buttonClass("primary", "md")}
             >
-              Generate draft PDF
+              {canGeneratePdf ? "Preview draft PDF" : "PDF template pending"}
             </button>
-            {nextFormOption ? (
-              <Link
-                href={packetFormHref(nextFormOption.formKey, caseId)}
-                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
-              >
-                Go to next: {nextFormOption.label}
-              </Link>
-            ) : (
-              <Link
-                href={caseId ? `/review?caseId=${encodeURIComponent(caseId)}` : "/review"}
-                className="rounded-lg border border-pine bg-pine p-3 text-sm font-semibold text-white"
-              >
-                Review checklist
-              </Link>
-            )}
-            <Link
-              href={caseId ? `/packet-assembly?caseId=${encodeURIComponent(caseId)}` : "/packet-assembly"}
-              className="rounded-lg border border-ink/15 bg-white p-3 text-sm font-semibold text-ink"
-            >
-              Generate full packet
-            </Link>
-          </div>
-        </section>
+          </>
+        }
+      />
+
+      <StatusMessage message={message} />
+
+      {generatedPdf ? (
+        <GeneratedPdfNotice
+          path={generatedPdf.generated_pdf}
+          href={apiUrl(generatedPdf.download_url)}
+          fieldCount={generatedPdf.field_count}
+          mappedCount={generatedPdf.mapped_question_count}
+          ready={generatedPdf.ready_for_pdf_generation}
+        />
       ) : null}
 
-      {!caseId ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <CaseSelector
-            selectedCaseId=""
-            onSelect={selectCase}
-            disabled={isPending}
-            label="Choose saved case"
-          />
-          <p className="mt-3">No active case ID is stored in this browser. Choose a case before saving answers.</p>
-        </section>
-      ) : (
-        <section className="grid gap-4 rounded-lg border border-ink/10 bg-white p-4 text-sm text-ink/70 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end">
-          <CaseSelector
-            selectedCaseId={caseId}
-            onSelect={selectCase}
-            disabled={isPending}
-            label="Switch case"
-          />
-          <p>
-            <span className="font-semibold text-ink">Active case ID:</span>{" "}
-            <span className="break-all">{caseId}</span>
-          </p>
-        </section>
-      )}
-
-      {fillPreview ? (
-        <section className="grid gap-3 rounded-lg border border-ink/10 bg-white p-5 md:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))]">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Fill preview</p>
-            <h2 className="font-display text-2xl text-ink">{formatStatus(fillPreview.generation_status)}</h2>
-            <p className="mt-1 text-sm leading-6 text-ink/65">{fillPreview.questionnaire_version}</p>
-          </div>
-          {[
-            ["Mapped", fillPreview.field_count],
-            ["Missing", fillPreview.missing_required_count],
-            ["Risk", fillPreview.blocking_flag_count],
-            ["Review", fillPreview.low_confidence_count],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-ink/10 bg-paper/55 p-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-ink/45">{label}</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
-            </div>
-          ))}
-        </section>
+      {isFormComplete ? (
+        <FormCompleteNotice
+          formCode={questionnaire.form_code}
+          nextHref={nextStepHref}
+          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
+          onGeneratePdf={generatePdf}
+          canGeneratePdf={canGeneratePdf}
+          disabled={!caseId || isPending}
+        />
       ) : null}
 
-      {missingRequiredItems.length ? (
-        <section className="rounded-lg border border-clay/20 bg-clay/5 p-4 text-sm text-ink/76">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-semibold text-ink">Missing required answers</p>
-            <p className="text-xs uppercase tracking-[0.14em] text-clay">
-              {missingRequiredItems.length} remaining
-            </p>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {visibleMissingRequiredItems.map((item) => (
-              <button
-                key={item.question_id}
-                type="button"
-                onClick={() => setSelectedPageId(item.page_id)}
-                className="max-w-full rounded-full border border-clay/20 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/72 transition hover:border-clay/40 hover:text-clay"
-              >
-                {item.label}
-              </button>
-            ))}
-            {hiddenMissingRequiredCount ? (
-              <span className="rounded-full border border-clay/20 bg-white px-3 py-1.5 text-xs font-semibold text-ink/55">
-                +{hiddenMissingRequiredCount} more shown in the page list
-              </span>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
+      <CaseBar
+        caseId={caseId ?? ""}
+        onSelect={selectCase}
+        disabled={isPending}
+        stats={
+          fillPreview
+            ? [
+                { label: "Fields filled", value: fillPreview.field_count },
+                { label: "Missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                { label: "Risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                { label: "To review", value: fillPreview.low_confidence_count },
+              ]
+            : undefined
+        }
+      />
 
-      <section className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <aside className="rounded-lg border border-ink/10 bg-white p-4">
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-ink">Completion</p>
-            <div className="mt-2 h-2 rounded-full bg-ink/10">
-              <div className="h-2 rounded-full bg-pine" style={{ width: `${completionPct}%` }} />
-            </div>
-            <p className="mt-2 text-xs uppercase tracking-[0.18em] text-ink/55">
-              {completionPct}% · {formatStatus(readiness)}
-            </p>
-          </div>
-          <div className="grid gap-2">
-            {questionnaire.pages.map((page, index) => {
-              const manualFlagCount = manualFlagCountForPage(page, manualFlags);
-              const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
-              const pageComplete = isPageComplete(page);
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => setSelectedPageId(page.id)}
-                  className={classNames(
-                    "rounded-lg border px-3 py-2 text-left text-sm",
-                    selectedPageId === page.id ? "border-pine bg-mist text-ink" : "border-ink/10 bg-white text-ink/75",
-                    pageMissingCount ? "border-clay/30" : "",
-                  )}
-                >
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="font-semibold">
-                      {index + 1}. {page.title}
-                    </span>
-                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
-                      {pageMissingCount ? (
-                        <span className="rounded-full bg-clay/10 px-2 py-0.5 text-[11px] font-semibold text-clay">
-                          {pageMissingCount} missing
-                        </span>
-                      ) : pageComplete ? (
-                        <span className="rounded-full bg-pine/10 px-2 py-0.5 text-[11px] font-semibold text-pine">
-                          Done
-                        </span>
-                      ) : null}
-                      {manualFlagCount ? (
-                        <span className="rounded-full bg-sand/55 px-2 py-0.5 text-[11px] font-semibold text-ink/70">
-                          {manualFlagCount}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                  <span className="mt-1 block text-xs text-ink/55">{page.pdf_part}</span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={setSelectedPageId} />
 
-        <section className="rounded-lg border border-ink/10 bg-white p-5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <PageNav
+          items={questionnaire.pages.map((page) => ({
+            id: page.id,
+            title: page.title,
+            subtitle: page.pdf_part,
+            missingCount: missingRequiredItems.filter((item) => item.page_id === page.id).length,
+            complete: isPageComplete(page),
+            flagCount: manualFlagCountForPage(page, manualFlags),
+          }))}
+          selectedId={selectedPageId}
+          onSelect={setSelectedPageId}
+          completionPct={completionPct}
+          statusLabel={formatStatus(readiness)}
+        />
+
+        <section id="form-page" aria-labelledby="form-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
           {selectedPage ? (
             <>
-              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-pine/80">{selectedPage.pdf_part}</p>
-                  <h2 className="font-display text-2xl text-ink">{selectedPage.title}</h2>
-                  <p className="mt-1 text-sm text-ink/60">Local PDF pages {selectedPage.local_pdf_pages.join(", ")}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={saveCurrentPage}
-                  disabled={isPending}
-                  className="rounded-lg bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {isPending ? "Saving..." : "Save page"}
-                </button>
+              <div className="mb-5">
+                <p className={eyebrowClass}>
+                  {selectedPage.pdf_part}
+                  {selectedPage.local_pdf_pages.length ? ` \u00b7 PDF page ${selectedPage.local_pdf_pages.join(", ")}` : ""}
+                </p>
+                <h2 id="form-page-heading" className="mt-1 font-display text-2xl text-ink">
+                  {selectedPage.title}
+                </h2>
               </div>
 
               {pageFlags.length ? (
                 <div className="mb-5 grid gap-2">
                   {pageFlags.map((flag) => (
-                    <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border p-3 text-sm", flagTone(flag))}>
-                      <p className="font-semibold">{formatStatus(flag.code)}</p>
+                    <div key={`${flag.question_id}-${flag.code}`} className={classNames("rounded-lg border px-4 py-3 text-sm", flagTone(flag))}>
+                      <p className="font-semibold capitalize">{formatStatus(flag.code)}</p>
                       <p className="mt-1 leading-6">{flag.description}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
 
-              {manualReviewItems.length ? (
-                <div className="mb-5 rounded-lg border border-sand/50 bg-sand/15 p-3 text-sm text-ink/72">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="font-semibold text-ink">Come-back questions</p>
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">
-                      {manualReviewItems.length} marked
-                    </p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {manualReviewItems.map((item) => (
-                      <button
-                        key={item.questionId}
-                        type="button"
-                        onClick={() => setSelectedPageId(item.pageId)}
-                        className="max-w-full rounded-full border border-ink/10 bg-white px-3 py-1.5 text-left text-xs font-semibold text-ink/70 transition hover:border-pine/30 hover:text-pine"
-                      >
-                        {item.pageTitle}: {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <ComeBackList items={manualReviewItems} onSelect={setSelectedPageId} />
 
               <div className="grid gap-4">
                 {selectedPageItems.map((item) =>
                   item.type === "group" ? renderAddressGroup(item.group, item.questions) : renderQuestionCard(item.question),
                 )}
               </div>
+
+              <PageFooterActions
+                onSave={() => saveCurrentPage(false)}
+                onSaveAndNext={() => saveCurrentPage(true)}
+                isPending={isPending}
+                hasNext={hasNextPage}
+              />
             </>
           ) : null}
         </section>
-      </section>
+      </div>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Source control</p>
-            <h2 className="font-display text-2xl">Questionnaire version {questionnaire.version}</h2>
-          </div>
-          <p className="text-sm text-ink/60">Verified {questionnaire.verified_on}</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {questionnaire.sources.map((source) => (
-            <a
-              key={source.label}
-              href={source.url.startsWith("http") ? source.url : undefined}
-              className="rounded-lg border border-ink/10 bg-paper/50 p-3 text-sm text-ink/75"
-            >
-              <span className="font-semibold text-ink">{source.label}</span>
-              <span className="mt-1 block leading-6">{source.notes}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-    </main>
+      <SourcesDisclosure
+        version={questionnaire.version}
+        verifiedOn={questionnaire.verified_on}
+        officialUrl={questionnaire.official_url}
+        sources={questionnaire.sources}
+      />
+    </AppShell>
   );
 }

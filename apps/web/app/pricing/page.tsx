@@ -10,11 +10,11 @@ export default function PricingPage() {
       description="No subscription, hosted account, or payment integration is needed. Lucy is built to run on your own personal computer while the MVP proves the happy-path I-485 packet workflow."
     >
       <section className="rounded-[2.4rem] border border-pine/15 bg-white/78 p-6 shadow-panel md:p-8">
-        <p className="text-xs uppercase tracking-[0.24em] text-pine/80">Current plan</p>
+        <p className="text-xs uppercase tracking-[0.24em] text-pine">Current plan</p>
         <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h2 className="font-display text-5xl text-ink">$0</h2>
-            <p className="mt-2 text-sm leading-7 text-ink/70">Free access to the local Lucy MVP workspace.</p>
+            <p className="mt-2 text-sm leading-7 text-ink/80">Free access to the local Lucy MVP workspace.</p>
           </div>
           <Link
             href="/prescreen"

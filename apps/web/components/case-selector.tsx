@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { inputClass, labelClass } from "@/components/ui";
 import { listCases } from "@/lib/api";
 import type { CaseSummary } from "@/lib/types";
 
@@ -95,13 +96,13 @@ export function CaseSelector({
   }
 
   return (
-    <label className="block">
-      <span className="text-sm font-semibold">{label}</span>
+    <label className="grid gap-1.5">
+      <span className={labelClass}>{label}</span>
       <select
         value={selectedValue}
         onChange={(event) => handleSelect(event.target.value)}
         disabled={disabled || isLoading || !cases.length}
-        className="mt-2 h-11 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink disabled:opacity-55"
+        className={inputClass}
       >
         <option value="">{isLoading ? "Loading cases..." : cases.length ? "Choose a case" : emptyLabel}</option>
         {cases.map((caseSummary) => (
@@ -110,7 +111,9 @@ export function CaseSelector({
           </option>
         ))}
       </select>
-      {errorMessage ? <span className="mt-2 block text-xs text-red-700">{errorMessage}</span> : null}
+      {errorMessage ? <span role="alert" className="text-xs text-red-800">
+          Could not load saved cases. Check that the Lucy API is running. ({errorMessage})
+        </span> : null}
     </label>
   );
 }

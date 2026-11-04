@@ -37,7 +37,7 @@ function issueTone(severity: string) {
   if (severity === "important") {
     return "border-amber-200 bg-amber-50 text-amber-950";
   }
-  return "border-ink/10 bg-white text-ink";
+  return "border-line bg-white text-ink";
 }
 
 function getSatisfiedChecklistCodes(upload: UploadRecord) {
@@ -201,18 +201,18 @@ export function ValidatorWorkspace() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 text-ink md:px-8 md:py-8">
-      <nav className="flex flex-col gap-3 border-b border-ink/10 pb-5 md:flex-row md:items-center md:justify-between">
+      <nav className="flex flex-col gap-3 border-b border-line pb-5 md:flex-row md:items-center md:justify-between">
         <Link href="/landing" className="font-display text-2xl">
           Lucy
         </Link>
         <div className="flex flex-wrap gap-2">
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href="/">
+          <Link className="rounded-lg border border-line-strong bg-white px-3 py-2 text-sm font-semibold" href="/">
             Current case
           </Link>
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href={`/prescreen${caseQuery}`}>
+          <Link className="rounded-lg border border-line-strong bg-white px-3 py-2 text-sm font-semibold" href={`/prescreen${caseQuery}`}>
             Prescreen
           </Link>
-          <Link className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-semibold" href={`/manage-tasks${caseQuery}`}>
+          <Link className="rounded-lg border border-line-strong bg-white px-3 py-2 text-sm font-semibold" href={`/manage-tasks${caseQuery}`}>
             Manage tasks
           </Link>
           <Link className="rounded-lg border border-pine bg-pine px-3 py-2 text-sm font-semibold text-white" href={`/packet-assembly${caseQuery}`}>
@@ -221,29 +221,29 @@ export function ValidatorWorkspace() {
         </div>
       </nav>
 
-      <section className="grid gap-5 border-b border-ink/10 py-6 lg:grid-cols-[1fr_auto] lg:items-end">
+      <section className="grid gap-5 border-b border-line py-6 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pine">Validate packet</p>
           <h1 className="mt-3 font-display text-4xl leading-tight md:text-5xl">
             Check one document area at a time.
           </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-ink/70">
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-ink/80">
             Validation uses the backend filing preflight for missing required fields, cross-form conflicts,
             source-backed form metadata, and blank-PDF coverage where the MVP supports it.
           </p>
         </div>
-        <div className="rounded-lg border border-ink/10 bg-white px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Current case</p>
+        <div className="rounded-lg border border-line bg-white px-4 py-3 text-sm">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">Current case</p>
           <p className="mt-1 font-semibold">{caseSummary?.case_name ?? "None loaded"}</p>
-          {caseSummary ? <p className="mt-1 max-w-80 break-all text-xs text-ink/55">{caseSummary.id}</p> : null}
+          {caseSummary ? <p className="mt-1 max-w-80 break-all text-xs text-muted">{caseSummary.id}</p> : null}
         </div>
       </section>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5">
+      <section className="rounded-lg border border-line bg-white p-5">
         <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
           <form onSubmit={handleCaseSearch}>
             <h2 className="text-lg font-semibold">Load current case case</h2>
-            <p className="mt-2 text-sm leading-6 text-ink/65">
+            <p className="mt-2 text-sm leading-6 text-muted">
               Paste the case ID here to make validation use that case. This also saves the case ID in this
               browser so the ingestion pages pull from the same workspace.
             </p>
@@ -252,7 +252,7 @@ export function ValidatorWorkspace() {
                 value={caseIdInput}
                 onChange={(event) => setCaseIdInput(event.target.value)}
                 placeholder="Paste case ID"
-                className="min-h-11 flex-1 rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink"
+                className="min-h-11 flex-1 rounded-lg border border-line-strong bg-white px-3 text-sm text-ink"
               />
               <button
                 type="submit"
@@ -275,15 +275,15 @@ export function ValidatorWorkspace() {
                     onClick={() => loadCaseById(entry.id)}
                     className={classNames(
                       "rounded-lg border px-3 py-3 text-left text-sm transition hover:border-pine/40",
-                      caseSummary?.id === entry.id ? "border-pine bg-mist" : "border-ink/10 bg-paper/55",
+                      caseSummary?.id === entry.id ? "border-pine bg-mist" : "border-line bg-paper",
                     )}
                   >
                     <span className="block font-semibold">{entry.case_name}</span>
-                    <span className="mt-1 block break-all text-xs text-ink/55">{entry.id}</span>
+                    <span className="mt-1 block break-all text-xs text-muted">{entry.id}</span>
                   </button>
                 ))
               ) : (
-                <p className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm text-ink/65">
+                <p className="rounded-lg border border-line bg-paper p-3 text-sm text-muted">
                   No cases match the text currently in the case ID field.
                 </p>
               )}
@@ -292,7 +292,7 @@ export function ValidatorWorkspace() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5">
+      <section className="rounded-lg border border-line bg-white p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Select a form</h2>
@@ -306,7 +306,7 @@ export function ValidatorWorkspace() {
                     "rounded-lg border px-4 py-2 text-sm font-semibold",
                     selectedForm === option.code
                       ? "border-ink bg-ink text-white"
-                      : "border-ink/15 bg-white text-ink",
+                      : "border-line-strong bg-white text-ink",
                   )}
                 >
                   {option.label}
@@ -327,17 +327,17 @@ export function ValidatorWorkspace() {
               type="button"
               onClick={() => runValidation(FORM_OPTIONS.map((option) => option.code))}
               disabled={!caseSummary || isPending}
-              className="rounded-lg border border-ink/15 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-55"
+              className="rounded-lg border border-line-strong bg-white px-4 py-2 text-sm font-semibold disabled:opacity-55"
             >
               Validate all
             </button>
           </div>
         </div>
-        <p className="mt-4 rounded-lg border border-ink/10 bg-paper/65 px-4 py-3 text-sm text-ink/70">{message}</p>
+        <p className="mt-4 rounded-lg border border-line bg-paper px-4 py-3 text-sm text-ink/80">{message}</p>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
+        <div className="rounded-lg border border-line bg-white p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-pine">Selected form files</p>
@@ -350,15 +350,15 @@ export function ValidatorWorkspace() {
           <div className="mt-4 grid gap-2">
             {selectedFormUploads.length ? (
               selectedFormUploads.map((upload) => (
-                <div key={upload.id} className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm">
+                <div key={upload.id} className="rounded-lg border border-line bg-paper p-3 text-sm">
                   <p className="font-semibold">{upload.original_filename}</p>
-                  <p className="mt-1 text-xs text-ink/55">
+                  <p className="mt-1 text-xs text-muted">
                     {getSatisfiedChecklistCodes(upload).join(", ") || "No checklist code"} · {upload.upload_status}
                   </p>
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm leading-6 text-ink/65">
+              <p className="rounded-lg border border-line bg-paper p-3 text-sm leading-6 text-muted">
                 No uploaded files are linked to {selectedLabel} checklist codes yet. Validation can still check
                 saved case data and form answers, but no filenames are tied to this form area.
               </p>
@@ -366,7 +366,7 @@ export function ValidatorWorkspace() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-ink/10 bg-white p-5">
+        <div className="rounded-lg border border-line bg-white p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-pine">All uploaded files for this case</p>
@@ -379,16 +379,16 @@ export function ValidatorWorkspace() {
           <div className="mt-4 grid gap-2">
             {uploads.length ? (
               uploads.map((upload) => (
-                <div key={upload.id} className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm">
+                <div key={upload.id} className="rounded-lg border border-line bg-paper p-3 text-sm">
                   <p className="font-semibold">{upload.original_filename}</p>
-                  <p className="mt-1 text-xs text-ink/55">
+                  <p className="mt-1 text-xs text-muted">
                     {upload.document_type || "supporting document"} · {upload.document_language} ·{" "}
                     {upload.review_status}
                   </p>
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-ink/10 bg-paper/55 p-3 text-sm leading-6 text-ink/65">
+              <p className="rounded-lg border border-line bg-paper p-3 text-sm leading-6 text-muted">
                 No uploads were found for the currently selected case.
               </p>
             )}
@@ -398,20 +398,20 @@ export function ValidatorWorkspace() {
 
       {result ? (
         <>
-          <section className="grid gap-3 rounded-lg border border-ink/10 bg-white p-5 md:grid-cols-4">
+          <section className="grid gap-3 rounded-lg border border-line bg-white p-5 md:grid-cols-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Status</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted">Status</p>
               <p className="mt-2 text-2xl font-semibold capitalize">{formatStatus(result.summary.status)}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-ink/50">Forms passed</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted">Forms passed</p>
               <p className="mt-2 text-2xl font-semibold">
                 {result.summary.forms_passed}/{result.summary.form_count}
               </p>
             </div>
             {["blocking", "important"].map((severity) => (
               <div key={severity}>
-                <p className="text-xs uppercase tracking-[0.16em] text-ink/50">{severity}</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">{severity}</p>
                 <p className="mt-2 text-2xl font-semibold">{result.summary.issue_counts[severity] ?? 0}</p>
               </div>
             ))}
@@ -419,7 +419,7 @@ export function ValidatorWorkspace() {
 
           <section className="grid gap-4 lg:grid-cols-2">
             {result.forms.map((form) => (
-              <div key={form.form_code} className="rounded-lg border border-ink/10 bg-white p-5">
+              <div key={form.form_code} className="rounded-lg border border-line bg-white p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-pine">{form.form_code}</p>
@@ -430,16 +430,16 @@ export function ValidatorWorkspace() {
                   </span>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                  <div className="rounded-lg bg-paper/65 p-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">Missing</p>
+                  <div className="rounded-lg bg-paper p-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted">Missing</p>
                     <p className="mt-1 font-semibold">{form.missing_required_count}</p>
                   </div>
-                  <div className="rounded-lg bg-paper/65 p-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">Fields</p>
+                  <div className="rounded-lg bg-paper p-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted">Fields</p>
                     <p className="mt-1 font-semibold">{form.field_count}</p>
                   </div>
-                  <div className="rounded-lg bg-paper/65 p-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink/50">PDF fields</p>
+                  <div className="rounded-lg bg-paper p-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted">PDF fields</p>
                     <p className="mt-1 font-semibold">{form.template_field_count}</p>
                   </div>
                 </div>
