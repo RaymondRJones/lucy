@@ -18,28 +18,44 @@ export function FormTabs({
   caseId?: string | null;
 }) {
   return (
-    <nav aria-label="Packet forms" className="-mx-1 overflow-x-auto px-1">
-      <ul className="relative flex min-w-max gap-1 border-b border-line">
-        {options.map((option) => {
-          const isActive = option.formKey === activeKey;
-          return (
-            <li key={option.formKey}>
-              <Link
-                href={packetFormHref(option.formKey, caseId)}
-                aria-current={isActive ? "page" : undefined}
-                className={cx(
-                  "-mb-px flex flex-col border-b-2 px-3 pb-2.5 pt-1 text-sm transition-colors",
-                  isActive ? "border-pine text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink",
-                )}
-              >
-                <span className="font-semibold">{option.label}</span>
-                <span className="text-xs">{option.detail}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <>
+      <label className="grid gap-1.5 sm:hidden">
+        <span className="text-sm font-semibold text-ink">Form</span>
+        <select
+          value={activeKey}
+          onChange={(event) => window.location.assign(packetFormHref(event.target.value as PacketFormFlowOption["formKey"], caseId))}
+          className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm font-semibold text-ink"
+        >
+          {options.map((option) => (
+            <option key={option.formKey} value={option.formKey}>
+              {option.label}: {option.detail}
+            </option>
+          ))}
+        </select>
+      </label>
+      <nav aria-label="Packet forms" className="-mx-1 hidden overflow-x-auto px-1 sm:block">
+        <ul className="relative flex min-w-max gap-1 border-b border-line">
+          {options.map((option) => {
+            const isActive = option.formKey === activeKey;
+            return (
+              <li key={option.formKey}>
+                <Link
+                  href={packetFormHref(option.formKey, caseId)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cx(
+                    "-mb-px flex flex-col border-b-2 px-3 pb-2.5 pt-1 text-sm transition-colors",
+                    isActive ? "border-pine text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink",
+                  )}
+                >
+                  <span className="font-semibold">{option.label}</span>
+                  <span className="text-xs">{option.detail}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }
 
@@ -48,9 +64,12 @@ export function HelpPopover({ label, title, children }: { label: string; title: 
     <details className="group/help relative">
       <summary
         aria-label={label}
-        className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-line-strong bg-white text-xs font-bold text-pine transition-colors hover:border-pine group-open/help:border-pine group-open/help:bg-pine-soft [&::-webkit-details-marker]:hidden"
+        className="flex h-7 cursor-pointer list-none items-center gap-1 rounded-full border border-line-strong bg-white px-2.5 text-xs font-semibold text-pine transition-colors hover:border-pine group-open/help:border-pine group-open/help:bg-pine-soft [&::-webkit-details-marker]:hidden"
       >
-        ?
+        <span aria-hidden="true" className="font-bold">
+          ?
+        </span>
+        Help
       </summary>
       <div className="absolute right-0 top-9 z-20 w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-line bg-white p-3 text-left text-sm font-normal leading-6 text-ink shadow-pop">
         <p className="font-semibold text-ink">{title}</p>
@@ -77,7 +96,7 @@ export function ComeBackToggle({
       aria-pressed={flagged}
       onClick={onToggle}
       disabled={disabled}
-      title={flagged ? "Marked to come back to. Select to clear." : "Mark this question to come back to later."}
+      title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question so it shows in your list to come back to."}
       className={cx(
         "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
         compact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs",
@@ -85,7 +104,7 @@ export function ComeBackToggle({
       )}
     >
       <span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span>
-      {flagged ? "Marked" : "Come back"}
+      {flagged ? "Marked for later" : "Mark for later"}
     </button>
   );
 }
@@ -255,23 +274,24 @@ export function CaseBar({
     <div
       className={cx(
         cardClass,
-        "grid gap-4 p-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:items-end",
+        "grid gap-3 p-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:items-end md:gap-6",
         !caseId ? "border-amber-200 bg-amber-50" : "",
       )}
     >
       <CaseSelector selectedCaseId={caseId} onSelect={onSelect} disabled={disabled} label={caseId ? "Case" : "Choose a case to start"} />
       {stats?.length ? (
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm md:justify-end md:pb-2">
           {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className={cx(
-                "rounded-lg border px-3 py-2",
-                stat.tone === "danger" ? "border-red-200 bg-red-50" : stat.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-line bg-paper",
-              )}
-            >
-              <dt className="text-xs font-semibold text-muted">{stat.label}</dt>
-              <dd className="text-lg font-semibold tabular-nums text-ink">{stat.value}</dd>
+            <div key={stat.label} className="flex items-baseline gap-1.5">
+              <dd
+                className={cx(
+                  "order-1 font-semibold tabular-nums",
+                  stat.tone === "danger" ? "text-red-800" : stat.tone === "warning" ? "text-amber-800" : "text-ink",
+                )}
+              >
+                {stat.value}
+              </dd>
+              <dt className="order-2 text-muted">{stat.label}</dt>
             </div>
           ))}
         </dl>
@@ -379,33 +399,22 @@ export function FormCompleteNotice({
   formCode,
   nextHref,
   nextLabel,
-  onGeneratePdf,
-  canGeneratePdf,
-  disabled,
 }: {
   formCode: string;
   nextHref: string;
   nextLabel: string;
-  onGeneratePdf: () => void;
-  canGeneratePdf: boolean;
-  disabled?: boolean;
 }) {
   return (
     <Notice
       tone="success"
       title={`${formCode} has every required answer`}
       actions={
-        <>
-          <button type="button" onClick={onGeneratePdf} disabled={disabled || !canGeneratePdf} className={buttonClass("secondary", "sm")}>
-            Preview draft PDF
-          </button>
-          <Link href={nextHref} className={buttonClass("primary", "sm")}>
-            {nextLabel}
-          </Link>
-        </>
+        <Link href={nextHref} className={buttonClass("primary", "sm")}>
+          {nextLabel} <span aria-hidden="true">{"\u2192"}</span>
+        </Link>
       }
     >
-      Preview the filled draft, or move on to the next form.
+      Preview the draft PDF from the top of the page, or move on to the next form.
     </Notice>
   );
 }
@@ -462,19 +471,26 @@ export function PageFooterActions({
   onSave,
   onSaveAndNext,
   isPending,
+  isDirty = false,
   hasNext,
   disabled,
 }: {
   onSave: () => void;
   onSaveAndNext: () => void;
   isPending: boolean;
+  isDirty?: boolean;
   hasNext: boolean;
   disabled?: boolean;
 }) {
   return (
     <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
-      <span className="mr-auto text-xs text-muted" aria-live="polite">
-        {isPending ? "Saving..." : "Answers save to this case when you select Save."}
+      <span className="mr-auto flex items-center gap-2 text-xs text-muted" aria-live="polite">
+        {isDirty && !isPending ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" /> : null}
+        {isPending
+          ? "Saving..."
+          : isDirty
+            ? "Unsaved changes. They are saved when you switch pages or select Save."
+            : "All changes on this page are saved."}
       </span>
       <button type="button" onClick={onSave} disabled={isPending || disabled} className={buttonClass("secondary", "md")}>
         Save page

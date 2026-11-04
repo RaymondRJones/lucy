@@ -30,6 +30,7 @@ import {
   saveI485Page,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import {
   manualFlagCountForPage,
   manualFlagsForPage,
@@ -202,7 +203,8 @@ function RepeatableHistoryControl({
 }) {
   const fields = question.entry_fields ?? [];
   const entries = repeatableEntries(question, value);
-  const visibleEntries = entries.length ? entries : [emptyRepeatableEntry(question)];
+  // Optional lists start empty so their per-entry required markers do not read as required questions.
+  const visibleEntries = entries.length ? entries : question.required ? [emptyRepeatableEntry(question)] : [];
   const formEntryLimit = question.form_entry_limit ?? null;
   const overflowCount = formEntryLimit === null ? 0 : Math.max(0, visibleEntries.length - formEntryLimit);
 
@@ -226,6 +228,11 @@ function RepeatableHistoryControl({
           {question.overflow_pdf_ref ?? "additional information"}.
         </p>
       ) : null}
+      {!visibleEntries.length ? (
+        <p className="rounded-lg border border-dashed border-line-strong px-3 py-2.5 text-sm text-muted">
+          None added. Add an entry only if this applies.
+        </p>
+      ) : null}
       {visibleEntries.map((entry, index) => {
         const isOverflow = formEntryLimit !== null && index >= formEntryLimit;
         return (
@@ -234,11 +241,11 @@ function RepeatableHistoryControl({
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                 Entry {index + 1}{isOverflow ? " · Part 14" : ""}
               </p>
-              {visibleEntries.length > 1 ? (
+              {visibleEntries.length > 1 || !question.required ? (
                 <button
                   type="button"
                   onClick={() => removeEntry(index)}
-                  className="rounded-lg border border-line-strong px-3 py-1 text-xs font-semibold text-ink/80"
+                  className={buttonClass("ghost", "sm", "text-red-800 hover:bg-red-50")}
                 >
                   Remove
                 </button>
@@ -326,9 +333,9 @@ function RepeatableHistoryControl({
       <button
         type="button"
         onClick={() => onChange([...visibleEntries, emptyRepeatableEntry(question)])}
-        className="w-fit rounded-lg border border-pine px-3 py-2 text-xs font-semibold text-pine"
+        className={buttonClass("secondary", "sm", "w-fit")}
       >
-        Add entry
+        + Add {visibleEntries.length ? "another entry" : "an entry"}
       </button>
     </div>
   );
@@ -508,6 +515,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
   const [caseId, setCaseId] = useState<string | null>(null);
   const [questionnaire, setQuestionnaire] = useState<I485Questionnaire | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [isDirty, setIsDirty] = useState(false);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerSources, setAnswerSources] = useState<I485IngestionState["answer_sources"]>({});
   const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
@@ -580,8 +588,8 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
           .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh I-485 fill preview."));
         setMessage(
           result.imported_count
-            ? `Synced ${result.imported_count} answers from saved case data. ${result.skipped_count} existing I-485 answers were preserved.`
-            : "Checked saved case data; I-485 is already in sync.",
+            ? `Filled in ${result.imported_count} ${result.imported_count === 1 ? "answer" : "answers"} from your other forms. Check them before saving.`
+            : null,
         );
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not sync I-485 answers from case data."));
@@ -593,8 +601,11 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh I-485 fill preview."));
   }
 
+  useUnsavedChangesGuard(isDirty);
+
   function applyState(state: I485IngestionState) {
     setAnswers(state.answers);
+    setIsDirty(false);
     setAnswerSources(state.answer_sources);
     setManualFlags(normalizeManualQuestionFlags(state.manual_flags));
     setFlags(state.evaluation.flags);
@@ -639,10 +650,24 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
 
   function updateAnswer(questionId: string, value: unknown) {
     setAnswers((current) => ({ ...current, [questionId]: value }));
+    setIsDirty(true);
+  }
+
+  // Unsaved edits on the current page are saved before moving to another page.
+  function goToPage(pageId: string) {
+    if (pageId === selectedPage?.id) {
+      return;
+    }
+    if (isDirty && caseId && selectedPage) {
+      saveCurrentPage(false, pageId);
+      return;
+    }
+    setSelectedPageId(pageId);
   }
 
   function useHappyPathEmploymentDefaults() {
     const foreignSchool = firstForeignSchoolEntry(answers.beneficiary_employment_history);
+    setIsDirty(true);
     setAnswers((current) => ({
       ...current,
       beneficiary_employment_history: [
@@ -676,7 +701,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
     );
   }
 
-  function saveCurrentPage(moveNext = false) {
+  function saveCurrentPage(moveNext = false, targetPageId?: string) {
     if (!caseId || !selectedPage) {
       setMessage("Create or open a case first, then return to this I-485 page.");
       return;
@@ -687,7 +712,9 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
         .then((state) => {
           applyState(state);
           setMessage(`Saved "${selectedPage.title}".`);
-          if (moveNext && questionnaire) {
+          if (targetPageId) {
+            setSelectedPageId(targetPageId);
+          } else if (moveNext && questionnaire) {
             const index = questionnaire.pages.findIndex((page) => page.id === selectedPage.id);
             const nextPage = questionnaire.pages[index + 1];
             if (nextPage) {
@@ -853,9 +880,6 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
           formCode="I-485"
           nextHref={nextStepHref}
           nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
-          onGeneratePdf={generatePdf}
-          canGeneratePdf
-          disabled={!caseId || isPending}
         />
       ) : null}
 
@@ -866,16 +890,16 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
         stats={
           fillPreview
             ? [
-                { label: "Fields filled", value: fillPreview.field_count },
-                { label: "Missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
-                { label: "Risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
-                { label: "To review", value: fillPreview.low_confidence_count },
+                { label: "fields filled", value: fillPreview.field_count },
+                { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                { label: "to review", value: fillPreview.low_confidence_count },
               ]
             : undefined
         }
       />
 
-      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={setSelectedPageId} />
+      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <PageNav
@@ -888,7 +912,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
             flagCount: manualFlagCountForPage(page, manualFlags),
           }))}
           selectedId={selectedPageId}
-          onSelect={setSelectedPageId}
+          onSelect={goToPage}
           completionPct={completionPct}
           statusLabel={formatStatus(readiness)}
         />
@@ -917,7 +941,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 </div>
               ) : null}
 
-              <ComeBackList items={manualReviewItems} onSelect={setSelectedPageId} />
+              <ComeBackList items={manualReviewItems} onSelect={goToPage} />
 
               {selectedPage.questions.some((question) => question.id === "beneficiary_employment_history") ? (
                 <Notice
@@ -967,6 +991,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 onSave={() => saveCurrentPage(false)}
                 onSaveAndNext={() => saveCurrentPage(true)}
                 isPending={isPending}
+                isDirty={isDirty}
                 hasNext={hasNextPage}
               />
             </>

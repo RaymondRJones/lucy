@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { CaseSelector } from "@/components/case-selector";
-import { Badge, Card, Notice, PageHeader, ProgressBar, SectionHeader, StatusMessage, buttonClass } from "@/components/ui";
+import { Badge, Card, Notice, PageHeader, ProgressBar, SectionHeader, StatusMessage, buttonClass, inputClass } from "@/components/ui";
 import { getChecklist, getUscisRequirements, listCases, updateChecklistItem } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type {
@@ -210,7 +210,21 @@ export function ManageTasksWorkspace() {
                 className="mt-1.5"
               />
             </div>
-            <div role="tablist" aria-label="Forms" aria-orientation="vertical" className="flex gap-1 overflow-x-auto lg:flex-col">
+            <label className="grid gap-1.5 px-2 pb-2 lg:hidden">
+              <span className="text-sm font-semibold text-ink">Form</span>
+              <select value={selectedForm} onChange={(event) => setSelectedForm(event.target.value)} className={inputClass}>
+                {FORM_FILTERS.map((form) => {
+                  const plan = formPlans.find((entry) => entry.code === form.code);
+                  return (
+                    <option key={form.code} value={form.code}>
+                      {form.label}
+                      {plan?.requiredCount ? ` (${plan.doneRequired} of ${plan.requiredCount} done)` : " (optional)"}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <div role="tablist" aria-label="Forms" aria-orientation="vertical" className="hidden flex-col gap-1 lg:flex">
               {FORM_FILTERS.map((form) => {
                 const plan = formPlans.find((entry) => entry.code === form.code);
                 const isSelected = selectedForm === form.code;
@@ -223,7 +237,7 @@ export function ManageTasksWorkspace() {
                     aria-selected={isSelected}
                     onClick={() => setSelectedForm(form.code)}
                     className={classNames(
-                      "flex min-w-36 items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors lg:min-w-0",
+                      "flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
                       isSelected ? "bg-pine-soft text-pine-strong" : "text-ink hover:bg-paper",
                     )}
                   >
@@ -282,12 +296,13 @@ export function ManageTasksWorkspace() {
                           />
                           <span className="min-w-0">
                             <span className="flex flex-wrap items-center gap-2">
-                              <span className={classNames("font-semibold", checked ? "text-muted line-through decoration-ink/30" : "text-ink")}>
+                              <span className="font-semibold text-ink">
                                 {task.label}
                               </span>
                               <Badge tone={necessity === "required" ? "warning" : "neutral"} className="capitalize">
                                 {formatStatus(necessity)}
                               </Badge>
+                              {checked ? <Badge tone="success">Done</Badge> : null}
                               {task.item && !checked && task.item.completion_status !== "not_started" ? (
                                 <Badge className="capitalize">{formatStatus(task.item.completion_status)}</Badge>
                               ) : null}

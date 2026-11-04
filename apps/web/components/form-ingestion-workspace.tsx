@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { Badge, LoadingState, YesNoControl, PageHeader, StatusMessage, buttonClass, cardClass, eyebrowClass } from "@/components/ui";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import {
   manualFlagCountForPage,
   manualFlagsForPage,
@@ -451,6 +452,7 @@ export function FormIngestionWorkspace({
   const [caseId, setCaseId] = useState<string | null>(null);
   const [questionnaire, setQuestionnaire] = useState<FormQuestionnaire | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [isDirty, setIsDirty] = useState(false);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerSources, setAnswerSources] = useState<FormIngestionState["answer_sources"]>({});
   const [manualFlags, setManualFlags] = useState<ManualQuestionFlags>({});
@@ -542,8 +544,8 @@ export function FormIngestionWorkspace({
           .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh form fill preview."));
         setMessage(
           result.imported_count
-            ? `Synced ${result.imported_count} answers from saved case data. ${result.skipped_count} existing form answers were preserved.`
-            : "Checked saved case data; this form is already in sync.",
+            ? `Filled in ${result.imported_count} ${result.imported_count === 1 ? "answer" : "answers"} from your other forms. Check them before saving.`
+            : null,
         );
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not sync answers from case data."));
@@ -555,8 +557,11 @@ export function FormIngestionWorkspace({
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh form fill preview."));
   }
 
+  useUnsavedChangesGuard(isDirty);
+
   function applyState(state: FormIngestionState) {
     setAnswers(state.answers);
+    setIsDirty(false);
     setAnswerSources(state.answer_sources);
     setManualFlags(normalizeManualQuestionFlags(state.manual_flags));
     setFlags(state.evaluation.flags);
@@ -605,6 +610,19 @@ export function FormIngestionWorkspace({
 
   function updateAnswer(questionId: string, value: unknown) {
     setAnswers((current) => ({ ...current, [questionId]: value }));
+    setIsDirty(true);
+  }
+
+  // Unsaved edits on the current page are saved before moving to another page.
+  function goToPage(pageId: string) {
+    if (pageId === selectedPage?.id) {
+      return;
+    }
+    if (isDirty && caseId && selectedPage) {
+      saveCurrentPage(false, pageId);
+      return;
+    }
+    setSelectedPageId(pageId);
   }
 
   function isPageComplete(page: FormQuestionnairePage) {
@@ -624,7 +642,7 @@ export function FormIngestionWorkspace({
     );
   }
 
-  function saveCurrentPage(moveNext = false) {
+  function saveCurrentPage(moveNext = false, targetPageId?: string) {
     if (!caseId || !selectedPage) {
       setMessage("Create or open a case first, then return to this form page.");
       return;
@@ -635,7 +653,9 @@ export function FormIngestionWorkspace({
         .then((state) => {
           applyState(state);
           setMessage(`Saved "${selectedPage.title}".`);
-          if (moveNext && questionnaire) {
+          if (targetPageId) {
+            setSelectedPageId(targetPageId);
+          } else if (moveNext && questionnaire) {
             const index = questionnaire.pages.findIndex((page) => page.id === selectedPage.id);
             const nextPage = questionnaire.pages[index + 1];
             if (nextPage) {
@@ -849,9 +869,6 @@ export function FormIngestionWorkspace({
           formCode={questionnaire.form_code}
           nextHref={nextStepHref}
           nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
-          onGeneratePdf={generatePdf}
-          canGeneratePdf={canGeneratePdf}
-          disabled={!caseId || isPending}
         />
       ) : null}
 
@@ -862,16 +879,16 @@ export function FormIngestionWorkspace({
         stats={
           fillPreview
             ? [
-                { label: "Fields filled", value: fillPreview.field_count },
-                { label: "Missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
-                { label: "Risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
-                { label: "To review", value: fillPreview.low_confidence_count },
+                { label: "fields filled", value: fillPreview.field_count },
+                { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                { label: "to review", value: fillPreview.low_confidence_count },
               ]
             : undefined
         }
       />
 
-      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={setSelectedPageId} />
+      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <PageNav
@@ -884,7 +901,7 @@ export function FormIngestionWorkspace({
             flagCount: manualFlagCountForPage(page, manualFlags),
           }))}
           selectedId={selectedPageId}
-          onSelect={setSelectedPageId}
+          onSelect={goToPage}
           completionPct={completionPct}
           statusLabel={formatStatus(readiness)}
         />
@@ -913,7 +930,7 @@ export function FormIngestionWorkspace({
                 </div>
               ) : null}
 
-              <ComeBackList items={manualReviewItems} onSelect={setSelectedPageId} />
+              <ComeBackList items={manualReviewItems} onSelect={goToPage} />
 
               <div className="grid gap-4">
                 {selectedPageItems.map((item) =>
@@ -925,6 +942,7 @@ export function FormIngestionWorkspace({
                 onSave={() => saveCurrentPage(false)}
                 onSaveAndNext={() => saveCurrentPage(true)}
                 isPending={isPending}
+                isDirty={isDirty}
                 hasNext={hasNextPage}
               />
             </>

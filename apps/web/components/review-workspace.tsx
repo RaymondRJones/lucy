@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { generateChecklist, getCase, getChecklist, getPrescreenState, getQa, listUploads, runQa } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { packetFormHref, packetFormOptionForKey, type PacketFormKey } from "@/lib/packet-form-flow";
 import type { CaseSummary, ChecklistItem, PrescreenState, QaIssue, QaResults, UploadRecord } from "@/lib/types";
 
 const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
@@ -27,6 +28,58 @@ const SEVERITY_ORDER = ["blocking", "critical", "important", "recommended"];
 function actionHref(baseHref: string, caseId: string) {
   const separator = baseHref.includes("?") ? "&" : "?";
   return `${baseHref}${separator}caseId=${encodeURIComponent(caseId)}`;
+}
+
+const FORM_KEYS_BY_CODE: Record<string, PacketFormKey> = {
+  form_i130: "i130",
+  form_i130a: "i130a",
+  form_i485: "i485",
+  form_i864: "i864",
+  form_i765: "i765",
+  form_i131: "i131",
+};
+
+// Where the user goes to fix an issue: the form it came from, otherwise the checklist.
+function issueFix(issue: QaIssue, caseId: string) {
+  const formKey = issue.checklist_item_code ? FORM_KEYS_BY_CODE[issue.checklist_item_code] : undefined;
+  if (formKey) {
+    const option = packetFormOptionForKey(formKey);
+    return { href: packetFormHref(formKey, caseId), label: `Open ${option?.label ?? "form"}` };
+  }
+  if (issue.checklist_item_code) {
+    return { href: actionHref("/manage-tasks", caseId), label: "Open checklist" };
+  }
+  return null;
+}
+
+function factValue(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  return String(value).replaceAll("_", " ");
+}
+
+// Some saved facts hold a two-letter country code; show the country name instead.
+function countryValue(value: string | null | undefined) {
+  if (value && /^[A-Z]{2}$/.test(value)) {
+    try {
+      return new Intl.DisplayNames(["en"], { type: "region" }).of(value) ?? value;
+    } catch {
+      return value;
+    }
+  }
+  return factValue(value);
+}
+
+function fullName(person?: { first_name: string | null; last_name: string | null } | null) {
+  return [person?.first_name, person?.last_name].filter(Boolean).join(" ") || null;
 }
 
 function isDone(item: ChecklistItem) {
@@ -46,16 +99,6 @@ function severityTone(severity: string) {
 function severityRank(severity: string) {
   const index = SEVERITY_ORDER.indexOf(severity);
   return index < 0 ? SEVERITY_ORDER.length : index;
-}
-
-function readinessTone(label: string) {
-  if (label.startsWith("Ready to print")) {
-    return "success" as const;
-  }
-  if (label.startsWith("Not ready")) {
-    return "danger" as const;
-  }
-  return "warning" as const;
 }
 
 export function ReviewWorkspace() {
@@ -190,11 +233,20 @@ export function ReviewWorkspace() {
           <Card className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-muted">Packet readiness</p>
-              <div className="mt-1 flex flex-wrap items-center gap-3">
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h2 className="font-display text-3xl text-ink">{readinessLabel}</h2>
-                {qa ? <Badge tone={readinessTone(readinessLabel)}>Score {qa.summary.score}</Badge> : null}
+                {qa ? (
+                  <span className="text-sm tabular-nums text-muted" title="A rough guide from completed items and open issues. It is not legal approval.">
+                    Score {qa.summary.score} of 100
+                  </span>
+                ) : null}
               </div>
-              {qa?.summary.explanation ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{qa.summary.explanation}</p> : null}
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+                {openIssues.length
+                  ? `${openIssues.length} open ${openIssues.length === 1 ? "issue needs" : "issues need"} your attention before you print.`
+                  : qa?.summary.explanation || "Run the review checks to look for missing answers and mismatches."}{" "}
+                Payment and the mailing address are added on the Print packet step.
+              </p>
               <div className="mt-4 max-w-xl">
                 <div className="flex items-center justify-between text-xs font-semibold text-muted">
                   <span>Required checklist items</span>
@@ -206,29 +258,23 @@ export function ReviewWorkspace() {
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+              {openIssues.length ? (
+                <a href="#issues-heading" className={buttonClass("primary", "lg")}>
+                  Review {openIssues.length} open {openIssues.length === 1 ? "issue" : "issues"}
+                </a>
+              ) : null}
               <Link
                 href={actionHref("/packet-assembly", caseSummary.id)}
-                className={buttonClass(blockingCount ? "secondary" : "primary", "lg")}
+                className={buttonClass(openIssues.length ? "secondary" : "primary", openIssues.length ? "md" : "lg")}
               >
-                Continue to print packet
+                {openIssues.length ? "Continue to print packet anyway" : "Continue to print packet"}
               </Link>
-              <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass("secondary", "md")}>
+              <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass(openIssues.length ? "ghost" : "secondary", "md")}>
                 {isPending ? "Checking..." : "Run review checks again"}
               </button>
             </div>
           </Card>
 
-          <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Required items done" value={`${checklistPct}%`} detail={`${completedRequired} of ${requiredItems.length}`} />
-            <Stat
-              label="Open issues"
-              value={openIssues.length}
-              detail={blockingCount ? `${blockingCount} must be fixed first` : "None blocking"}
-              tone={blockingCount ? "danger" : "neutral"}
-            />
-            <Stat label="Prescreen flags" value={flags.length} detail="From your prescreen answers" tone={flags.length ? "warning" : "neutral"} />
-            <Stat label="Files uploaded" value={uploads.length} detail="Linked to checklist items" />
-          </section>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="grid content-start gap-6">
@@ -244,23 +290,69 @@ export function ReviewWorkspace() {
                 />
                 {openIssues.length ? (
                   <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
-                    {openIssues.map((issue) => (
-                      <li key={issue.id} className="grid gap-1 bg-white px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={severityTone(issue.severity)} className="capitalize">
-                            {issue.severity}
-                          </Badge>
-                          <p className="text-sm font-semibold text-ink">{issue.title}</p>
-                        </div>
-                        <p className="text-sm leading-6 text-muted">{issue.description}</p>
-                      </li>
-                    ))}
+                    {openIssues.map((issue) => {
+                      const fix = issueFix(issue, caseSummary.id);
+                      return (
+                        <li key={issue.id} className="grid gap-3 bg-white px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone={severityTone(issue.severity)} className="capitalize">
+                                {issue.severity}
+                              </Badge>
+                              <p className="text-sm font-semibold text-ink">{issue.title}</p>
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-muted">{issue.description}</p>
+                          </div>
+                          {fix ? (
+                            <Link href={fix.href} className={buttonClass("secondary", "sm", "w-fit")}>
+                              {fix.label}
+                            </Link>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <Notice tone="success" className="mt-4">
                     {qa ? "No open issues from the latest review checks." : "Run review checks to look for issues."}
                   </Notice>
                 )}
+              </Card>
+
+              <Card aria-labelledby="facts-heading">
+                <SectionHeader
+                  id="facts-heading"
+                  title="Check your key details"
+                  description="These facts print on several forms. If one is wrong, change it on the form shown."
+                />
+                <dl className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                  {[
+                    { label: "Petitioner (U.S. citizen spouse)", value: fullName(caseSummary.petitioner), form: "i130" as const },
+                    { label: "Beneficiary (applying spouse)", value: fullName(caseSummary.beneficiary), form: "i485" as const },
+                    { label: "Beneficiary's country of birth", value: countryValue(caseSummary.beneficiary?.country_of_birth), form: "i485" as const },
+                    {
+                      label: "Beneficiary's current status",
+                      value: factValue(caseSummary.beneficiary?.current_immigration_status),
+                      form: "i485" as const,
+                    },
+                    { label: "Date of marriage", value: factValue(caseSummary.marriage?.marriage_date), form: "i130" as const },
+                    { label: "First marriage for both", value: factValue(caseSummary.marriage?.first_marriage_for_both), form: "i130" as const },
+                    { label: "Household size", value: factValue(caseSummary.marriage?.household_size), form: "i864" as const },
+                  ].map((fact) => (
+                    <div key={fact.label} className="grid gap-1 bg-white px-4 py-3 text-sm sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                      <dt className="text-muted">{fact.label}</dt>
+                      <dd className={cx("font-semibold capitalize", fact.value ? "text-ink" : "text-amber-800")}>{fact.value ?? "Not entered"}</dd>
+                      <dd>
+                        <Link
+                          href={packetFormHref(fact.form, caseSummary.id)}
+                          className="font-semibold text-pine underline-offset-4 hover:underline"
+                        >
+                          Change<span className="sr-only"> {fact.label.toLowerCase()}</span>
+                        </Link>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </Card>
 
               {flags.length ? (
@@ -372,6 +464,24 @@ export function ReviewWorkspace() {
               </Card>
             </aside>
           </div>
+
+          <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Required items done" value={`${checklistPct}%`} detail={`${completedRequired} of ${requiredItems.length}`} />
+            <Stat
+              label="Open issues"
+              value={openIssues.length}
+              detail={
+                blockingCount
+                  ? `${blockingCount} must be fixed first`
+                  : openIssues.length
+                    ? `${openIssues.length} to review`
+                    : "Nothing open"
+              }
+              tone={blockingCount ? "danger" : openIssues.length ? "warning" : "neutral"}
+            />
+            <Stat label="Prescreen flags" value={flags.length} detail="From your prescreen answers" tone={flags.length ? "warning" : "neutral"} />
+            <Stat label="Files uploaded" value={uploads.length} detail="Linked to checklist items" />
+          </section>
         </>
       )}
     </AppShell>

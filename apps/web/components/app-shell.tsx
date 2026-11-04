@@ -108,11 +108,7 @@ export function AppShell({
             )}
           </div>
         </div>
-        <nav aria-label="Packet steps" className="border-t border-line lg:hidden">
-          <div className="relative mx-auto max-w-shell overflow-x-auto px-2 md:px-6">
-            <StepList activeIndex={activeIndex} caseId={caseId} compact />
-          </div>
-        </nav>
+        <MobileSteps activeIndex={activeIndex} caseId={caseId} />
       </header>
       <main id="main" className="mx-auto flex w-full max-w-shell flex-col gap-6 px-4 pb-16 pt-6 md:px-8 md:pt-8">
         {children}
@@ -121,15 +117,67 @@ export function AppShell({
   );
 }
 
-function StepList({ activeIndex, caseId, compact = false }: { activeIndex: number; caseId?: string | null; compact?: boolean }) {
+function MobileSteps({ activeIndex, caseId }: { activeIndex: number; caseId?: string | null }) {
+  const current = STEPS[activeIndex];
+  const next = STEPS[activeIndex + 1];
   return (
-    <ol className={cx("flex items-center", compact ? "gap-0.5 py-1.5" : "gap-1")}>
+    <nav aria-label="Packet steps" className="border-t border-line lg:hidden">
+      <div className="mx-auto flex max-w-shell items-center justify-between gap-3 px-4 py-1.5 md:px-8">
+        <details className="group relative">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
+            <span className="text-muted">
+              Step {activeIndex + 1} of {STEPS.length}
+            </span>
+            <span className="font-semibold text-ink">{current?.label}</span>
+            <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
+              {"\u25BE"}
+            </span>
+          </summary>
+          <ol className="absolute left-0 z-40 mt-1 grid w-64 gap-0.5 rounded-lg border border-line bg-white p-1.5 shadow-pop">
+            {STEPS.map((entry, index) => (
+              <li key={entry.id}>
+                <Link
+                  href={withCase(entry.href, caseId)}
+                  aria-current={index === activeIndex ? "step" : undefined}
+                  className={cx(
+                    "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-semibold",
+                    index === activeIndex ? "bg-pine-soft text-pine-strong" : "text-ink hover:bg-paper",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      "flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold",
+                      index === activeIndex ? "bg-pine text-white" : "border border-line-strong text-muted",
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  {entry.label}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </details>
+        {next ? (
+          <Link href={withCase(next.href, caseId)} className="rounded-lg px-2 py-1.5 text-sm font-semibold text-pine hover:bg-pine-soft">
+            Next: {next.label} <span aria-hidden="true">{"\u2192"}</span>
+          </Link>
+        ) : null}
+      </div>
+    </nav>
+  );
+}
+
+function StepList({ activeIndex, caseId }: { activeIndex: number; caseId?: string | null }) {
+  return (
+    <ol className="flex items-center gap-1">
       {STEPS.map((entry, index) => {
         const isActive = index === activeIndex;
         const isPast = index < activeIndex;
         return (
           <li key={entry.id} className="flex items-center">
-            {index > 0 && !compact ? <span aria-hidden="true" className="mx-1 h-px w-4 bg-line-strong" /> : null}
+            {index > 0 ? <span aria-hidden="true" className="mx-1 h-px w-4 bg-line-strong" /> : null}
             <Link
               href={withCase(entry.href, caseId)}
               aria-current={isActive ? "step" : undefined}

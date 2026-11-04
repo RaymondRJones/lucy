@@ -31,6 +31,7 @@ import {
   savePrescreenAnswers,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import { packetFormHref, packetFormsForIncluded } from "@/lib/packet-form-flow";
 import type { CaseSummary, PrescreenFlag, PrescreenQuestion, PrescreenQuestionnaire, PrescreenState } from "@/lib/types";
 
@@ -362,6 +363,7 @@ export function PrescreenWorkspace() {
   const [prescreen, setPrescreen] = useState<PrescreenState | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
+  const [isDirty, setIsDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -375,6 +377,7 @@ export function PrescreenWorkspace() {
       setCaseSummary(loadedCase);
       setPrescreen(loadedPrescreen);
       setDraftAnswers(loadedPrescreen.answers);
+      setIsDirty(false);
       setMessage(successMessage);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load this case.");
@@ -393,6 +396,8 @@ export function PrescreenWorkspace() {
       void loadCase(storedCaseId, null);
     }
   }, [loadCase]);
+
+  useUnsavedChangesGuard(isDirty);
 
   const visibleQuestions = useMemo(() => prescreen?.evaluation.visible_questions ?? [], [prescreen]);
   const flags = prescreen?.evaluation.flags ?? [];
@@ -432,6 +437,19 @@ export function PrescreenWorkspace() {
 
   function updateAnswer(questionId: string, value: unknown) {
     setDraftAnswers((current) => ({ ...current, [questionId]: value }));
+    setIsDirty(true);
+  }
+
+  // Unsaved edits on the current page are saved before moving to another page.
+  function goToPage(pageId: string) {
+    if (pageId === selectedPage?.id) {
+      return;
+    }
+    if (isDirty && caseSummary && selectedPage) {
+      saveCurrentPage(false, pageId);
+      return;
+    }
+    setSelectedPageId(pageId);
   }
 
   function handleCaseSelect(nextCase: CaseSummary) {
@@ -459,7 +477,7 @@ export function PrescreenWorkspace() {
     });
   }
 
-  function saveCurrentPage(moveNext: boolean) {
+  function saveCurrentPage(moveNext: boolean, targetPageId?: string) {
     if (!caseSummary || !selectedPage) {
       setMessage("Create or open a case first, then save this prescreen page.");
       return;
@@ -475,7 +493,10 @@ export function PrescreenWorkspace() {
           const state = await savePrescreenAnswers(caseSummary.id, answers);
           setPrescreen(state);
           setDraftAnswers(state.answers);
-          if (moveNext) {
+          setIsDirty(false);
+          if (targetPageId) {
+            setSelectedPageId(targetPageId);
+          } else if (moveNext) {
             const nextPages = Array.from(new Set(state.evaluation.visible_questions.map((question) => question.section)));
             const currentIndex = nextPages.indexOf(selectedPage.id);
             setSelectedPageId(nextPages[Math.min(currentIndex + 1, Math.max(nextPages.length - 1, 0))] ?? selectedPage.id);
@@ -706,7 +727,7 @@ export function PrescreenWorkspace() {
                 flagCount: flags.filter((flag) => page.questions.some((question) => question.id === flag.question_id)).length,
               }))}
               selectedId={selectedPage?.id ?? ""}
-              onSelect={setSelectedPageId}
+              onSelect={goToPage}
               completionPct={prescreen?.evaluation.completion_pct ?? 0}
               statusLabel={statusInfo.label}
             />
@@ -740,6 +761,7 @@ export function PrescreenWorkspace() {
                     onSave={() => saveCurrentPage(false)}
                     onSaveAndNext={() => saveCurrentPage(true)}
                     isPending={isPending}
+                    isDirty={isDirty}
                     hasNext={hasNextPage}
                     disabled={!caseSummary}
                   />
