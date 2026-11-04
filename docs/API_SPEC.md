@@ -37,6 +37,7 @@
   - return saved prescreen answers, answer-source hints for smart defaults, visible questions, eliminated questions, happy-path flags, included form branches, and eliminated form branches
 - `POST /cases/{case_id}/prescreen`
   - save prescreen answers into the isolated `prescreen` intake step, project explainable branch facts into merged intake, and recalculate the branch response
+  - if the case already has a checklist, rebuild it so changed answers add or drop items; item completion statuses are kept. The I-485 and supplemental form page saves do the same
   - the I-130 branch keeps Forms I-130 and I-130A active when `i130_filing_status` is `not_filed`; if the petition is already `pending` or `approved`, it eliminates those draft forms and asks for receipt or approval evidence, filing date, or approval date instead
   - if the I-130 answer is denied/revoked/withdrawn or another critical happy-path gate is triggered, the response marks the branch as `blocked_needs_review` and pauses generated form actions
   - entry-type flags distinguish normal visa admission from ESTA/VWP or parole review warnings and entered-without-inspection blockers

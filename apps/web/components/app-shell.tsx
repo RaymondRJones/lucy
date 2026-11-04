@@ -84,9 +84,9 @@ export function AppShell({
         }
         setFetchedCase({ id: loaded.id, name: loaded.case_name, readiness: loaded.readiness_label });
         const value: StepStatuses = {};
-        const criticalFlags = prescreen?.evaluation.flags.filter((flag) => flag.severity === "critical").length ?? 0;
-        if (criticalFlags) {
-          value.prescreen = { state: "attention", note: `${criticalFlags} critical ${criticalFlags === 1 ? "flag" : "flags"}` };
+        const flagCount = prescreen?.evaluation.flags.length ?? 0;
+        if (flagCount) {
+          value.prescreen = { state: "attention", note: `${flagCount} ${flagCount === 1 ? "answer" : "answers"} outside the standard path` };
         } else if (prescreen?.evaluation.completion_pct === 100) {
           value.prescreen = { state: "done", note: "complete" };
         }

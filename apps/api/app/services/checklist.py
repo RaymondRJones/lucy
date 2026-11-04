@@ -35,6 +35,16 @@ def _current_upload_counts(session: Session, case_id: UUID) -> dict[str, int]:
     return counts
 
 
+def refresh_checklist_if_present(session: Session, case_id: UUID) -> None:
+    """Rebuilds an existing checklist so changed answers add or drop items right away.
+
+    Cases without a checklist are left alone; their checklist is built when the user asks for it.
+    """
+    has_items = session.exec(select(CaseChecklistItem.id).where(CaseChecklistItem.case_id == case_id)).first()
+    if has_items is not None:
+        generate_checklist(session, case_id)
+
+
 def generate_checklist(session: Session, case_id: UUID) -> tuple[list[CaseChecklistItem], dict[str, Any]]:
     """Builds or refreshes a case's checklist from its facts."""
     case = session.get(CaseRecord, case_id)

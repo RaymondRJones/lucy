@@ -80,7 +80,7 @@ function apiErrorMessage(payload: unknown) {
 }
 
 export const API_UNREACHABLE_MESSAGE =
-  "Could not reach the Lucy API on this computer. Start it with npm run dev:api, then reload this page.";
+  "Could not reach the Lucy API on this computer. Start it with npm run dev:api, then select Try again.";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;

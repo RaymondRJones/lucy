@@ -730,7 +730,7 @@ export function PacketAssemblyWorkspace() {
           const sections = `${payload.included_documents.length} ${payload.included_documents.length === 1 ? "section" : "sections"}`;
           setMessage(
             paymentSkipped
-              ? `Assembled a ${kind} packet with ${sections}. No payment form was added; see the note below.`
+              ? `Assembled a ${kind} packet with ${sections}.`
               : skippedUploadCount
                 ? `Assembled a ${kind} packet with ${sections}. ${skippedUploadCount} uploaded ${skippedUploadCount === 1 ? "file needs" : "files need"} attention below.`
                 : `Assembled a ${kind} packet with ${sections}.`,
@@ -866,7 +866,12 @@ export function PacketAssemblyWorkspace() {
                   <a href={apiUrl(result.manifest_download_url)} target="_blank" rel="noreferrer" className={buttonClass("secondary", "md")}>
                     Manifest
                   </a>
-                  <a href={apiUrl(result.download_url)} target="_blank" rel="noreferrer" className={buttonClass("primary", "md")}>
+                  <a
+                    href={apiUrl(result.download_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={buttonClass(resultHasPayment ? "primary" : "secondary", "md")}
+                  >
                     Open packet PDF
                   </a>
                 </>
@@ -874,11 +879,11 @@ export function PacketAssemblyWorkspace() {
             />
             {!resultHasPayment ? (
               <Notice
-                tone="warning"
+                tone="danger"
                 className="mt-4"
                 title="This packet has no payment form"
                 actions={
-                  <a href="#payment-heading" className={buttonClass("secondary", "sm")}>
+                  <a href="#payment-heading" className={buttonClass("primary", "sm")}>
                     Add payment
                   </a>
                 }
@@ -979,209 +984,10 @@ export function PacketAssemblyWorkspace() {
             </Card>
           ) : null}
 
-          <Card aria-labelledby="evidence-heading">
-            <SectionHeader
-              id="evidence-heading"
-              eyebrow="Part 1"
-              title="Evidence"
-              description="Attach a PDF for each item. Lucy generates the USCIS forms itself, so those rows need no upload."
-              actions={
-                <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
-                  {evidenceItemsWithFiles} of {totalManualUploadItems} evidence files attached
-                </Badge>
-              }
-            />
-            <p className="mt-2 text-xs text-muted">
-              PDF only, up to {MAX_PACKET_UPLOAD_SIZE_MB} MB per file. {confirmedPdfUploads} PDF{confirmedPdfUploads === 1 ? "" : "s"} uploaded so far.
-            </p>
-            {!groupedItems.length ? (
-              <Notice tone="warning" className="mt-4" title="No checklist yet">
-                Build the checklist on the Review page to see which evidence to attach.
-              </Notice>
-            ) : null}
-            <div className="mt-5 grid gap-3">
-              {groupedItems
-                .filter((group) => group.items.some((item) => !NOT_EVIDENCE_CODES.has(item.code)))
-                .map((group) => {
-                  const generatedItems = group.items.filter((item) => GENERATED_ONLY_UPLOAD_CODES.has(item.code));
-                  const uploadItems = group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code) && !NOT_EVIDENCE_CODES.has(item.code));
-                  const evidenceItems = uploadItems.filter((item) => !NOT_EVIDENCE_CODES.has(item.code));
-                  const attachedCount = evidenceItems.filter((item) => (uploadsByCode.get(item.code) ?? []).length).length;
-                  const missingNames = evidenceItems
-                    .filter((item) => !(uploadsByCode.get(item.code) ?? []).length)
-                    .map((item) => item.label);
-                  const requiredMissing = evidenceItems.filter(
-                    (item) => item.applicability === "required" && !(uploadsByCode.get(item.code) ?? []).length,
-                  ).length;
-                  return (
-                    <details
-                      key={group.key}
-                      open={missingNames.length > 0 || undefined}
-                      className={classNames("group/evidence rounded-lg border", requiredMissing ? "border-amber-300" : "border-line")}
-                    >
-                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-3 hover:bg-paper [&::-webkit-details-marker]:hidden">
-                        <span className="flex items-center gap-2">
-                          <span aria-hidden="true" className="text-muted transition-transform group-open/evidence:rotate-90">
-                            {"\u25B8"}
-                          </span>
-                          <span className="text-base font-semibold text-ink">{group.label}</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                          {requiredMissing ? <Badge tone="warning">{requiredMissing} required missing</Badge> : null}
-                          <span
-                            className={classNames(
-                              "text-xs font-semibold tabular-nums",
-                              requiredMissing ? "text-amber-800" : "text-muted",
-                            )}
-                          >
-                            {evidenceItems.length
-                              ? `${attachedCount} of ${evidenceItems.length} attached`
-                              : uploadItems.length
-                                ? "Added in the Payment section"
-                                : "Generated by Lucy"}
-                          </span>
-                        </span>
-                      </summary>
-                      {missingNames.length ? (
-                        <p className="px-4 pb-3 pl-10 text-xs leading-5 text-muted group-open/evidence:hidden">
-                          No file yet: {missingNames.join(", ")}
-                        </p>
-                      ) : null}
-                      <div className="border-t border-line px-4">
-                        {generatedItems.length ? (
-                          <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-3 text-sm">
-                            <Badge tone="success">Generated by Lucy</Badge>
-                            <span className="min-w-0 flex-1 text-muted">
-                              {generatedItems.map((item) => item.label).join(", ")} {generatedItems.length === 1 ? "is" : "are"} built from your
-                              saved answers.
-                            </span>
-                            {generatedItems.some((item) => (uploadsByCode.get(item.code) ?? []).length) ? (
-                              <div className="w-full">
-                                <p className="text-xs text-muted">Older uploaded copies are skipped. Remove them if you no longer need them.</p>
-                                <ul className="mt-1.5 flex flex-wrap gap-2">
-                                  {Array.from(
-                                    new Map(
-                                      generatedItems.flatMap((item) => (uploadsByCode.get(item.code) ?? []).map((upload) => [upload.id, upload] as const)),
-                                    ).values(),
-                                  ).map((upload) => fileChip(upload, false))}
-                                </ul>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        <ul className="divide-y divide-line border-line [&:not(:first-child)]:border-t">
-                          {uploadItems.map((item) => {
-                            const itemUploads = uploadsByCode.get(item.code) ?? [];
-                            const draft = uploadDrafts[item.code] ?? defaultUploadDraft();
-                            const fileInputId = `upload-${item.code}`;
-                            return (
-                              <li key={item.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-6">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <h4 className="font-semibold text-ink">{item.label}</h4>
-                                    <Badge tone={item.applicability === "required" ? "strong" : "neutral"} className="capitalize">
-                                      {formatStatus(item.applicability)}
-                                    </Badge>
-                                    {itemUploads.length ? <Badge tone="success">Attached</Badge> : null}
-                                  </div>
-                                  {itemUploads.length && !replacingCodes.has(item.code) ? null : (
-                                    <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
-                                  )}
-                                  {itemUploads.length ? (
-                                    <ul className="mt-2 flex flex-wrap gap-2">{itemUploads.map((upload) => fileChip(upload, true))}</ul>
-                                  ) : null}
-                                </div>
-                                {item.code === "payment_g1450" ? (
-                                  <p className="self-center text-sm leading-6 text-muted">
-                                    Add payment in the{" "}
-                                    <a href="#payment-heading" className="font-semibold text-pine underline-offset-4 hover:underline">
-                                      Payment
-                                    </a>{" "}
-                                    section below.
-                                  </p>
-                                ) : itemUploads.length && !replacingCodes.has(item.code) ? (
-                                  <div className="self-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => setReplacingCodes((current) => new Set(current).add(item.code))}
-                                      className={buttonClass("secondary", "sm")}
-                                    >
-                                      Replace or add
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="grid content-start gap-2">
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        id={fileInputId}
-                                        type="file"
-                                        accept="application/pdf,.pdf"
-                                        onChange={(event) => updateDraft(item.code, { file: event.target.files?.[0] ?? null })}
-                                        className="peer sr-only"
-                                      />
-                                      <label
-                                        htmlFor={fileInputId}
-                                        className={buttonClass(
-                                          "secondary",
-                                          "sm",
-                                          "min-w-0 flex-1 cursor-pointer justify-start peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-pine",
-                                        )}
-                                      >
-                                        <span className="truncate">
-                                          {draft.file ? draft.file.name : itemUploads.length ? "Replace or add a PDF" : "Choose a PDF"}
-                                        </span>
-                                        <span className="sr-only"> for {item.label}</span>
-                                      </label>
-                                      <button
-                                        type="button"
-                                        onClick={() => uploadForItem(item)}
-                                        disabled={isPending || !caseSummary || !draft.file}
-                                        className={buttonClass("primary", "sm", "shrink-0")}
-                                      >
-                                        Upload
-                                      </button>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
-                                        Language
-                                        <select
-                                          value={draft.documentLanguage}
-                                          onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
-                                          className="h-8 rounded-md border border-line-strong bg-white px-2 text-xs"
-                                        >
-                                          <option value="english">English</option>
-                                          <option value="spanish">Spanish</option>
-                                          <option value="other">Other</option>
-                                          <option value="unknown">Unknown</option>
-                                        </select>
-                                      </label>
-                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
-                                        <input
-                                          type="checkbox"
-                                          checked={draft.hasTranslation}
-                                          onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
-                                          className="h-4 w-4"
-                                        />
-                                        Includes certified English translation
-                                      </label>
-                                    </div>
-                                  </div>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    </details>
-                  );
-                })}
-            </div>
-          </Card>
-
           <Card aria-labelledby="payment-heading">
             <SectionHeader
               id="payment-heading"
-              eyebrow="Part 2"
+              eyebrow="Part 1"
               title="Payment"
               description={paymentOptions?.payment_note ? <LinkedText text={paymentOptions.payment_note} /> : null}
               actions={segmented<PaymentMode>(
@@ -1404,6 +1210,206 @@ export function PacketAssemblyWorkspace() {
               </div>
             )}
           </Card>
+
+          <Card aria-labelledby="evidence-heading">
+            <SectionHeader
+              id="evidence-heading"
+              eyebrow="Part 2"
+              title="Evidence"
+              description="Attach a PDF for each item. Lucy generates the USCIS forms itself, so those rows need no upload."
+              actions={
+                <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
+                  {evidenceItemsWithFiles} of {totalManualUploadItems} evidence files attached
+                </Badge>
+              }
+            />
+            <p className="mt-2 text-xs text-muted">
+              PDF only, up to {MAX_PACKET_UPLOAD_SIZE_MB} MB per file. {confirmedPdfUploads} PDF{confirmedPdfUploads === 1 ? "" : "s"} uploaded so far.
+            </p>
+            {!groupedItems.length ? (
+              <Notice tone="warning" className="mt-4" title="No checklist yet">
+                Build the checklist on the Review page to see which evidence to attach.
+              </Notice>
+            ) : null}
+            <div className="mt-5 grid gap-3">
+              {groupedItems
+                .filter((group) => group.items.some((item) => !NOT_EVIDENCE_CODES.has(item.code)))
+                .map((group) => {
+                  const generatedItems = group.items.filter((item) => GENERATED_ONLY_UPLOAD_CODES.has(item.code));
+                  const uploadItems = group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code) && !NOT_EVIDENCE_CODES.has(item.code));
+                  const evidenceItems = uploadItems.filter((item) => !NOT_EVIDENCE_CODES.has(item.code));
+                  const attachedCount = evidenceItems.filter((item) => (uploadsByCode.get(item.code) ?? []).length).length;
+                  const missingNames = evidenceItems
+                    .filter((item) => !(uploadsByCode.get(item.code) ?? []).length)
+                    .map((item) => item.label);
+                  const requiredMissing = evidenceItems.filter(
+                    (item) => item.applicability === "required" && !(uploadsByCode.get(item.code) ?? []).length,
+                  ).length;
+                  return (
+                    <details
+                      key={group.key}
+                      open={missingNames.length > 0 || undefined}
+                      className={classNames("group/evidence rounded-lg border", requiredMissing ? "border-amber-300" : "border-line")}
+                    >
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-3 hover:bg-paper [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-2">
+                          <span aria-hidden="true" className="text-muted transition-transform group-open/evidence:rotate-90">
+                            {"\u25B8"}
+                          </span>
+                          <span className="text-base font-semibold text-ink">{group.label}</span>
+                        </span>
+                        <span className="flex items-center gap-2">
+                          {requiredMissing ? <Badge tone="warning">{requiredMissing} required missing</Badge> : null}
+                          <span
+                            className={classNames(
+                              "text-xs font-semibold tabular-nums",
+                              requiredMissing ? "text-amber-800" : "text-muted",
+                            )}
+                          >
+                            {evidenceItems.length
+                              ? `${attachedCount} of ${evidenceItems.length} attached`
+                              : uploadItems.length
+                                ? "Added in the Payment section"
+                                : "Generated by Lucy"}
+                          </span>
+                        </span>
+                      </summary>
+                      {missingNames.length ? (
+                        <p className="px-4 pb-3 pl-10 text-xs leading-5 text-muted group-open/evidence:hidden">
+                          No file yet: {missingNames.join(", ")}
+                        </p>
+                      ) : null}
+                      <div className="border-t border-line px-4">
+                        {generatedItems.length ? (
+                          <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-3 text-sm">
+                            <Badge tone="success">Generated by Lucy</Badge>
+                            <span className="min-w-0 flex-1 text-muted">
+                              {generatedItems.map((item) => item.label).join(", ")} {generatedItems.length === 1 ? "is" : "are"} built from your
+                              saved answers.
+                            </span>
+                            {generatedItems.some((item) => (uploadsByCode.get(item.code) ?? []).length) ? (
+                              <div className="w-full">
+                                <p className="text-xs text-muted">Older uploaded copies are skipped. Remove them if you no longer need them.</p>
+                                <ul className="mt-1.5 flex flex-wrap gap-2">
+                                  {Array.from(
+                                    new Map(
+                                      generatedItems.flatMap((item) => (uploadsByCode.get(item.code) ?? []).map((upload) => [upload.id, upload] as const)),
+                                    ).values(),
+                                  ).map((upload) => fileChip(upload, false))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <ul className="divide-y divide-line border-line [&:not(:first-child)]:border-t">
+                          {uploadItems.map((item) => {
+                            const itemUploads = uploadsByCode.get(item.code) ?? [];
+                            const draft = uploadDrafts[item.code] ?? defaultUploadDraft();
+                            const fileInputId = `upload-${item.code}`;
+                            return (
+                              <li key={item.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-6">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="font-semibold text-ink">{item.label}</h4>
+                                    <Badge tone={item.applicability === "required" ? "strong" : "neutral"} className="capitalize">
+                                      {formatStatus(item.applicability)}
+                                    </Badge>
+                                    {itemUploads.length ? <Badge tone="success">Attached</Badge> : null}
+                                  </div>
+                                  {itemUploads.length && !replacingCodes.has(item.code) ? null : (
+                                    <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
+                                  )}
+                                  {itemUploads.length ? (
+                                    <ul className="mt-2 flex flex-wrap gap-2">{itemUploads.map((upload) => fileChip(upload, false))}</ul>
+                                  ) : null}
+                                </div>
+                                {item.code === "payment_g1450" ? (
+                                  <p className="self-center text-sm leading-6 text-muted">
+                                    Add payment in the{" "}
+                                    <a href="#payment-heading" className="font-semibold text-pine underline-offset-4 hover:underline">
+                                      Payment
+                                    </a>{" "}
+                                    section above.
+                                  </p>
+                                ) : itemUploads.length && !replacingCodes.has(item.code) ? (
+                                  <div className="self-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => setReplacingCodes((current) => new Set(current).add(item.code))}
+                                      className={buttonClass("secondary", "sm")}
+                                    >
+                                      Replace or add
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="grid content-start gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        id={fileInputId}
+                                        type="file"
+                                        accept="application/pdf,.pdf"
+                                        onChange={(event) => updateDraft(item.code, { file: event.target.files?.[0] ?? null })}
+                                        className="peer sr-only"
+                                      />
+                                      <label
+                                        htmlFor={fileInputId}
+                                        className={buttonClass(
+                                          "secondary",
+                                          "sm",
+                                          "min-w-0 flex-1 cursor-pointer justify-start peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-pine",
+                                        )}
+                                      >
+                                        <span className="truncate">
+                                          {draft.file ? draft.file.name : itemUploads.length ? "Replace or add a PDF" : "Choose a PDF"}
+                                        </span>
+                                        <span className="sr-only"> for {item.label}</span>
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => uploadForItem(item)}
+                                        disabled={isPending || !caseSummary || !draft.file}
+                                        className={buttonClass("primary", "sm", "shrink-0")}
+                                      >
+                                        Upload
+                                      </button>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
+                                        Language
+                                        <select
+                                          value={draft.documentLanguage}
+                                          onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
+                                          className="h-8 rounded-md border border-line-strong bg-white px-2 text-xs"
+                                        >
+                                          <option value="english">English</option>
+                                          <option value="spanish">Spanish</option>
+                                          <option value="other">Other</option>
+                                          <option value="unknown">Unknown</option>
+                                        </select>
+                                      </label>
+                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
+                                        <input
+                                          type="checkbox"
+                                          checked={draft.hasTranslation}
+                                          onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
+                                          className="h-4 w-4"
+                                        />
+                                        Includes certified English translation
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    </details>
+                  );
+                })}
+            </div>
+          </Card>
+
         </div>
 
         <aside id="assemble" aria-labelledby="assemble-heading" className="scroll-mt-24 xl:sticky xl:top-20 xl:h-fit">
@@ -1539,6 +1545,8 @@ export function PacketAssemblyWorkspace() {
               {evidenceItemsWithFiles} of {totalManualUploadItems}
             </span>{" "}
             files attached
+            <span aria-hidden="true">{" \u00b7 "}</span>
+            {paymentReady ? "Payment added" : "No payment"}
             <span aria-hidden="true">{" \u00b7 "}</span>
             {stateCode ? US_LOCATIONS.find(([value]) => value === stateCode)?.[1] : "No state chosen"}
           </p>

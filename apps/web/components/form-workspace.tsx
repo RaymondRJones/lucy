@@ -219,10 +219,12 @@ export function QuestionCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {missing ? <Badge tone="danger">Missing</Badge> : null}
-          {actions}
+          <div className="hidden items-center gap-2 sm:flex">{actions}</div>
         </div>
       </div>
       {children}
+      {/* On phones the controls follow the input so the label stays next to its field. */}
+      {actions ? <div className="flex items-center gap-2 sm:hidden">{actions}</div> : null}
       {meta || source ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
           {meta ? <span>{meta}</span> : null}

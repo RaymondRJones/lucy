@@ -329,3 +329,23 @@ def test_generated_i130a_part_3_carries_the_foreign_employer(tmp_path):
     printed = {name.split(".")[-1]: field.get("/V") for name, field in fields.items()}
     assert printed["Pt3Line1_EmployerOrCompName[0]"] == "Universidad"
     assert printed["Pt3Line2h_Country[0]"] == "Colombia"
+
+
+def test_saving_prescreen_refreshes_an_existing_checklist():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    SQLModel.metadata.create_all(engine)
+    session = Session(engine)
+    case = _seeded_case(session)
+    app.dependency_overrides[get_session] = lambda: session
+    try:
+        client = TestClient(app)
+        client.post(f"/api/v1/cases/{case.id}/checklist/generate")
+        before = {item["code"]: item["applicability"] for item in client.get(f"/api/v1/cases/{case.id}/checklist").json()["items"]}
+        response = client.post(f"/api/v1/cases/{case.id}/prescreen", json={"answers": {"first_marriage_for_both": False}})
+        after = {item["code"]: item["applicability"] for item in client.get(f"/api/v1/cases/{case.id}/checklist").json()["items"]}
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert response.status_code == 200
+    assert before["prior_marriage_termination_records"] == "not_applicable"
+    assert after["prior_marriage_termination_records"] != "not_applicable"

@@ -37,7 +37,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid #25675d;
+  outline: 3px solid #1c5249;
   outline-offset: 2px;
 }
 
@@ -52,6 +52,15 @@ select:focus,
 textarea:focus {
   border-color: #25675d;
   box-shadow: 0 0 0 3px rgba(37, 103, 93, 0.16);
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2356635f'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-position: right 0.6rem center;
+  background-repeat: no-repeat;
+  background-size: 1.1rem;
+  padding-right: 2.25rem !important;
 }
 
 input[type="checkbox"],

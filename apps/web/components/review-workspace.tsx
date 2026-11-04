@@ -174,11 +174,11 @@ export function ReviewWorkspace() {
   const headline = blockingCount
     ? "Not ready to print yet"
     : attentionCount
-      ? `Check ${attentionCount} ${attentionCount === 1 ? "item" : "items"} before printing`
+      ? `Needs your attention: ${attentionCount} open ${attentionCount === 1 ? "item" : "items"}`
       : otherEvidenceMissing.length
         ? `Ready, with ${otherEvidenceMissing.length} optional ${otherEvidenceMissing.length === 1 ? "file" : "files"} not attached`
         : readinessLabel.startsWith("Ready to print")
-          ? "Ready to print"
+          ? "Forms and evidence are ready"
           : readinessLabel;
 
   function handleCaseSelect(nextCase: CaseSummary) {
@@ -275,7 +275,7 @@ export function ReviewWorkspace() {
                       {completedRequired} of {requiredItems.length}
                     </span>
                   </div>
-                  <ProgressBar value={checklistPct} label="Required checklist items marked done" className="mt-1.5" />
+                  <ProgressBar value={checklistPct} label="Required checklist items marked done" className="mt-1.5" tone={attentionCount ? "neutral" : "pine"} />
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted">
@@ -288,6 +288,7 @@ export function ReviewWorkspace() {
                     value={evidence.attached.length + evidence.missing.length ? (evidence.attached.length / (evidence.attached.length + evidence.missing.length)) * 100 : 0}
                     label="Evidence files attached"
                     className="mt-1.5"
+                    tone={attentionCount ? "neutral" : "pine"}
                   />
                 </div>
               </div>
@@ -540,7 +541,11 @@ export function ReviewWorkspace() {
 
             <aside className="grid content-start gap-4">
               <Card>
-                <SectionHeader title="Go back and edit" level={3} />
+                <SectionHeader
+                  title="Go back and edit"
+                  level={3}
+                  description="The checklist updates on its own when you save answers."
+                />
                 <nav aria-label="Edit sections" className="mt-3 grid gap-2">
                   <Link href={actionHref("/prescreen", caseSummary.id)} className={buttonClass("secondary", "md", "justify-start")}>
                     Prescreen answers
@@ -555,21 +560,6 @@ export function ReviewWorkspace() {
                     Evidence uploads
                   </Link>
                 </nav>
-              </Card>
-              <Card>
-                <SectionHeader
-                  title="Rebuild the checklist"
-                  level={3}
-                  description="Use this after changing prescreen or form answers so the checklist matches."
-                />
-                <button
-                  type="button"
-                  onClick={handleGenerateChecklist}
-                  disabled={isPending}
-                  className={buttonClass("secondary", "md", "mt-3 w-full")}
-                >
-                  Rebuild checklist
-                </button>
               </Card>
             </aside>
           </div>

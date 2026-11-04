@@ -115,7 +115,7 @@ type Tone = "neutral" | "strong" | "success" | "warning" | "danger" | "info" | "
 
 const BADGE_TONES: Record<Tone, string> = {
   neutral: "border-line bg-paper text-muted",
-  strong: "border-ink bg-ink text-white",
+  strong: "border-ink/50 bg-white text-ink",
   success: "border-pine/20 bg-pine-soft text-pine-strong",
   warning: "border-amber-200 bg-amber-50 text-amber-900",
   danger: "border-red-200 bg-red-50 text-red-800",
@@ -208,7 +208,17 @@ export function StatusMessage({ message, className }: { message: string | null |
   );
 }
 
-export function ProgressBar({ value, label, className }: { value: number; label: string; className?: string }) {
+export function ProgressBar({
+  value,
+  label,
+  className,
+  tone = "pine",
+}: {
+  value: number;
+  label: string;
+  className?: string;
+  tone?: "pine" | "neutral";
+}) {
   const clamped = Math.max(0, Math.min(100, Math.round(value)));
   return (
     <div
@@ -219,7 +229,10 @@ export function ProgressBar({ value, label, className }: { value: number; label:
       aria-valuenow={clamped}
       className={cx("h-2 overflow-hidden rounded-full bg-line", className)}
     >
-      <div className="h-full rounded-full bg-pine transition-[width] duration-300" style={{ width: `${clamped}%` }} />
+      <div
+        className={cx("h-full rounded-full transition-[width] duration-300", tone === "pine" ? "bg-pine" : "bg-muted")}
+        style={{ width: `${clamped}%` }}
+      />
     </div>
   );
 }

@@ -100,7 +100,7 @@ from app.schemas.common import (
 )
 from app.services import uploads as uploads_service
 from app.services.audit import log_action
-from app.services.checklist import generate_checklist, get_checklist
+from app.services.checklist import generate_checklist, get_checklist, refresh_checklist_if_present
 from app.services.filing_validation import get_filing_validation_capabilities, validate_case_filings
 from app.services.form_ingestion import (
     build_form_fill_preview,
@@ -335,6 +335,7 @@ def save_case_prescreen(
 ):
     _get_case_or_404(session, case_id)
     state = save_prescreen_answers(session, case_id, payload.answers)
+    refresh_checklist_if_present(session, case_id)
     if state["evaluation"]["status"] == "blocked_needs_review":
         run_qa(session, case_id)
     log_action(session, case_id, "prescreen.saved", {"answered": len(payload.answers)})
@@ -657,6 +658,7 @@ def save_case_i485_page(
         state = save_i485_page_answers(session, case_id, payload.page_id, payload.answers, payload.manual_flags)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    refresh_checklist_if_present(session, case_id)
     log_action(
         session,
         case_id,
@@ -810,6 +812,7 @@ def save_case_form_page(
         state = save_form_page_answers(session, case_id, form_key, payload.page_id, payload.answers, payload.manual_flags)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    refresh_checklist_if_present(session, case_id)
     log_action(
         session,
         case_id,
