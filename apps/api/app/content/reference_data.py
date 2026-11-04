@@ -1,3 +1,5 @@
+"""Shared reference data for the API."""
+
 from __future__ import annotations
 
 DISCLAIMERS = [

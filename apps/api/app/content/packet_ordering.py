@@ -1,3 +1,5 @@
+"""Document order within a filing packet."""
+
 from __future__ import annotations
 
 PACKET_ASSEMBLY_GUIDANCE_VERIFIED_ON = "2026-05-09"

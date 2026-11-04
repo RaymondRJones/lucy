@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
 from pypdf import PdfReader, PdfWriter
+import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.content.packet_mailing import mailing_recommendation_for_location

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 from uuid import uuid4
 
-import pytest
+from pdf_form_assertions import assert_pdf_field_values, pdf_field_values
 from pypdf import PdfReader
+import pytest
+from test_supplemental_forms import sample_i864_answers
 
 from app.cli.seed_packet_scenarios import SCENARIOS, _scenario_answers
 from app.content.i485_questionnaire import all_i485_questions
@@ -17,13 +19,12 @@ from app.services.i485 import conditional_required_i485_question_ids, evaluate_i
 from app.services.i485_pdf import (
     AUTO_BOOLEAN_FIELD_MAP,
     _template_button_choices,
-    _template_field_names,
     build_i485_pdf_field_payload,
     generate_i485_pdf_from_answers,
 )
-from pdf_form_assertions import assert_pdf_field_values, pdf_field_values
-from test_supplemental_forms import sample_i864_answers
-
+from app.services.pdf_fields import (
+    template_field_names,
+)
 
 TEMPLATE_DIR = Path("blank-immigration-documents")
 I485_TEMPLATE = TEMPLATE_DIR / "i-485.pdf"
@@ -57,7 +58,7 @@ def _i485_payload(answers: dict):
     reader = PdfReader(I485_TEMPLATE)
     return build_i485_pdf_field_payload(
         answers,
-        available_fields=_template_field_names(reader),
+        available_fields=template_field_names(reader),
         button_choices=_template_button_choices(reader),
     )
 
@@ -276,7 +277,7 @@ def test_i864_generation_fills_moved_part8_fields(tmp_path: Path):
     payload = build_form_pdf_field_payload(
         "i864",
         answers,
-        available_fields=_template_field_names(PdfReader(I864_TEMPLATE)),
+        available_fields=template_field_names(PdfReader(I864_TEMPLATE)),
     )
     assert payload.missing_template_fields == []
 

@@ -1,5 +1,6 @@
-from __future__ import annotations
+"""Class of admission options and normalization."""
 
+from __future__ import annotations
 
 I94_INFO_SOURCE = {
     "label": "USCIS Form I-94 information page",
@@ -52,6 +53,7 @@ _CLASS_OF_ADMISSION_VALUES = {option["value"] for option in CLASS_OF_ADMISSION_O
 
 
 def normalize_class_of_admission(value: object) -> str:
+    """Returns a class of admission in its standard form, such as B-2."""
     raw = str(value or "").strip().upper()
     if not raw:
         return ""

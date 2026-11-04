@@ -1,3 +1,5 @@
+"""Country-specific document guidance."""
+
 from __future__ import annotations
 
 COUNTRY_GUIDANCE = {

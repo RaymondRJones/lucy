@@ -1,3 +1,5 @@
+"""USCIS fee schedule used for payment forms."""
+
 from __future__ import annotations
 
 FEE_SCHEDULE_VERIFIED_ON = "2026-10-30"

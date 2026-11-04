@@ -3,9 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from pdf_form_assertions import pdf_field_values
 from pypdf import PdfReader
+from test_g1650 import BANK, TEMPLATE, bank_payload
+from test_packet_assembly import add_checklist_item, add_confirmed_upload, create_case, make_session
 
-from app.cli.seed_happy_path import _seed_supplemental_form
+from app.cli.seed_happy_path import seed_supplemental_form
 from app.cli.seed_packet_scenarios import SCENARIOS, _create_case, _scenario_answers
 from app.core.config import settings
 from app.services.checklist import generate_checklist
@@ -13,9 +16,6 @@ from app.services.form_ingestion import build_form_fill_preview
 from app.services.form_pdf import build_form_pdf_field_payload
 from app.services.intake import upsert_intake_step
 from app.services.packet_assembly import assemble_packet_pdf
-from pdf_form_assertions import pdf_field_values
-from test_g1650 import BANK, TEMPLATE, bank_payload
-from test_packet_assembly import add_checklist_item, add_confirmed_upload, create_case, make_session
 
 
 def _seed(session, tmp_path, status: str | None, codes: list[str]):
@@ -172,7 +172,7 @@ def test_seeded_concurrent_scenario_answers_are_on_the_standard_path(tmp_path, m
     case = _create_case(session, scenario, _scenario_answers(scenario))
     answers = _scenario_answers(scenario)
     for form_key in ("i130", "i130a"):
-        _seed_supplemental_form(session, case, form_key, answers)
+        seed_supplemental_form(session, case, form_key, answers)
     session.commit()
 
     i130 = build_form_fill_preview(session, case.id, "i130")
@@ -226,3 +226,27 @@ def test_fresh_payment_replaces_uploaded_payment_pdf(tmp_path, monkeypatch):
         document["checklist_item_code"] == "payment_g1450" and "avoid paying twice" in document["reason"]
         for document in result.skipped_documents
     )
+
+
+def test_deliberately_skipped_uploads_do_not_warn_about_unreadable_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", tmp_path)
+    session = make_session()
+    case = _seed(session, tmp_path, "not_filed", [*EVIDENCE, "medical_exam_supporting_records"])
+
+    result = _assemble(session, case, tmp_path, include_generated_forms=False)
+
+    assert [document["checklist_item_code"] for document in result.skipped_documents] == [
+        "medical_exam_supporting_records"
+    ]
+    assert not any("unreadable" in warning for warning in result.warnings)
+
+
+def test_packet_without_a_payment_form_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", tmp_path)
+    session = make_session()
+    case = _seed(session, tmp_path, "not_filed", ["form_i130", "form_i485"])
+
+    result = _assemble(session, case, tmp_path)
+
+    assert any(warning.startswith("This packet has no payment form yet.") for warning in result.warnings)
+    assert not any("unreadable" in warning for warning in result.warnings)

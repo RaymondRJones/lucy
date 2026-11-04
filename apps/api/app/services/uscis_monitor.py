@@ -1,3 +1,5 @@
+"""Checks live USCIS pages for form, fee, and address changes."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -18,7 +20,13 @@ from app.content.fee_schedule import (
     G1450_FORM_EDITION,
     G1650_FORM_EDITION,
 )
-from app.content.packet_mailing import ADDRESS_SOURCES_LAST_REVIEWED
+from app.content.packet_mailing import (
+    ADDRESS_SOURCES_LAST_REVIEWED,
+    LOCATION_LABELS,
+    LOCKBOX_BY_LOCATION,
+    LOCKBOXES,
+    PACKET_MAILING_SOURCE_URL,
+)
 from app.content.uscis_requirements import USCIS_REQUIREMENTS
 from app.core.config import REPO_ROOT
 
@@ -48,6 +56,7 @@ class MonitorReport:
 
 
 def fetch_url(url: str) -> bytes:
+    """Returns the bytes at a URL."""
     for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
             with urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=FETCH_TIMEOUT_SECONDS) as response:
@@ -65,14 +74,40 @@ def _page_text(content: bytes) -> str:
 
 
 def parse_edition_date(content: bytes) -> str | None:
+    """Returns the edition date stated on a USCIS page, if any."""
     # USCIS's labelled "Edition Date" section. Alerts about old editions read "edition date:" and do not match.
     match = re.search(r"Edition Date\s+(\d{2}/\d{2}/\d{2})", _page_text(content))
     return match.group(1) if match else None
 
 
 def parse_last_reviewed(content: bytes) -> str | None:
+    """Returns the last-reviewed date on a USCIS page, if any."""
     match = re.search(r"Last Reviewed/Updated:\s*(\d{2}/\d{2}/\d{4})", _page_text(content))
     return datetime.strptime(match.group(1), "%m/%d/%Y").strftime("%Y-%m-%d") if match else None
+
+
+def parse_lockbox_chart(content: bytes) -> str | None:
+    """Returns the states and addresses on the family-based lockbox chart, if any."""
+    match = re.search(r"Mail your form to:\s*(.*?)\s*E-Notification:", _page_text(content))
+    return match.group(1) if match else None
+
+
+def expected_lockbox_chart() -> str:
+    """Returns the stored lockbox table as the chart's text reads."""
+    sections = []
+    for key, lockbox in LOCKBOXES.items():
+        states = [LOCATION_LABELS[code] for code, lockbox_key in LOCKBOX_BY_LOCATION.items() if lockbox_key == key]
+        sections.extend(
+            [
+                *states,
+                lockbox["lockbox"],
+                "U.S. Postal Service (USPS):",
+                *lockbox["usps_address_lines"],
+                "FedEx, UPS, and DHL deliveries:",
+                *lockbox["private_carrier_address_lines"],
+            ]
+        )
+    return " ".join(sections)
 
 
 def _expected_editions() -> dict[str, tuple[str, str]]:
@@ -104,7 +139,7 @@ def _check_page(
         report.unreadable.append(MonitorFinding(kind, subject, url, expected, f"Could not fetch: {exc}"))
         return
     if found is None:
-        report.unreadable.append(MonitorFinding(kind, subject, url, expected, "Date not found on the page"))
+        report.unreadable.append(MonitorFinding(kind, subject, url, expected, "Expected text not found on the page"))
     elif found != expected:
         report.changes.append(MonitorFinding(kind, subject, url, expected, found))
 
@@ -124,11 +159,21 @@ def _check_template(report: MonitorReport, fetch: Fetch, template: Path) -> None
 
 
 def check_uscis_updates(fetch: Fetch = fetch_url, templates_dir: Path = BLANK_FORMS_DIR) -> MonitorReport:
+    """Returns the differences between stored data and live USCIS pages."""
     report = MonitorReport(changes=[], unreadable=[], checked=0)
     for url, (label, edition) in _expected_editions().items():
         _check_page(report, fetch, parse_edition_date, "edition", label, url, edition)
     for url, last_reviewed in ADDRESS_SOURCES_LAST_REVIEWED.items():
         _check_page(report, fetch, parse_last_reviewed, "address_page", "Filing address page", url, last_reviewed)
+    _check_page(
+        report,
+        fetch,
+        parse_lockbox_chart,
+        "lockbox_chart",
+        "Family-based lockbox chart",
+        PACKET_MAILING_SOURCE_URL,
+        expected_lockbox_chart(),
+    )
     _check_page(
         report,
         fetch,
@@ -146,12 +191,14 @@ def check_uscis_updates(fetch: Fetch = fetch_url, templates_dir: Path = BLANK_FO
 KIND_GUIDANCE = {
     "edition": "New form edition. Replace the template, update field maps, and update the accepted edition and rejection dates.",
     "address_page": "The page changed. Recheck every stored lockbox address against it, then update the stored date.",
+    "lockbox_chart": "A state or address differs from the stored table. Recheck the chart, then update the lockbox table.",
     "fee_page": "The page changed. Recheck fees against Form G-1055, then update the stored date.",
     "template": "The PDF differs from the stored template, even if the edition did not change. Compare fields and text.",
 }
 
 
 def render_report(report: MonitorReport) -> str:
+    """Returns the differences as a readable report."""
     lines = [f"Checked {report.checked} USCIS sources.", ""]
     if report.changes:
         lines.append("## Changes")

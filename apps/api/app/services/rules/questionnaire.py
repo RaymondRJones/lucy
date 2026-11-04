@@ -1,10 +1,11 @@
+"""Rules that evaluate form questionnaires."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 ValueIsAnswered = Callable[[Any], bool]
 RiskMatcher = Callable[[Any, Any], bool]

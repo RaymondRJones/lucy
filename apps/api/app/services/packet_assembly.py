@@ -1,32 +1,34 @@
+"""Assembles forms and evidence into one filing packet."""
+
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+import json
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Any
 from uuid import UUID
 
-from pypdf import PdfReader, PdfWriter
+from pypdf import PageObject, PdfReader, PdfWriter
 from pypdf.errors import PyPdfError
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 from sqlmodel import Session, select
 
 from app.content.fee_schedule import G1450_FORM_FEES
-from app.content.packet_mailing import mailing_recommendation_for_location
+from app.content.packet_mailing import LOCKBOX_ADDRESS_CAVEAT, mailing_recommendation_for_location
 from app.content.packet_ordering import (
     I130_REPEATED_EVIDENCE_CODES,
     I130_SECTION_UPLOAD_CODES,
     I131_SECTION_UPLOAD_CODES,
-    I485_SECTION_UPLOAD_CODES,
     I485_PACKET_EXCLUDED_UPLOAD_CODES,
     I485_PACKET_GENERATED_FORMS,
     I485_PACKET_PAYMENT_CHECKLIST_ORDER,
     I485_PACKET_PAYMENT_UPLOAD_CODES,
     I485_PACKET_UPLOAD_ORDER,
+    I485_SECTION_UPLOAD_CODES,
     I765_SECTION_UPLOAD_CODES,
     I864_SECTION_UPLOAD_CODES,
     PACKET_ASSEMBLY_GUIDANCE_SOURCES,
@@ -34,7 +36,7 @@ from app.content.packet_ordering import (
     PACKET_OUTLINE_SOURCE_PATH,
 )
 from app.core.config import settings
-from app.models.entities import CaseChecklistItem, UploadedDocument
+from app.models.entities import CaseChecklistItem, UploadedDocument, utcnow
 from app.services.checklist import generate_checklist, get_checklist
 from app.services.cover_letter import generate_cover_letter_pdf, generate_section_index_pdf
 from app.services.family_pdf import generate_g1145_pdf
@@ -44,7 +46,7 @@ from app.services.g1450 import generate_case_g1450_packet_from_payload, payable_
 from app.services.g1650 import generate_case_g1650_packet_from_payload
 from app.services.i485_pdf import generate_i485_pdf
 from app.services.intake import derive_case_facts, get_merged_case_intake
-
+from app.services.prescreen import get_prescreen_state
 
 PACKET_OUTPUT_DIR = settings.generated_dir
 DEFAULT_PACKET_FORMS = I485_PACKET_GENERATED_FORMS
@@ -218,22 +220,26 @@ def _skipped_entry(
     }
 
 
-def _append_pdf_pages(writer: PdfWriter, path: Path) -> int:
+def _staged_pdf_pages(path: Path) -> list[PageObject]:
     reader = PdfReader(path)
     if reader.is_encrypted:
         try:
             reader.decrypt("")
         except Exception as exc:
             raise ValueError("PDF is encrypted and could not be opened") from exc
-    page_count = len(reader.pages)
-    if page_count == 0:
+    if len(reader.pages) == 0:
         raise ValueError("PDF has no pages")
     staged_writer = PdfWriter()
     for page in reader.pages:
         staged_writer.add_page(page)
-    for page in staged_writer.pages:
+    return list(staged_writer.pages)
+
+
+def _append_pdf_pages(writer: PdfWriter, path: Path) -> int:
+    pages = _staged_pdf_pages(path)
+    for page in pages:
         writer.add_page(page)
-    return page_count
+    return len(pages)
 
 
 def _normal_appearance(widget: DictionaryObject) -> Any | None:
@@ -324,21 +330,10 @@ def _flatten_form_fields(writer: PdfWriter) -> int:
 
 
 def _insert_pdf_pages(writer: PdfWriter, path: Path, page_index: int) -> int:
-    reader = PdfReader(path)
-    if reader.is_encrypted:
-        try:
-            reader.decrypt("")
-        except Exception as exc:
-            raise ValueError("PDF is encrypted and could not be opened") from exc
-    page_count = len(reader.pages)
-    if page_count == 0:
-        raise ValueError("PDF has no pages")
-    staged_writer = PdfWriter()
-    for page in reader.pages:
-        staged_writer.add_page(page)
-    for offset, page in enumerate(staged_writer.pages):
+    pages = _staged_pdf_pages(path)
+    for offset, page in enumerate(pages):
         writer.insert_page(page, page_index + offset)
-    return page_count
+    return len(pages)
 
 
 def _normalize_pdf_for_merge(source_path: Path, output_dir: Path, upload_id: UUID) -> Path:
@@ -375,10 +370,6 @@ def _append_upload_pdf_pages(writer: PdfWriter, path: Path, output_dir: Path, up
 
 def _relevant_form_warnings(label: str, warnings: list[str]) -> list[str]:
     return [f"{label}: {warning}" for warning in warnings if warning not in GENERIC_FORM_WARNINGS]
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def _write_manifest(
@@ -574,6 +565,45 @@ def _selected_i485_payment_codes(
     return selected_codes, skipped_codes
 
 
+def _append_payment_documents(
+    *,
+    form_key: str,
+    included_documents: list[dict[str, Any]],
+    payment_form: str,
+    payment_paths: list[tuple[str, Path]],
+    skipped_documents: list[dict[str, Any]],
+    writer: PdfWriter,
+) -> None:
+    payment_order = {code: index for index, code in enumerate(I485_PACKET_PAYMENT_CHECKLIST_ORDER)}
+    for code, path in sorted(payment_paths, key=lambda item: payment_order.get(item[0], 999)):
+        try:
+            page_count = _append_pdf_pages(writer, path)
+        except Exception as exc:  # noqa: BLE001 - reported as a skipped document; the file may be user-supplied
+            skipped_documents.append(
+                _skipped_entry(
+                    label=_payment_label(code, payment_form),
+                    reason=f"Could not read payment PDF: {exc}",
+                    source_type=PAYMENT_SOURCE_TYPE,
+                    section="Payment",
+                    form_key=form_key,
+                    checklist_item_code=code,
+                    path=path,
+                )
+            )
+            continue
+        included_documents.append(
+            _document_entry(
+                label=_payment_label(code, payment_form),
+                path=path,
+                source_type=PAYMENT_SOURCE_TYPE,
+                section="Payment",
+                form_key=form_key,
+                checklist_item_code=code,
+                page_count=page_count,
+            )
+        )
+
+
 def _append_payment_forms(
     *,
     writer: PdfWriter,
@@ -600,7 +630,7 @@ def _append_payment_forms(
         skipped_documents.append(
             _skipped_entry(
                 label=f"Form {payment_form} payment for {code}",
-                reason="Payment form is not part of the I-485 packet payment set or is not applicable to this case.",
+                reason=PAYMENT_NOT_IN_SET_SKIP_REASON,
                 source_type=PAYMENT_SOURCE_TYPE,
                 section="Payment",
                 form_key=form_key,
@@ -618,10 +648,7 @@ def _append_payment_forms(
             skipped_documents.append(
                 _skipped_entry(
                     label=_payment_label(code, payment_form),
-                    reason=(
-                        "No fresh G-1450 or G-1650 was generated for this packet. Enter card or bank details "
-                        "in this request or upload a reviewed, signed payment PDF."
-                    ),
+                    reason=NO_PAYMENT_SKIP_REASON,
                     source_type=PAYMENT_SOURCE_TYPE,
                     section="Payment",
                     form_key=form_key,
@@ -660,34 +687,14 @@ def _append_payment_forms(
         if result.checklist_code in selected_codes
     ]
 
-    payment_order = {code: index for index, code in enumerate(I485_PACKET_PAYMENT_CHECKLIST_ORDER)}
-    for code, path in sorted(payment_paths, key=lambda item: payment_order.get(item[0], 999)):
-        try:
-            page_count = _append_pdf_pages(writer, path)
-        except Exception as exc:  # noqa: BLE001 - reported as a skipped document; the file may be user-supplied
-            skipped_documents.append(
-                _skipped_entry(
-                    label=_payment_label(code, payment_form),
-                    reason=f"Could not read payment PDF: {exc}",
-                    source_type=PAYMENT_SOURCE_TYPE,
-                    section="Payment",
-                    form_key=form_key,
-                    checklist_item_code=code,
-                    path=path,
-                )
-            )
-            continue
-        included_documents.append(
-            _document_entry(
-                label=_payment_label(code, payment_form),
-                path=path,
-                source_type=PAYMENT_SOURCE_TYPE,
-                section="Payment",
-                form_key=form_key,
-                checklist_item_code=code,
-                page_count=page_count,
-            )
-        )
+    _append_payment_documents(
+        form_key=form_key,
+        included_documents=included_documents,
+        payment_form=payment_form,
+        payment_paths=payment_paths,
+        skipped_documents=skipped_documents,
+        writer=writer,
+    )
 
 
 def _upload_sort_key(upload: UploadedDocument) -> tuple[int, datetime]:
@@ -706,11 +713,13 @@ def _upload_exclusion_reason(
 ) -> str | None:
     code = upload.checklist_item_code or ""
     if code in (generated_form_upload_codes or set()):
-        return "Generated form is already included in this packet; uploaded form PDFs are skipped to avoid duplicate forms."
+        return DUPLICATE_FORM_SKIP_REASON
+    if code == "medical_exam_supporting_records":
+        return CIVIL_SURGEON_RECORDS_SKIP_REASON
     if code in I485_PACKET_EXCLUDED_UPLOAD_CODES and not (concurrent_i130 and code in I130_SECTION_UPLOAD_CODES):
-        return "Excluded from this compilation because the packet is centered on I-485, not I-130/I-130A petition materials."
+        return PETITION_MATERIALS_SKIP_REASON
     if not explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
-        return "Upload is not mapped to the USCIS-ordered I-485 packet document set."
+        return UNMAPPED_UPLOAD_SKIP_REASON
     return None
 
 
@@ -1058,6 +1067,335 @@ def _checklist_lookup(session: Session, case_id: UUID) -> dict[str, CaseChecklis
     return {item.code: item for item in items}
 
 
+FRESH_PAYMENT_SKIP_REASON = "A fresh payment form was generated for this packet, so this uploaded payment PDF was left out to avoid paying twice."
+DUPLICATE_FORM_SKIP_REASON = (
+    "Generated form is already included in this packet; uploaded form PDFs are skipped to avoid duplicate forms."
+)
+CIVIL_SURGEON_RECORDS_SKIP_REASON = "Kept out of the packet because these records are for the civil surgeon."
+PETITION_MATERIALS_SKIP_REASON = (
+    "Excluded from this compilation because the packet is centered on I-485, not I-130/I-130A petition materials."
+)
+UNMAPPED_UPLOAD_SKIP_REASON = "Upload is not mapped to the USCIS-ordered I-485 packet document set."
+PAYMENT_NOT_IN_SET_SKIP_REASON = (
+    "Payment form is not part of the I-485 packet payment set or is not applicable to this case."
+)
+NO_PAYMENT_SKIP_REASON = (
+    "No fresh G-1450 or G-1650 was generated for this packet. Enter card or bank details "
+    "in this request or upload a reviewed, signed payment PDF."
+)
+DELIBERATE_SKIP_REASONS = {
+    NO_PAYMENT_SKIP_REASON,
+    FRESH_PAYMENT_SKIP_REASON,
+    DUPLICATE_FORM_SKIP_REASON,
+    CIVIL_SURGEON_RECORDS_SKIP_REASON,
+    PETITION_MATERIALS_SKIP_REASON,
+    UNMAPPED_UPLOAD_SKIP_REASON,
+    PAYMENT_NOT_IN_SET_SKIP_REASON,
+}
+
+
+@dataclass
+class _PacketBuilder:
+    """Collects a packet's documents in filing order, with what was skipped and why."""
+
+    session: Session
+    case_id: UUID
+    values: dict[str, Any]
+    output_dir: Path
+    include_generated_forms: bool
+    include_supporting_evidence: bool
+    allow_incomplete: bool
+    concurrent_i130: bool
+    form_sequence: list[str]
+    explicit_upload_selection: bool
+    checklist_by_code: dict[str, CaseChecklistItem]
+    uploads: list[UploadedDocument]
+    incomplete_uploads: list[UploadedDocument]
+    warnings: list[str]
+    writer: PdfWriter = field(default_factory=PdfWriter)
+    included_documents: list[dict[str, Any]] = field(default_factory=list)
+    skipped_documents: list[dict[str, Any]] = field(default_factory=list)
+    processed_upload_ids: set[UUID] = field(default_factory=set)
+    uploads_by_code: dict[str, list[UploadedDocument]] = field(default_factory=dict)
+    generated_form_upload_codes: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        for upload in self.uploads:
+            self.uploads_by_code.setdefault(upload.checklist_item_code or "", []).append(upload)
+        if self.include_generated_forms:
+            self.generated_form_upload_codes = GENERATED_FORM_UPLOAD_CODES | (
+                I130_GENERATED_FORM_UPLOAD_CODES if self.concurrent_i130 else set()
+            )
+
+    def append_upload(self, upload: UploadedDocument, section: str) -> None:
+        _append_upload_document(
+            writer=self.writer,
+            upload=upload,
+            section=section,
+            output_dir=self.output_dir,
+            checklist_by_code=self.checklist_by_code,
+            explicit_upload_selection=self.explicit_upload_selection,
+            generated_form_upload_codes=self.generated_form_upload_codes,
+            included_documents=self.included_documents,
+            skipped_documents=self.skipped_documents,
+            concurrent_i130=self.concurrent_i130,
+        )
+        self.processed_upload_ids.add(upload.id)
+
+    def append_uploads(self, checklist_code: str, section: str, *, duplicate: bool = False) -> None:
+        for upload in self.uploads_by_code.get(checklist_code, []):
+            if upload.id not in self.processed_upload_ids or duplicate:
+                self.append_upload(upload, section)
+
+    def append_generated_form(self, form_key: str, section: str) -> None:
+        if not self.include_generated_forms:
+            return
+        _append_generated_form_document(
+            writer=self.writer,
+            session=self.session,
+            case_id=self.case_id,
+            values=self.values,
+            form_key=form_key,
+            section=section,
+            allow_incomplete=self.allow_incomplete,
+            included_documents=self.included_documents,
+            skipped_documents=self.skipped_documents,
+            warnings=self.warnings,
+        )
+
+    def append_section_index(
+        self,
+        section: str,
+        checklist_codes: tuple[str, ...],
+        *,
+        require_items: bool = False,
+        repeated_codes: set[str] | None = None,
+    ) -> None:
+        if not self.include_generated_forms or not self.include_supporting_evidence:
+            return
+        repeated_upload_ids = {
+            upload.id for code in (repeated_codes or set()) for upload in self.uploads_by_code.get(code, [])
+        }
+        item_labels = _supporting_item_labels(
+            checklist_codes=checklist_codes,
+            uploads_by_code=self.uploads_by_code,
+            processed_upload_ids=self.processed_upload_ids - repeated_upload_ids,
+            checklist_by_code=self.checklist_by_code,
+        )
+        if require_items and not item_labels:
+            return
+        _append_section_index_page(
+            writer=self.writer,
+            case_id=self.case_id,
+            output_dir=self.output_dir,
+            section=section,
+            item_labels=item_labels,
+            included_documents=self.included_documents,
+        )
+
+    def append_evidence_section(self, form_key: str, section: str, section_codes: tuple[str, ...], form_code: str) -> None:
+        self.append_generated_form(form_key, section)
+        self.append_section_index(section, tuple(code for code in section_codes if code != form_code))
+        for code in section_codes:
+            self.append_uploads(code, section)
+
+
+def _starting_packet_warnings() -> list[str]:
+    return [
+        "Review every generated form and supporting document before printing and mailing.",
+        "This packet is an organizational draft, not legal advice.",
+        (
+            "Before signing, each signer must tick their own language statement by hand: Form I-130 Part 6, "
+            "Form I-130A Part 4, Form I-765 Part 3, and Form I-864 Part 8. Lucy leaves these blank."
+        ),
+        (
+            "USCIS mail-filing guidance verified by this app on "
+            f"{PACKET_ASSEMBLY_GUIDANCE_VERIFIED_ON} places payment first, then G-1145, "
+            "then the filed form and supporting documents."
+        ),
+        (
+            "When printing, use single-sided 8.5 x 11 letter-size pages and avoid binders, folders, "
+            "tabs, sticky notes, heavy staples, folded pages, duplicate evidence copies, albums, "
+            "scrapbooks, digital media, and unnecessary original documents."
+        ),
+        f"Packet section order is based on the local outline in {PACKET_OUTLINE_SOURCE_PATH}.",
+    ]
+
+
+def _only_payment_uploads(uploads: list[UploadedDocument]) -> list[UploadedDocument]:
+    return [upload for upload in uploads if (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES]
+
+
+def _append_payment_section(
+    builder: _PacketBuilder,
+    *,
+    g1450_payment_payload: dict[str, Any] | None,
+    g1650_payment_payload: dict[str, Any] | None,
+    selected_payment_checklist_codes: list[str] | None,
+    g1450_template_path: Path | None,
+    g1650_template_path: Path | None,
+) -> None:
+    uploaded_payment_included = False
+    if g1450_payment_payload is None and g1650_payment_payload is None:
+        before_payment_upload_count = len(builder.included_documents)
+        for code in I485_PACKET_PAYMENT_UPLOAD_CODES:
+            builder.append_uploads(code, "Payment")
+        uploaded_payment_included = len(builder.included_documents) > before_payment_upload_count
+    if not builder.include_generated_forms:
+        return
+    _append_payment_forms(
+        writer=builder.writer,
+        session=builder.session,
+        case_id=builder.case_id,
+        output_dir=builder.output_dir,
+        included_documents=builder.included_documents,
+        skipped_documents=builder.skipped_documents,
+        warnings=builder.warnings,
+        payment_payload=g1650_payment_payload or g1450_payment_payload,
+        selected_payment_checklist_codes=selected_payment_checklist_codes,
+        template_path=(
+            g1650_template_path or settings.g1650_template_path
+            if g1650_payment_payload
+            else g1450_template_path or settings.g1450_template_path
+        ),
+        uploaded_payment_included=uploaded_payment_included,
+        payment_form="G-1650" if g1650_payment_payload else "G-1450",
+        concurrent_i130=builder.concurrent_i130,
+    )
+
+
+def _append_i485_section(builder: _PacketBuilder) -> None:
+    for code in I485_SECTION_UPLOAD_CODES:
+        if code == "form_i485":
+            builder.append_generated_form("i485", "I-485 section")
+            builder.append_uploads(code, "I-485 section")
+            builder.append_section_index(
+                "I-485 section",
+                tuple(
+                    evidence_code
+                    for evidence_code in I485_SECTION_UPLOAD_CODES
+                    if evidence_code not in {"beneficiary_passport_photos", "form_i485"}
+                    and not (builder.concurrent_i130 and evidence_code in I485_BONA_FIDE_CODES)
+                ),
+            )
+            continue
+        # Concurrent filings keep one copy of relationship evidence, in the I-130 section.
+        if builder.concurrent_i130 and code in I485_BONA_FIDE_CODES:
+            continue
+        builder.append_uploads(code, "I-485 section")
+
+
+def _append_i864_section(builder: _PacketBuilder) -> None:
+    builder.append_generated_form("i864", "I-864 section")
+    for code in I864_SECTION_UPLOAD_CODES:
+        builder.append_uploads(code, "I-864 section")
+        if code == "form_i864":
+            builder.append_section_index(
+                "I-864 section",
+                tuple(evidence_code for evidence_code in I864_SECTION_UPLOAD_CODES if evidence_code != "form_i864"),
+            )
+
+
+def _append_i130_section(builder: _PacketBuilder) -> None:
+    builder.append_generated_form("i130", "I-130 section")
+    builder.append_uploads("form_i130", "I-130 section")
+    builder.append_generated_form("i130a", "I-130 section")
+    builder.append_uploads("form_i130a", "I-130 section")
+    builder.append_section_index(
+        "I-130 section",
+        tuple(code for code in I130_SECTION_UPLOAD_CODES if code not in I130_GENERATED_FORM_UPLOAD_CODES),
+        repeated_codes=I130_REPEATED_EVIDENCE_CODES,
+    )
+    for code in I130_SECTION_UPLOAD_CODES:
+        if code not in I130_GENERATED_FORM_UPLOAD_CODES:
+            builder.append_uploads(code, "I-130 section", duplicate=code in I130_REPEATED_EVIDENCE_CODES)
+
+
+def _append_remaining_uploads(builder: _PacketBuilder, *, fresh_payment_requested: bool) -> None:
+    for upload in builder.uploads:
+        if upload.id in builder.processed_upload_ids:
+            continue
+        if fresh_payment_requested and (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES:
+            builder.skipped_documents.append(
+                _skipped_entry(
+                    label=_upload_label(upload, builder.checklist_by_code),
+                    reason=FRESH_PAYMENT_SKIP_REASON,
+                    source_type="upload",
+                    section="Payment",
+                    checklist_item_code=upload.checklist_item_code,
+                    upload_id=upload.id,
+                    path=_safe_upload_path(upload),
+                )
+            )
+            builder.processed_upload_ids.add(upload.id)
+            continue
+        builder.append_upload(upload, "Additional uploaded documents")
+
+
+def _report_incomplete_uploads(builder: _PacketBuilder) -> None:
+    for upload in builder.incomplete_uploads:
+        code = upload.checklist_item_code or ""
+        if code and builder.uploads_by_code.get(code):
+            continue
+        if _upload_exclusion_reason(
+            upload, builder.explicit_upload_selection, builder.generated_form_upload_codes, builder.concurrent_i130
+        ):
+            continue
+        if not builder.explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
+            continue
+        builder.skipped_documents.append(
+            _skipped_entry(
+                label=_upload_label(upload, builder.checklist_by_code),
+                reason=_incomplete_upload_reason(upload),
+                source_type="upload",
+                section=_packet_section_for_upload_code(code, builder.form_sequence),
+                checklist_item_code=upload.checklist_item_code,
+                upload_id=upload.id,
+                path=_safe_upload_path(upload),
+            )
+        )
+
+
+def _insert_cover_letter(builder: _PacketBuilder, mailing_recommendation: dict[str, Any] | None) -> None:
+    cover_letter = generate_cover_letter_pdf(
+        case_id=builder.case_id,
+        values=builder.values,
+        sections=_cover_letter_sections(builder.included_documents),
+        output_dir=builder.output_dir,
+        lockbox_address_lines=(mailing_recommendation["address_lines"] if mailing_recommendation else None),
+    )
+    document_insert_index = _cover_letter_insert_index(builder.included_documents)
+    page_insert_index = _page_index_for_document_insert(builder.included_documents, document_insert_index)
+    cover_page_count = _insert_pdf_pages(builder.writer, cover_letter.output_path, page_insert_index)
+    builder.included_documents.insert(
+        document_insert_index,
+        _document_entry(
+            label="Cover letter",
+            path=cover_letter.output_path,
+            source_type="generated_cover_letter",
+            section="Cover letter",
+            form_key="cover_letter",
+            page_count=cover_page_count,
+        ),
+    )
+    builder.warnings.extend(cover_letter.warnings)
+
+
+def _append_closing_warnings(
+    builder: _PacketBuilder, *, state_code: str | None, mailing_recommendation: dict[str, Any] | None
+) -> None:
+    if any(entry["reason"] == NO_PAYMENT_SKIP_REASON for entry in builder.skipped_documents):
+        builder.warnings.append("This packet has no payment form yet. " + NO_PAYMENT_SKIP_REASON)
+    if any(entry["reason"] not in DELIBERATE_SKIP_REASONS for entry in builder.skipped_documents):
+        builder.warnings.append("Some files were skipped because they were missing, non-PDF, or unreadable.")
+    if state_code and mailing_recommendation is None:
+        builder.warnings.append("The selected location was not recognized for USCIS lockbox routing.")
+    if mailing_recommendation is None:
+        builder.warnings.append("Select the filer location before mailing so Lucy can show USCIS lockbox guidance.")
+    else:
+        builder.warnings.append(LOCKBOX_ADDRESS_CAVEAT)
+
+
 def assemble_packet_pdf(
     *,
     session: Session,
@@ -1075,304 +1413,103 @@ def assemble_packet_pdf(
     g1650_template_path: Path | None = None,
     output_dir: Path = PACKET_OUTPUT_DIR,
 ) -> PacketAssemblyResult:
+    """Merges a case's forms and evidence into one PDF in USCIS filing order.
+
+    Args:
+        session: Database session.
+        case_id: Case to assemble.
+        state_code: Filer's state, used for lockbox guidance.
+        carrier: Mail carrier, used for lockbox guidance.
+        include_upload_ids: Only these uploads, or every confirmed upload when None.
+        include_supporting_evidence: False leaves out everything but payment uploads.
+        include_generated_forms: False leaves out generated forms and section index pages.
+        allow_incomplete: Whether a form with missing answers can still be included.
+        g1450_payment_payload: Details for a new G-1450, which replaces uploaded payment PDFs.
+        selected_payment_checklist_codes: Fees the new payment form should cover.
+        g1450_template_path: Blank G-1450 to use instead of the configured one.
+        g1650_payment_payload: Details for a new G-1650, which takes priority over a G-1450.
+        g1650_template_path: Blank G-1650 to use instead of the configured one.
+        output_dir: Directory for the packet and its manifest.
+
+    Returns:
+        The packet's paths, page count, included and skipped documents, and warnings.
+
+    Raises:
+        ValueError: If no document other than a section index could be merged.
+    """
     values = get_merged_case_intake(session, case_id)
     facts = derive_case_facts(values)
-    checklist_by_code = _checklist_lookup(session, case_id)
-    body_writer = PdfWriter()
-    included_documents: list[dict[str, Any]] = []
-    skipped_documents: list[dict[str, Any]] = []
-    warnings = [
-        "Review every generated form and supporting document before printing and mailing.",
-        "This packet is an organizational draft, not legal advice.",
-        (
-            "USCIS mail-filing guidance verified by this app on "
-            f"{PACKET_ASSEMBLY_GUIDANCE_VERIFIED_ON} places payment first, then G-1145, "
-            "then the filed form and supporting documents."
-        ),
-        (
-            "When printing, use single-sided 8.5 x 11 letter-size pages and avoid binders, folders, "
-            "tabs, sticky notes, heavy staples, folded pages, duplicate evidence copies, albums, "
-            "scrapbooks, digital media, and unnecessary original documents."
-        ),
-        f"Packet section order is based on the local outline in {PACKET_OUTLINE_SOURCE_PATH}.",
-    ]
-
+    warnings = _starting_packet_warnings()
     output_dir.mkdir(parents=True, exist_ok=True)
     concurrent_i130 = _is_concurrent_i130(values)
-    form_sequence = _packet_form_sequence(session, case_id, facts, concurrent_i130)
     if facts.get("i130_not_filed") and not concurrent_i130:
         warnings.append(
             "The Form I-130 status is not set, so this packet leaves out Forms I-130 and I-130A and treats the "
             "petition as already filed. Answer the prescreen I-130 question if it has not been filed."
         )
-    explicit_upload_selection = include_upload_ids is not None
+    critical_flags = [
+        flag["title"] for flag in get_prescreen_state(session, case_id)["evaluation"]["flags"] if flag["severity"] == "critical"
+    ]
+    if critical_flags:
+        warnings.append(
+            "Prescreen found issues that need legal review, so treat this packet as a draft: " + "; ".join(critical_flags)
+        )
     uploads = sorted(_confirmed_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
     incomplete_uploads = sorted(_incomplete_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
     if not include_supporting_evidence:
-        uploads = [
-            upload
-            for upload in uploads
-            if (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES
-        ]
-        incomplete_uploads = [
-            upload
-            for upload in incomplete_uploads
-            if (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES
-        ]
+        uploads = _only_payment_uploads(uploads)
+        incomplete_uploads = _only_payment_uploads(incomplete_uploads)
         warnings.append("Supporting evidence uploads were intentionally excluded from this forms-only packet.")
-    uploads_by_code: dict[str, list[UploadedDocument]] = {}
-    for upload in uploads:
-        uploads_by_code.setdefault(upload.checklist_item_code or "", []).append(upload)
-    processed_upload_ids: set[UUID] = set()
-    generated_form_upload_codes = (
-        GENERATED_FORM_UPLOAD_CODES | (I130_GENERATED_FORM_UPLOAD_CODES if concurrent_i130 else set())
-        if include_generated_forms
-        else set()
+    builder = _PacketBuilder(
+        session=session,
+        case_id=case_id,
+        values=values,
+        output_dir=output_dir,
+        include_generated_forms=include_generated_forms,
+        include_supporting_evidence=include_supporting_evidence,
+        allow_incomplete=allow_incomplete,
+        concurrent_i130=concurrent_i130,
+        form_sequence=_packet_form_sequence(session, case_id, facts, concurrent_i130),
+        explicit_upload_selection=include_upload_ids is not None,
+        checklist_by_code=_checklist_lookup(session, case_id),
+        uploads=uploads,
+        incomplete_uploads=incomplete_uploads,
+        warnings=warnings,
     )
 
-    def append_uploads(checklist_code: str, section: str, *, duplicate: bool = False) -> None:
-        for upload in uploads_by_code.get(checklist_code, []):
-            if upload.id in processed_upload_ids and not duplicate:
-                continue
-            _append_upload_document(
-                writer=body_writer,
-                upload=upload,
-                section=section,
-                output_dir=output_dir,
-                checklist_by_code=checklist_by_code,
-                explicit_upload_selection=explicit_upload_selection,
-                generated_form_upload_codes=generated_form_upload_codes,
-                included_documents=included_documents,
-                skipped_documents=skipped_documents,
-                concurrent_i130=concurrent_i130,
-            )
-            processed_upload_ids.add(upload.id)
-
-    def append_generated_form(form_key: str, section: str) -> None:
-        if not include_generated_forms:
-            return
-        _append_generated_form_document(
-            writer=body_writer,
-            session=session,
-            case_id=case_id,
-            values=values,
-            form_key=form_key,
-            section=section,
-            allow_incomplete=allow_incomplete,
-            included_documents=included_documents,
-            skipped_documents=skipped_documents,
-            warnings=warnings,
-        )
-
-    def append_section_index(
-        section: str,
-        checklist_codes: tuple[str, ...],
-        *,
-        require_items: bool = False,
-        repeated_codes: set[str] | None = None,
-    ) -> None:
-        if not include_generated_forms or not include_supporting_evidence:
-            return
-        item_labels = _supporting_item_labels(
-            checklist_codes=checklist_codes,
-            uploads_by_code=uploads_by_code,
-            processed_upload_ids={
-                upload_id
-                for upload_id in processed_upload_ids
-                if not any(
-                    upload.id == upload_id for code in (repeated_codes or set()) for upload in uploads_by_code.get(code, [])
-                )
-            },
-            checklist_by_code=checklist_by_code,
-        )
-        if require_items and not item_labels:
-            return
-        _append_section_index_page(
-            writer=body_writer,
-            case_id=case_id,
-            output_dir=output_dir,
-            section=section,
-            item_labels=item_labels,
-            included_documents=included_documents,
-        )
-
-    uploaded_payment_included = False
-    if g1450_payment_payload is None and g1650_payment_payload is None:
-        before_payment_upload_count = len(included_documents)
-        for code in I485_PACKET_PAYMENT_UPLOAD_CODES:
-            append_uploads(code, "Payment")
-        uploaded_payment_included = len(included_documents) > before_payment_upload_count
-
-    if include_generated_forms:
-        _append_payment_forms(
-            writer=body_writer,
-            session=session,
-            case_id=case_id,
-            output_dir=output_dir,
-            included_documents=included_documents,
-            skipped_documents=skipped_documents,
-            warnings=warnings,
-            payment_payload=g1650_payment_payload or g1450_payment_payload,
-            selected_payment_checklist_codes=selected_payment_checklist_codes,
-            template_path=(
-                g1650_template_path or settings.g1650_template_path
-                if g1650_payment_payload
-                else g1450_template_path or settings.g1450_template_path
-            ),
-            uploaded_payment_included=uploaded_payment_included,
-            payment_form="G-1650" if g1650_payment_payload else "G-1450",
-            concurrent_i130=concurrent_i130,
-        )
-
-    append_generated_form("g1145", "Form G-1145")
-
-    for code in I485_SECTION_UPLOAD_CODES:
-        if code == "form_i485":
-            append_generated_form("i485", "I-485 section")
-            append_uploads(code, "I-485 section")
-            append_section_index(
-                "I-485 section",
-                tuple(
-                    evidence_code
-                    for evidence_code in I485_SECTION_UPLOAD_CODES
-                    if evidence_code not in {"beneficiary_passport_photos", "form_i485"}
-                    and not (concurrent_i130 and evidence_code in I485_BONA_FIDE_CODES)
-                ),
-            )
-            continue
-        # Concurrent filings keep one copy of relationship evidence, in the I-130 section.
-        if concurrent_i130 and code in I485_BONA_FIDE_CODES:
-            continue
-        append_uploads(code, "I-485 section")
-
-    append_generated_form("i864", "I-864 section")
-    for code in I864_SECTION_UPLOAD_CODES:
-        append_uploads(code, "I-864 section")
-        if code == "form_i864":
-            append_section_index(
-                "I-864 section",
-                tuple(evidence_code for evidence_code in I864_SECTION_UPLOAD_CODES if evidence_code != "form_i864"),
-            )
-
-    append_section_index("I-693 medical section", ("medical_exam_i693",), require_items=True)
-    append_uploads("medical_exam_i693", "I-693 medical section")
-
-    if "i765" in form_sequence:
-        append_generated_form("i765", "I-765 section")
-        append_section_index(
-            "I-765 section",
-            tuple(evidence_code for evidence_code in I765_SECTION_UPLOAD_CODES if evidence_code != "form_i765"),
-        )
-        for code in I765_SECTION_UPLOAD_CODES:
-            append_uploads(code, "I-765 section")
-
-    if "i131" in form_sequence:
-        append_generated_form("i131", "I-131 section")
-        append_section_index(
-            "I-131 section",
-            tuple(evidence_code for evidence_code in I131_SECTION_UPLOAD_CODES if evidence_code != "form_i131"),
-        )
-        for code in I131_SECTION_UPLOAD_CODES:
-            append_uploads(code, "I-131 section")
-
+    _append_payment_section(
+        builder,
+        g1450_payment_payload=g1450_payment_payload,
+        g1650_payment_payload=g1650_payment_payload,
+        selected_payment_checklist_codes=selected_payment_checklist_codes,
+        g1450_template_path=g1450_template_path,
+        g1650_template_path=g1650_template_path,
+    )
+    builder.append_generated_form("g1145", "Form G-1145")
+    _append_i485_section(builder)
+    _append_i864_section(builder)
+    builder.append_section_index("I-693 medical section", ("medical_exam_i693",), require_items=True)
+    builder.append_uploads("medical_exam_i693", "I-693 medical section")
+    if "i765" in builder.form_sequence:
+        builder.append_evidence_section("i765", "I-765 section", I765_SECTION_UPLOAD_CODES, "form_i765")
+    if "i131" in builder.form_sequence:
+        builder.append_evidence_section("i131", "I-131 section", I131_SECTION_UPLOAD_CODES, "form_i131")
     if concurrent_i130:
-        append_generated_form("i130", "I-130 section")
-        append_uploads("form_i130", "I-130 section")
-        append_generated_form("i130a", "I-130 section")
-        append_uploads("form_i130a", "I-130 section")
-        append_section_index(
-            "I-130 section",
-            tuple(code for code in I130_SECTION_UPLOAD_CODES if code not in I130_GENERATED_FORM_UPLOAD_CODES),
-            repeated_codes=I130_REPEATED_EVIDENCE_CODES,
-        )
-        for code in I130_SECTION_UPLOAD_CODES:
-            if code not in I130_GENERATED_FORM_UPLOAD_CODES:
-                append_uploads(code, "I-130 section", duplicate=code in I130_REPEATED_EVIDENCE_CODES)
+        _append_i130_section(builder)
+    _append_remaining_uploads(
+        builder, fresh_payment_requested=g1450_payment_payload is not None or g1650_payment_payload is not None
+    )
+    _report_incomplete_uploads(builder)
 
-    fresh_payment_requested = g1450_payment_payload is not None or g1650_payment_payload is not None
-    for upload in uploads:
-        if upload.id in processed_upload_ids:
-            continue
-        if fresh_payment_requested and (upload.checklist_item_code or "") in I485_PACKET_PAYMENT_UPLOAD_CODES:
-            skipped_documents.append(
-                _skipped_entry(
-                    label=_upload_label(upload, checklist_by_code),
-                    reason="A fresh payment form was generated for this packet, so this uploaded payment PDF was left out to avoid paying twice.",
-                    source_type="upload",
-                    section="Payment",
-                    checklist_item_code=upload.checklist_item_code,
-                    upload_id=upload.id,
-                    path=_safe_upload_path(upload),
-                )
-            )
-            processed_upload_ids.add(upload.id)
-            continue
-        _append_upload_document(
-            writer=body_writer,
-            upload=upload,
-            section="Additional uploaded documents",
-            output_dir=output_dir,
-            checklist_by_code=checklist_by_code,
-            explicit_upload_selection=explicit_upload_selection,
-            generated_form_upload_codes=generated_form_upload_codes,
-            included_documents=included_documents,
-            skipped_documents=skipped_documents,
-            concurrent_i130=concurrent_i130,
-        )
-        processed_upload_ids.add(upload.id)
-
-    for upload in incomplete_uploads:
-        code = upload.checklist_item_code or ""
-        if code and uploads_by_code.get(code):
-            continue
-        if _upload_exclusion_reason(upload, explicit_upload_selection, generated_form_upload_codes, concurrent_i130):
-            continue
-        if not explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
-            continue
-        skipped_documents.append(
-            _skipped_entry(
-                label=_upload_label(upload, checklist_by_code),
-                reason=_incomplete_upload_reason(upload),
-                source_type="upload",
-                section=_packet_section_for_upload_code(code, form_sequence),
-                checklist_item_code=upload.checklist_item_code,
-                upload_id=upload.id,
-                path=_safe_upload_path(upload),
-            )
-        )
-
+    included_documents = builder.included_documents
     if not any(document["source_type"] != "generated_section_index" for document in included_documents):
         raise ValueError("No valid PDF pages were available to merge.")
 
     mailing_recommendation = mailing_recommendation_for_location(state_code, carrier)
-
     if include_generated_forms:
-        cover_letter = generate_cover_letter_pdf(
-            case_id=case_id,
-            values=values,
-            sections=_cover_letter_sections(included_documents),
-            output_dir=output_dir,
-            lockbox_address_lines=(
-                mailing_recommendation["address_lines"] if mailing_recommendation else None
-            ),
-        )
-        document_insert_index = _cover_letter_insert_index(included_documents)
-        page_insert_index = _page_index_for_document_insert(included_documents, document_insert_index)
-        cover_page_count = _insert_pdf_pages(body_writer, cover_letter.output_path, page_insert_index)
-        included_documents.insert(
-            document_insert_index,
-            _document_entry(
-                label="Cover letter",
-                path=cover_letter.output_path,
-                source_type="generated_cover_letter",
-                section="Cover letter",
-                form_key="cover_letter",
-                page_count=cover_page_count,
-            ),
-        )
-        warnings.extend(cover_letter.warnings)
+        _insert_cover_letter(builder, mailing_recommendation)
 
-    unprintable_fields = _flatten_form_fields(body_writer)
+    unprintable_fields = _flatten_form_fields(builder.writer)
     if unprintable_fields:
         warnings.append(
             f"{unprintable_fields} filled form field(s) in uploaded PDFs have no saved appearance and will not print. "
@@ -1380,32 +1517,23 @@ def assemble_packet_pdf(
         )
     output_path = output_dir / f"{case_id}-full-packet.pdf"
     with output_path.open("wb") as handle:
-        body_writer.write(handle)
+        builder.writer.write(handle)
     manifest_path = output_dir / f"{case_id}-full-packet-manifest.json"
 
-    if skipped_documents:
-        warnings.append("Some files were skipped because they were missing, non-PDF, or unreadable.")
-
-    if state_code and mailing_recommendation is None:
-        warnings.append("The selected location was not recognized for USCIS lockbox routing.")
-    if mailing_recommendation is None:
-        warnings.append("Select the filer location before mailing so Lucy can show USCIS lockbox guidance.")
-    else:
-        warnings.append("Before mailing, verify the address on the live USCIS lockbox page.")
-
+    _append_closing_warnings(builder, state_code=state_code, mailing_recommendation=mailing_recommendation)
     unique_warnings = list(dict.fromkeys(warnings))
     total_page_count = sum(document["page_count"] for document in included_documents)
     _write_manifest(
         case_id=case_id,
         output_path=output_path,
         manifest_path=manifest_path,
-        generated_at=_utcnow(),
+        generated_at=utcnow(),
         selected_location=state_code,
         selected_carrier=carrier,
         include_supporting_evidence=include_supporting_evidence,
         total_page_count=total_page_count,
         included_documents=included_documents,
-        skipped_documents=skipped_documents,
+        skipped_documents=builder.skipped_documents,
         warnings=unique_warnings,
         mailing_recommendation=mailing_recommendation,
     )
@@ -1416,7 +1544,7 @@ def assemble_packet_pdf(
         manifest_path=manifest_path,
         total_page_count=total_page_count,
         included_documents=included_documents,
-        skipped_documents=skipped_documents,
+        skipped_documents=builder.skipped_documents,
         warnings=unique_warnings,
         mailing_recommendation=mailing_recommendation,
     )

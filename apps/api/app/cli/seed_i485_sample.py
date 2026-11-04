@@ -1,3 +1,5 @@
+"""Seeds sample I-485 answers for local development."""
+
 from __future__ import annotations
 
 import argparse

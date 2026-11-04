@@ -1,6 +1,7 @@
+"""Generates and reads a case checklist."""
+
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -11,14 +12,11 @@ from app.models.entities import (
     CaseRecord,
     CaseStatus,
     UploadedDocument,
+    utcnow,
 )
 from app.services.intake import derive_case_facts, get_merged_case_intake
 from app.services.rules.checklist import ChecklistRuleContext, ChecklistRuleEngine
 from app.services.upload_links import satisfied_checklist_codes_for_upload
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def _current_upload_counts(session: Session, case_id: UUID) -> dict[str, int]:
@@ -38,6 +36,7 @@ def _current_upload_counts(session: Session, case_id: UUID) -> dict[str, int]:
 
 
 def generate_checklist(session: Session, case_id: UUID) -> tuple[list[CaseChecklistItem], dict[str, Any]]:
+    """Builds or refreshes a case's checklist from its facts."""
     case = session.get(CaseRecord, case_id)
     if not case:
         raise ValueError("Case not found")
@@ -85,11 +84,11 @@ def generate_checklist(session: Session, case_id: UUID) -> tuple[list[CaseCheckl
         item.sort_order = decision.sort_order
         item.item_metadata = decision.metadata
         item.completion_status = decision.completion_status
-        item.updated_at = _utcnow()
+        item.updated_at = utcnow()
         created_or_updated.append(item)
 
     case.status = CaseStatus.checklist_ready.value
-    case.updated_at = _utcnow()
+    case.updated_at = utcnow()
     session.add(case)
     session.commit()
 
@@ -104,6 +103,7 @@ def generate_checklist(session: Session, case_id: UUID) -> tuple[list[CaseCheckl
 
 
 def get_checklist(session: Session, case_id: UUID) -> tuple[list[CaseChecklistItem], dict[str, Any]]:
+    """Returns a case's checklist in order."""
     items = list(
         session.exec(
             select(CaseChecklistItem)

@@ -1,3 +1,5 @@
+"""Runs per-form filing validators and summarizes their results."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -5,6 +7,7 @@ from uuid import UUID
 
 from sqlmodel import Session
 
+from app.models.entities import utcnow
 from app.services.filing_validators.family import I130AFilingValidator, I130FilingValidator
 from app.services.filing_validators.g1145 import G1145FilingValidator
 from app.services.filing_validators.i131 import I131FilingValidator
@@ -15,20 +18,19 @@ from app.services.filing_validators.shared import (
     DEFAULT_VALIDATION_SCOPE,
     ROADMAP_FORM_CODES,
     SUPPORTED_FORM_CODES,
-    _default_template_path,
-    _form_label,
-    _source_payload,
-    _status_for_counts,
-    _template_metadata,
-    _unsupported_form_result,
-    _utcnow,
-    derive_case_facts,
-    get_merged_case_intake,
+    default_template_path,
+    form_label,
+    source_payload,
+    status_for_counts,
+    template_metadata,
+    unsupported_form_result,
 )
+from app.services.intake import derive_case_facts, get_merged_case_intake
 from app.services.rules.filing_validation import FilingValidationContext, FilingValidationRuleEngine, FormValidator
 
 
 def build_validation_roadmap(requested_form_codes: list[str]) -> list[dict[str, Any]]:
+    """Returns the status of each requested form's validator."""
     roadmap: list[dict[str, Any]] = [
         {
             "form_code": "form_i485",
@@ -93,10 +95,11 @@ def build_validation_roadmap(requested_form_codes: list[str]) -> list[dict[str, 
 
 
 def get_filing_validation_capabilities() -> dict[str, Any]:
+    """Returns which forms can be validated and how."""
     forms: list[dict[str, Any]] = []
     for roadmap_item in build_validation_roadmap([]):
         form_code = roadmap_item["form_code"]
-        template_path = _default_template_path(form_code)
+        template_path = default_template_path(form_code)
         template_info: dict[str, Any] = {
             "field_count": 0,
             "page_count": 0,
@@ -104,11 +107,11 @@ def get_filing_validation_capabilities() -> dict[str, Any]:
             "error": None,
         }
         if template_path:
-            template_info = _template_metadata(template_path)
+            template_info = template_metadata(template_path)
         forms.append(
             {
                 "form_code": form_code,
-                "label": _form_label(form_code),
+                "label": form_label(form_code),
                 "status": roadmap_item["status"],
                 "next_step": roadmap_item["next_step"],
                 "default_template_path": str(template_path) if template_path else None,
@@ -116,7 +119,7 @@ def get_filing_validation_capabilities() -> dict[str, Any]:
                 "template_page_count": template_info["page_count"] if template_path else 0,
                 "template_sha256": template_info["sha256"] if template_path else None,
                 "template_error": template_info["error"],
-                "source": _source_payload(form_code),
+                "source": source_payload(form_code),
             }
         )
     return {
@@ -145,6 +148,7 @@ def validate_case_filings(
     form_codes: list[str] | None = None,
     template_paths: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    """Validates a case's forms and returns a report with an overall status."""
     requested_form_codes = form_codes or list(DEFAULT_VALIDATION_SCOPE)
     templates = template_paths or {}
     results = FilingValidationRuleEngine(_filing_validation_registry()).evaluate(
@@ -152,8 +156,8 @@ def validate_case_filings(
             session=session,
             case_id=case_id,
             template_paths=templates,
-            default_template_path=_default_template_path,
-            unsupported_form_result=_unsupported_form_result,
+            default_template_path=default_template_path,
+            unsupported_form_result=unsupported_form_result,
         ),
         requested_form_codes,
     )
@@ -165,7 +169,7 @@ def validate_case_filings(
     }
     facts = derive_case_facts(get_merged_case_intake(session, case_id))
     summary = {
-        "status": _status_for_counts(issue_counts),
+        "status": status_for_counts(issue_counts),
         "issue_counts": issue_counts,
         "form_count": len(results),
         "forms_passed": sum(1 for result in results if result["status"] == "passed"),
@@ -173,7 +177,7 @@ def validate_case_filings(
     }
     return {
         "case_id": str(case_id),
-        "generated_at": _utcnow(),
+        "generated_at": utcnow(),
         "validation_scope": requested_form_codes,
         "summary": summary,
         "assumptions": {

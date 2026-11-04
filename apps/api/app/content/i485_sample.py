@@ -1,9 +1,10 @@
+"""Sample I-485 answers for seeds and tests."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from app.content.i485_questionnaire import all_i485_questions
-
 
 SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "beneficiary_a_number": "",
@@ -94,7 +95,17 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
             "to": "",
         }
     ],
-    "beneficiary_foreign_employer_or_school": "Universidad de Ejemplo",
+    "beneficiary_foreign_employer_or_school": [
+        {
+            "name": "Universidad de Ejemplo",
+            "occupation": "Student",
+            "line1": "12 Avenida Central",
+            "city": "Bogota",
+            "country": "Colombia",
+            "from": "2018-02-01",
+            "to": "2022-12-15",
+        }
+    ],
     "parent1_last_name": "Sample",
     "parent1_first_name": "Rosa",
     "parent1_middle_name": "Elena",

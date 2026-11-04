@@ -1,7 +1,10 @@
+"""Helpers shared by the per-form filing validators."""
+
 from __future__ import annotations
 
+from collections.abc import Iterator
+from datetime import date
 import hashlib
-from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -19,7 +22,6 @@ from app.content.family_questionnaires import (
     I130A_QUESTIONNAIRE_VERSION,
     all_i130_questions,
     all_i130a_questions,
-    required_family_questions,
 )
 from app.content.i485_questionnaire import (
     I485_OFFICIAL_PDF_URL,
@@ -31,28 +33,17 @@ from app.content.i485_questionnaire import (
 )
 from app.content.i864_poverty_guidelines import (
     I864P_CONTIGUOUS_STATES_AND_TERRITORIES,
-    I864P_GUIDELINES,
     I864P_REGION_BY_STATE,
     I864P_SOURCES,
-    I864P_VERSION,
-    i864p_region_for_state,
-    i864p_required_income,
 )
 from app.content.supplemental_forms import get_supplemental_form_config
 from app.content.uscis_requirements import USCIS_REQUIREMENTS, VERIFIED_ON
 from app.models.entities import UploadedDocument
-from app.services.family_pdf import (
-    I130_CLASS_NOT_OFFERED_WARNING,
-    build_i130_pdf_field_payload,
-    build_i130a_pdf_field_payload,
-    i130_class_of_admission_not_offered,
-)
-from app.services.form_ingestion import build_form_fill_preview, get_form_case_intake, get_form_state
-from app.services.form_pdf import build_form_pdf_field_payload
-from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
-from app.services.i485_pdf import build_i485_pdf_field_payload
-from app.services.intake import derive_case_facts, get_merged_case_intake
-
+from app.services.case_facts import value_is_answered
+from app.services.form_ingestion import get_form_case_intake
+from app.services.intake import get_merged_case_intake
+from app.services.pdf_fields import US_STATE_CODES, is_us_country, normalize_us_state
+from app.services.prescreen import get_prescreen_state
 
 BLANK_DOCUMENTS_DIR = Path("blank-immigration-documents")
 DEFAULT_TEMPLATE_PATHS = {
@@ -77,23 +68,8 @@ I485_QUESTION_BY_ID = {question["id"]: question for question in all_i485_questio
 I130_QUESTION_BY_ID = {question["id"]: question for question in all_i130_questions()}
 I130A_QUESTION_BY_ID = {question["id"]: question for question in all_i130a_questions()}
 
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def _value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, list):
-        return any(_value_is_answered(entry) for entry in value)
-    if isinstance(value, dict):
-        return any(_value_is_answered(entry_value) for entry_value in value.values())
-    return True
-
-
-def _valid_positive_integer(value: Any) -> bool:
+def valid_positive_integer(value: Any) -> bool:
+    """Returns whether a value is a whole number above zero."""
     if isinstance(value, bool):
         return False
     if isinstance(value, int):
@@ -103,7 +79,8 @@ def _valid_positive_integer(value: Any) -> bool:
     return False
 
 
-def _parse_iso_date(value: Any) -> date | None:
+def parse_iso_date(value: Any) -> date | None:
+    """Returns a YYYY-MM-DD value as a date, or None if it cannot be parsed."""
     if value in (None, ""):
         return None
     try:
@@ -112,15 +89,17 @@ def _parse_iso_date(value: Any) -> date | None:
         return None
 
 
-def _subtract_years(anchor: date, years: int) -> date:
+def subtract_years(anchor: date, years: int) -> date:
+    """Returns the same calendar date the given number of years earlier."""
     try:
         return anchor.replace(year=anchor.year - years)
     except ValueError:
         return anchor.replace(year=anchor.year - years, day=28)
 
 
-def _normalize_scalar(value: Any) -> str | None:
-    if not _value_is_answered(value):
+def normalize_scalar(value: Any) -> str | None:
+    """Returns a value as comparable text, or None if it is blank."""
+    if not value_is_answered(value):
         return None
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -129,7 +108,8 @@ def _normalize_scalar(value: Any) -> str | None:
     return " ".join(str(value).strip().lower().split()) or None
 
 
-def _as_bool(value: Any) -> bool:
+def as_bool(value: Any) -> bool:
+    """Returns a yes or no style answer as a boolean."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -137,7 +117,8 @@ def _as_bool(value: Any) -> bool:
     return bool(value)
 
 
-def _as_float(value: Any) -> float | None:
+def as_float(value: Any) -> float | None:
+    """Returns a value as a float, or None if it is not a number."""
     if value in (None, ""):
         return None
     try:
@@ -146,7 +127,8 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def _as_int(value: Any) -> int | None:
+def as_int(value: Any) -> int | None:
+    """Returns a value as an integer, or None if it is not a number."""
     if value in (None, ""):
         return None
     try:
@@ -155,20 +137,23 @@ def _as_int(value: Any) -> int | None:
         return None
 
 
-def _looks_like_email(value: Any) -> bool:
-    if not _value_is_answered(value):
+def looks_like_email(value: Any) -> bool:
+    """Returns whether a value has the basic shape of an email address."""
+    if not value_is_answered(value):
         return False
     raw = str(value).strip()
     return "@" in raw and "." in raw.rsplit("@", 1)[-1]
 
 
-def _phone_digits(value: Any) -> str:
-    if not _value_is_answered(value):
+def phone_digits(value: Any) -> str:
+    """Returns only the digits of a phone number."""
+    if not value_is_answered(value):
         return ""
     return "".join(char for char in str(value) if char.isdigit())
 
 
-def _confirmed_uploads(session: Session, case_id: UUID) -> list[UploadedDocument]:
+def confirmed_uploads(session: Session, case_id: UUID) -> list[UploadedDocument]:
+    """Returns a case's confirmed uploads."""
     return list(
         session.exec(
             select(UploadedDocument).where(
@@ -179,7 +164,8 @@ def _confirmed_uploads(session: Session, case_id: UUID) -> list[UploadedDocument
     )
 
 
-def _default_template_path(form_code: str) -> Path | None:
+def default_template_path(form_code: str) -> Path | None:
+    """Returns the blank PDF found for a form code, if any."""
     default_path = DEFAULT_TEMPLATE_PATHS.get(form_code)
     if default_path and default_path.exists():
         return default_path
@@ -194,7 +180,8 @@ def _default_template_path(form_code: str) -> Path | None:
     return None
 
 
-def _sponsor_state(merged: dict[str, Any]) -> str | None:
+def resolve_sponsor_state(merged: dict[str, Any]) -> str | None:
+    """Returns the state used to look up the sponsor's income threshold."""
     for key in (
         "sponsor_state",
         "petitioner_current_state",
@@ -202,7 +189,7 @@ def _sponsor_state(merged: dict[str, Any]) -> str | None:
         "petitioner_mailing_state",
     ):
         value = merged.get(key)
-        if _value_is_answered(value):
+        if value_is_answered(value):
             return str(value).strip().upper()
     address = str(
         merged.get("petitioner_current_address")
@@ -221,7 +208,8 @@ def _sponsor_state(merged: dict[str, Any]) -> str | None:
     return None
 
 
-def _template_field_names(template_path: Path) -> tuple[set[str], str | None]:
+def inspect_template_fields(template_path: Path) -> tuple[set[str], str | None]:
+    """Returns a blank PDF's field names and any error from reading it."""
     if not template_path.exists():
         return set(), f"Template PDF not found: {template_path}"
     try:
@@ -238,7 +226,8 @@ def _template_field_names(template_path: Path) -> tuple[set[str], str | None]:
     return names, None
 
 
-def _template_metadata(template_path: Path) -> dict[str, Any]:
+def template_metadata(template_path: Path) -> dict[str, Any]:
+    """Returns a blank PDF's path and identifying details for a report."""
     if not template_path.exists():
         return {
             "path": str(template_path),
@@ -271,15 +260,31 @@ def _template_metadata(template_path: Path) -> dict[str, Any]:
     }
 
 
-def _intake_with_form_gaps_filled(session: Session, case_id: UUID, form_key: str) -> dict[str, Any]:
+def template_unavailable_issue(
+    form_code: str, form_label: str, template_error: str, description: str | None = None
+) -> dict[str, Any]:
+    """Returns the issue for a blank PDF that could not be inspected."""
+    return build_issue(
+        form_code=form_code,
+        severity="important",
+        code=f"{form_code}_template_unavailable",
+        title=f"{form_label} template could not be inspected",
+        description=description or f"The validator could not inspect the selected blank {form_label} PDF.",
+        source="blank_pdf_template",
+        actual=template_error,
+    )
+
+
+def intake_with_form_gaps_filled(session: Session, case_id: UUID, form_key: str) -> dict[str, Any]:
+    """Returns intake facts, adding only those a form can find in saved I-485 answers."""
     # Import and generation can find facts only in saved I-485 answers, so those must not read as missing.
     # Facts already in intake stay as they are, so the cross-form checks can still compare them with the I-485.
     merged = get_merged_case_intake(session, case_id)
     form_intake = get_form_case_intake(session, case_id, form_key)
-    return {**merged, **{key: value for key, value in form_intake.items() if not _value_is_answered(merged.get(key))}}
+    return {**merged, **{key: value for key, value in form_intake.items() if not value_is_answered(merged.get(key))}}
 
 
-def _issue(
+def build_issue(
     *,
     form_code: str,
     severity: str,
@@ -294,6 +299,7 @@ def _issue(
     expected: Any = None,
     actual: Any = None,
 ) -> dict[str, Any]:
+    """Returns one validation issue in the shape reports use."""
     return {
         "form_code": form_code,
         "severity": severity,
@@ -310,7 +316,7 @@ def _issue(
     }
 
 
-def _append_cross_form_mismatch_issues(
+def append_cross_form_mismatch_issues(
     *,
     issues: list[dict[str, Any]],
     form_code: str,
@@ -319,21 +325,22 @@ def _append_cross_form_mismatch_issues(
     other_values: dict[str, Any],
     field_labels: dict[str, str],
 ) -> None:
+    """Adds an issue for each fact that differs between this form and the I-485."""
     for field_key, label in field_labels.items():
         current_value = current_values.get(field_key)
         other_value = other_values.get(field_key)
-        if not _value_is_answered(current_value) or not _value_is_answered(other_value):
+        if not value_is_answered(current_value) or not value_is_answered(other_value):
             continue
-        if _normalize_scalar(current_value) == _normalize_scalar(other_value):
+        if normalize_scalar(current_value) == normalize_scalar(other_value):
             continue
         issues.append(
-            _issue(
+            build_issue(
                 form_code=form_code,
                 severity="important",
                 code=f"{form_code}_{field_key}_cross_form_mismatch",
-                title=f"{_form_label(form_code)} fact differs from {other_form_label}",
+                title=f"{form_label(form_code)} fact differs from {other_form_label}",
                 description=(
-                    f"{label} is saved differently for {_form_label(form_code)} review than in "
+                    f"{label} is saved differently for {form_label(form_code)} review than in "
                     f"{other_form_label}. Confirm which value is correct before treating the packet as ready."
                 ),
                 source="record_consistency",
@@ -344,7 +351,72 @@ def _append_cross_form_mismatch_issues(
         )
 
 
-def _append_uploaded_document_mismatch_issues(
+def append_prescreen_critical_issues(
+    *,
+    session: Session,
+    case_id: UUID,
+    issues: list[dict[str, Any]],
+    form_code: str,
+) -> None:
+    """Adds a blocking issue for each critical prescreen flag."""
+    for flag in get_prescreen_state(session, case_id)["evaluation"]["flags"]:
+        if flag["severity"] == "critical":
+            issues.append(
+                build_issue(
+                    form_code=form_code,
+                    severity="blocking",
+                    code=f"{form_code}_prescreen_{flag['code']}",
+                    title=flag["title"],
+                    description=f"{flag['description']} Review the prescreen page before relying on this form.",
+                    source="record_consistency",
+                    question_id=flag.get("question_id"),
+                )
+            )
+
+
+def _state_country_pairs(answers: dict[str, Any]) -> Iterator[tuple[str, Any, Any]]:
+    for key, value in answers.items():
+        if key.endswith("_country"):
+            yield key, answers.get(f"{key.removesuffix('_country')}_state"), value
+        for entry in value if isinstance(value, list) else [value]:
+            if isinstance(entry, dict):
+                yield key, entry.get("state"), entry.get("country")
+
+
+def append_state_country_mismatch_issues(
+    *,
+    issues: list[dict[str, Any]],
+    form_code: str,
+    answers: dict[str, Any],
+) -> None:
+    """Adds an issue for each answer that pairs a U.S. state with a foreign country."""
+    mismatched = {
+        key: (state, country)
+        for key, state, country in _state_country_pairs(answers)
+        if value_is_answered(state)
+        and value_is_answered(country)
+        and normalize_us_state(state) in US_STATE_CODES
+        and not is_us_country(country)
+    }
+    for key, (state, country) in mismatched.items():
+        issues.append(
+            build_issue(
+                form_code=form_code,
+                severity="important",
+                code=f"{form_code}_{key}_state_country_mismatch",
+                title="Address pairs a U.S. state with a foreign country",
+                description=(
+                    f"{key} has state {state} and country {country}. "
+                    "Confirm the address before treating the packet as ready."
+                ),
+                source="record_consistency",
+                field_key=key,
+                actual=f"{state}, {country}",
+            )
+        )
+
+
+def append_uploaded_document_mismatch_issues(
     *,
     issues: list[dict[str, Any]],
     form_code: str,
@@ -353,6 +425,7 @@ def _append_uploaded_document_mismatch_issues(
     current_values: dict[str, Any],
     field_labels: dict[str, str],
 ) -> None:
+    """Adds an issue for each fact that differs from an uploaded form's extracted data."""
     for upload in uploads:
         if upload.checklist_item_code not in checklist_codes:
             continue
@@ -362,12 +435,12 @@ def _append_uploaded_document_mismatch_issues(
         for field_key, label in field_labels.items():
             current_value = current_values.get(field_key)
             extracted_value = extracted_fields.get(field_key)
-            if not _value_is_answered(current_value) or not _value_is_answered(extracted_value):
+            if not value_is_answered(current_value) or not value_is_answered(extracted_value):
                 continue
-            if _normalize_scalar(current_value) == _normalize_scalar(extracted_value):
+            if normalize_scalar(current_value) == normalize_scalar(extracted_value):
                 continue
             issues.append(
-                _issue(
+                build_issue(
                     form_code=form_code,
                     severity="important",
                     code=f"{form_code}_{field_key}_uploaded_document_mismatch",
@@ -384,7 +457,7 @@ def _append_uploaded_document_mismatch_issues(
             )
 
 
-def _append_missing_required_question_issues(
+def append_missing_required_question_issues(
     *,
     issues: list[dict[str, Any]],
     form_code: str,
@@ -393,12 +466,13 @@ def _append_missing_required_question_issues(
     title: str,
     description_suffix: str,
 ) -> None:
+    """Adds a blocking issue for each required question without an answer."""
     for question in questions:
         question_id = question["id"]
-        if _value_is_answered(values.get(question_id)):
+        if value_is_answered(values.get(question_id)):
             continue
         issues.append(
-            _issue(
+            build_issue(
                 form_code=form_code,
                 severity="blocking",
                 code=f"{form_code}_{question_id}_missing_required",
@@ -412,7 +486,8 @@ def _append_missing_required_question_issues(
         )
 
 
-def _source_payload(form_code: str) -> dict[str, Any]:
+def source_payload(form_code: str) -> dict[str, Any]:
+    """Returns source details for a requirement in the shape reports use."""
     requirement = REQUIREMENTS_BY_CODE.get(form_code, {})
     if form_code == "form_i485":
         return {
@@ -479,11 +554,13 @@ def _source_payload(form_code: str) -> dict[str, Any]:
     }
 
 
-def _form_label(form_code: str) -> str:
+def form_label(form_code: str) -> str:
+    """Returns a form code's display name."""
     return str(REQUIREMENTS_BY_CODE.get(form_code, {}).get("label") or form_code)
 
 
-def _status_for_counts(counts: dict[str, int]) -> str:
+def status_for_counts(counts: dict[str, int]) -> str:
+    """Returns a form's status from its issue counts."""
     if counts["blocking"]:
         return "blocked"
     if counts["important"]:
@@ -493,7 +570,7 @@ def _status_for_counts(counts: dict[str, int]) -> str:
     return "passed"
 
 
-def _form_result(
+def form_result(
     *,
     form_code: str,
     issues: list[dict[str, Any]],
@@ -503,6 +580,7 @@ def _form_result(
     template_path: Path | None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Returns a validator's report for one form."""
     issue_counts = {
         "blocking": sum(1 for issue in issues if issue["severity"] == "blocking"),
         "important": sum(1 for issue in issues if issue["severity"] == "important"),
@@ -510,34 +588,35 @@ def _form_result(
     }
     return {
         "form_code": form_code,
-        "label": _form_label(form_code),
-        "status": _status_for_counts(issue_counts),
+        "label": form_label(form_code),
+        "status": status_for_counts(issue_counts),
         "issue_counts": issue_counts,
         "field_count": field_count,
         "required_field_count": required_field_count,
         "missing_required_count": sum(1 for issue in issues if issue["code"].endswith("_missing_required")),
         "template_field_count": template_field_count,
         "template_path": str(template_path) if template_path else None,
-        "source": _source_payload(form_code),
+        "source": source_payload(form_code),
         "metadata": metadata or {},
         "issues": issues,
     }
 
 
-def _unsupported_form_result(form_code: str, template_path: Path | None) -> dict[str, Any]:
+def unsupported_form_result(form_code: str, template_path: Path | None) -> dict[str, Any]:
+    """Returns the report for a form that has no validator yet."""
     template_field_count = 0
     template_error = None
     if template_path:
-        template_info = _template_metadata(template_path)
+        template_info = template_metadata(template_path)
         template_field_count = int(template_info["field_count"])
         template_error = template_info["error"]
 
     issues = [
-        _issue(
+        build_issue(
             form_code=form_code,
             severity="important",
             code=f"{form_code}_validator_not_implemented",
-            title=f"{_form_label(form_code)} validator is not implemented yet",
+            title=f"{form_label(form_code)} validator is not implemented yet",
             description=(
                 "The extension API can see this form code, but it does not yet have a source-backed required "
                 "field map or cross-record rules for it."
@@ -546,7 +625,7 @@ def _unsupported_form_result(form_code: str, template_path: Path | None) -> dict
             actual=template_error,
         )
     ]
-    return _form_result(
+    return form_result(
         form_code=form_code,
         issues=issues,
         field_count=0,
@@ -555,6 +634,3 @@ def _unsupported_form_result(form_code: str, template_path: Path | None) -> dict
         template_path=template_path,
         metadata={"validator_level": "roadmap_only"},
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("__")]

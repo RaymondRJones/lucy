@@ -1,7 +1,8 @@
+"""Form I-864P income thresholds."""
+
 from __future__ import annotations
 
 from typing import Literal
-
 
 I864P_VERSION = "i864p-2025"
 I864P_VERIFIED_ON = "2026-04-28"
@@ -21,7 +22,7 @@ I864P_SOURCES = [
     }
 ]
 
-I864P_REGION_BY_STATE = {
+I864P_REGION_BY_STATE: dict[str, Literal["alaska", "hawaii"]] = {
     "AK": "alaska",
     "HI": "hawaii",
 }
@@ -130,7 +131,7 @@ def i864p_region_for_state(state: str | None) -> Literal["contiguous", "alaska",
         return None
     normalized = state.strip().upper()
     if normalized in I864P_REGION_BY_STATE:
-        return I864P_REGION_BY_STATE[normalized]  # type: ignore[return-value]
+        return I864P_REGION_BY_STATE[normalized]
     if normalized in I864P_CONTIGUOUS_STATES_AND_TERRITORIES:
         return "contiguous"
     return None

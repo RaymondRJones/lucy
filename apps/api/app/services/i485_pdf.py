@@ -1,37 +1,50 @@
+"""Builds and generates the Form I-485 PDF."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import re
 import textwrap
 from typing import Any
 from uuid import UUID
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import NameObject, TextStringObject
 from sqlmodel import Session
 
 from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, normalize_class_of_admission
 from app.content.i485_questionnaire import all_i485_questions
 from app.core.config import settings
+from app.services.case_facts import value_is_answered
 from app.services.i485 import (
     build_i485_form_fill_preview,
     conditional_required_i485_question_ids,
     evaluate_i485_answers,
     get_i485_state,
 )
-
+from app.services.pdf_fields import (
+    OVERLONG_WARNING,
+    PART14_ADDITIONAL_INFO_FIELDS,
+    US_STATE_CODES,
+    add_unit_fields,
+    as_pdf_date,
+    employment_continuation_line,
+    entry_has_content,
+    field_length_warning,
+    is_us_country,
+    normalize_us_state,
+    normalized_address_for_pdf,
+    overlong_field_names,
+    set_checkbox_values,
+    set_text_values,
+    template_field_names,
+    unprintable_character_warning,
+    use_saved_appearances,
+    without_notes,
+)
 
 DEFAULT_I485_TEMPLATE_PATH = Path("blank-immigration-documents/i-485.pdf")
 DEFAULT_I485_OUTPUT_DIR = settings.generated_dir
-PART14_ADDITIONAL_INFO_FIELDS = {
-    "P14_Line2_AdditionalInfo[0]",
-    "P14_Line3_AdditionalInfo[0]",
-    "P14_Line4_AdditionalInfo[0]",
-    "P14_Line5_AdditionalInfo[0]",
-}
-PART14_ADDITIONAL_INFO_DA = "/CourierNewPS-BoldMT 7.00 Tf 0 g"
 PART14_ADDITIONAL_INFO_WRAP_WIDTH = 92
 PART14_ADDITIONAL_INFO_MAX_LINES = 10
 FAMILY_STATUS_FIELD = "Pt9Line57_HouseholdSize[0]"
@@ -46,73 +59,6 @@ SEE_PART14 = "See Part 14"
 
 QUESTION_BY_ID = {question["id"]: question for question in all_i485_questions()}
 
-US_STATE_NAME_TO_CODE = {
-    "alabama": "AL",
-    "alaska": "AK",
-    "arizona": "AZ",
-    "arkansas": "AR",
-    "california": "CA",
-    "colorado": "CO",
-    "connecticut": "CT",
-    "delaware": "DE",
-    "district of columbia": "DC",
-    "florida": "FL",
-    "georgia": "GA",
-    "hawaii": "HI",
-    "idaho": "ID",
-    "illinois": "IL",
-    "indiana": "IN",
-    "iowa": "IA",
-    "kansas": "KS",
-    "kentucky": "KY",
-    "louisiana": "LA",
-    "maine": "ME",
-    "maryland": "MD",
-    "massachusetts": "MA",
-    "michigan": "MI",
-    "minnesota": "MN",
-    "mississippi": "MS",
-    "missouri": "MO",
-    "montana": "MT",
-    "nebraska": "NE",
-    "nevada": "NV",
-    "new hampshire": "NH",
-    "new jersey": "NJ",
-    "new mexico": "NM",
-    "new york": "NY",
-    "north carolina": "NC",
-    "north dakota": "ND",
-    "ohio": "OH",
-    "oklahoma": "OK",
-    "oregon": "OR",
-    "pennsylvania": "PA",
-    "rhode island": "RI",
-    "south carolina": "SC",
-    "south dakota": "SD",
-    "tennessee": "TN",
-    "texas": "TX",
-    "utah": "UT",
-    "vermont": "VT",
-    "virginia": "VA",
-    "washington": "WA",
-    "west virginia": "WV",
-    "wisconsin": "WI",
-    "wyoming": "WY",
-    "armed forces americas": "AA",
-    "armed forces europe": "AE",
-    "armed forces pacific": "AP",
-    "american samoa": "AS",
-    "federated states of micronesia": "FM",
-    "guam": "GU",
-    "marshall islands": "MH",
-    "northern mariana islands": "MP",
-    "puerto rico": "PR",
-    "palau": "PW",
-    "u s virgin islands": "VI",
-    "us virgin islands": "VI",
-    "virgin islands": "VI",
-}
-US_STATE_CODES = set(US_STATE_NAME_TO_CODE.values())
 STATE_CHOICE_FIELDS = {
     "Pt1Line10_State[0]",
     "Pt1Line18_State[0]",
@@ -124,24 +70,23 @@ STATE_CHOICE_FIELDS = {
     "P6Line8_State[0]",
 }
 
+# Part 2's principal applicant block is left blank: the form asks for it only from a derivative applicant.
 TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_a_number": tuple(
-        ["Pt2Line2_AlienNumber[0]"] + [f"Pt1Line4_AlienNumber[{index}]" for index in range(25)]
+        [f"Pt1Line4_AlienNumber[{index}]" for index in range(25)]
     ),
     "beneficiary_last_name": (
         "Pt1Line1_FamilyName[0]",
         "P1Line12_FamilyName[0]",
-        "Pt2Line2_FamilyName[0]",
         "Pt1Line1_FamilyName[1]",
     ),
     "beneficiary_first_name": (
         "Pt1Line1_GivenName[0]",
         "P1Line13_GivenName[0]",
-        "Pt2Line2_GivenName[0]",
         "Pt1Line1_GivenName[1]",
     ),
-    "beneficiary_middle_name": ("Pt1Line1_MiddleName[0]", "Pt2Line2_MiddleName[0]", "Pt1Line1_MiddleName[1]"),
-    "beneficiary_date_of_birth": ("Pt1Line3_DOB[0]", "Pt1Line2_DOB[0]"),
+    "beneficiary_middle_name": ("Pt1Line1_MiddleName[0]", "Pt1Line1_MiddleName[1]"),
+    "beneficiary_date_of_birth": ("Pt1Line3_DOB[0]",),
     "beneficiary_city_of_birth": ("Pt1Line7_CityTownOfBirth[0]",),
     "beneficiary_country_of_birth": ("Pt1Line7_CountryOfBirth[0]",),
     "beneficiary_country_of_citizenship": ("Pt1Line8_CountryofCitizenshipNationality[0]",),
@@ -638,43 +583,6 @@ class GeneratedI485Pdf:
     missing_template_fields: list[str]
 
 
-def _value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, list):
-        return any(_value_is_answered(entry) for entry in value)
-    if isinstance(value, dict):
-        return any(_value_is_answered(entry_value) for entry_value in value.values())
-    return True
-
-
-def _as_pdf_date(value: Any) -> str:
-    raw = str(value).strip()
-    if not raw:
-        return ""
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
-        try:
-            return datetime.strptime(raw, fmt).strftime("%m/%d/%Y")
-        except ValueError:
-            continue
-    return raw
-
-
-def _normalize_us_state(value: Any) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    upper = raw.upper()
-    if upper in US_STATE_CODES:
-        return upper
-    normalized = " ".join(
-        raw.lower().replace(".", " ").replace(",", " ").replace("-", " ").split()
-    )
-    return US_STATE_NAME_TO_CODE.get(normalized, raw)
-
-
 def _digits(value: Any) -> str:
     return "".join(character for character in str(value) if character.isdigit())
 
@@ -685,7 +593,7 @@ def _as_pdf_value(question_id: str, value: Any) -> str:
     if question_id == "beneficiary_current_immigration_status":
         return _immigration_status_label(value)
     if question_id in DATE_QUESTION_IDS:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
     if question_id == "beneficiary_ssn":
         return _digits(value)[:9]
     if question_id in A_NUMBER_QUESTION_IDS:
@@ -753,9 +661,9 @@ def _is_us_address_for_inference(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
     country = value.get("country")
-    if _value_is_answered(country):
-        return _is_us_country(country)
-    state = _normalize_us_state(value.get("state"))
+    if value_is_answered(country):
+        return is_us_country(country)
+    state = normalize_us_state(value.get("state"))
     zip_code = str(value.get("zip") or value.get("postal_code") or "").strip()
     return state in US_STATE_CODES and bool(zip_code)
 
@@ -788,9 +696,9 @@ def _infer_last_arrival_first_us_presence(answers: dict[str, Any]) -> bool | Non
 
 def _normalized_answers_for_pdf(answers: dict[str, Any]) -> dict[str, Any]:
     normalized_answers = dict(answers)
-    if "beneficiary_has_a_number" not in normalized_answers and _value_is_answered(normalized_answers.get("beneficiary_a_number")):
+    if "beneficiary_has_a_number" not in normalized_answers and value_is_answered(normalized_answers.get("beneficiary_a_number")):
         normalized_answers["beneficiary_has_a_number"] = True
-    if not _value_is_answered(normalized_answers.get("beneficiary_last_arrival_first_us_presence")):
+    if not value_is_answered(normalized_answers.get("beneficiary_last_arrival_first_us_presence")):
         inferred_first_presence = _infer_last_arrival_first_us_presence(normalized_answers)
         if inferred_first_presence is not None:
             normalized_answers["beneficiary_last_arrival_first_us_presence"] = inferred_first_presence
@@ -799,47 +707,10 @@ def _normalized_answers_for_pdf(answers: dict[str, Any]) -> dict[str, Any]:
 
 def _as_pdf_field_value(*, field_name: str, source_key: str, value: Any) -> str:
     if field_name in STATE_CHOICE_FIELDS:
-        return _normalize_us_state(value)
+        return normalize_us_state(value)
     if source_key in {"from", "to"} or source_key in DATE_QUESTION_IDS:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
     return _as_pdf_value(source_key, value)
-
-
-def _unit_kind_and_number(value: Any) -> tuple[str, str]:
-    raw = str(value or "").strip()
-    if not raw:
-        return "", ""
-    parts = raw.split(maxsplit=1)
-    label = parts[0].lower().rstrip(".")
-    if label in {"apt", "apartment"}:
-        return "apt", parts[1] if len(parts) > 1 else ""
-    if label in {"ste", "suite"}:
-        return "ste", parts[1] if len(parts) > 1 else ""
-    if label in {"fl", "floor"}:
-        return "flr", parts[1] if len(parts) > 1 else ""
-    return "apt", raw
-
-
-def _add_unit_fields(
-    *,
-    text_values: dict[str, str],
-    checkbox_values: dict[str, str],
-    value: Any,
-    apt_field: str,
-    ste_field: str,
-    flr_field: str,
-    number_field: str,
-) -> None:
-    unit_kind, unit_number = _unit_kind_and_number(value)
-    if not unit_kind:
-        return
-    text_values[number_field] = unit_number
-    if unit_kind == "apt":
-        checkbox_values[apt_field] = "/ APT "
-    elif unit_kind == "ste":
-        checkbox_values[ste_field] = "/ STE "
-    elif unit_kind == "flr":
-        checkbox_values[flr_field] = "/ FLR "
 
 
 def _add_prior_address_fields(
@@ -853,10 +724,10 @@ def _add_prior_address_fields(
     raw = answers.get("beneficiary_prior_address_history")
     if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict):
         return
-    answered = [entry for entry in raw if isinstance(entry, dict) and _entry_has_content(entry)]
+    answered = [entry for entry in raw if isinstance(entry, dict) and entry_has_content(entry)]
     if not answered:
         return
-    entries = [_normalized_address_for_pdf(entry) for entry in answered if _entry_has_content(_without_notes(entry))]
+    entries = [normalized_address_for_pdf(entry) for entry in answered if entry_has_content(without_notes(entry))]
     address = entries[0] if entries else {}
     mapped_fields: list[str] = []
     field_map = {
@@ -873,11 +744,11 @@ def _add_prior_address_fields(
     }
     for source_key, field_name in field_map.items():
         value = address.get(source_key)
-        if _value_is_answered(value):
+        if value_is_answered(value):
             text_values[field_name] = _as_pdf_field_value(field_name=field_name, source_key=source_key, value=value)
             mapped_fields.append(field_name)
     before = set(text_values) | set(checkbox_values)
-    _add_unit_fields(
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=address.get("line2"),
@@ -892,7 +763,7 @@ def _add_prior_address_fields(
         _address_continuation_text(entry, entry_index) for entry_index, entry in enumerate(entries[1:], start=2)
     ]
     continuation_lines.extend(
-        f"Prior address note: {str(entry['notes']).strip()}" for entry in answered if _value_is_answered(entry.get("notes"))
+        f"Prior address note: {str(entry['notes']).strip()}" for entry in answered if value_is_answered(entry.get("notes"))
     )
     continuation_text = "\n".join(continuation_lines)
     if continuation_text and not _part14_has_room(text_values, continuation_text):
@@ -916,31 +787,18 @@ def _add_prior_address_fields(
 def _list_entries(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
-    return [entry for entry in value if isinstance(entry, dict) and _value_is_answered(entry)]
-
-
-def _join_entry_address(entry: dict[str, Any]) -> str:
-    entry = _normalized_address_for_pdf(entry)
-    parts = [
-        entry.get("line1"),
-        entry.get("line2"),
-        entry.get("city"),
-        entry.get("state") or entry.get("province"),
-        entry.get("zip") or entry.get("postal_code"),
-        entry.get("country"),
-    ]
-    return ", ".join(str(part).strip() for part in parts if _value_is_answered(part))
+    return [entry for entry in value if isinstance(entry, dict) and value_is_answered(entry)]
 
 
 def _address_continuation_text(entry: dict[str, Any], entry_index: int) -> str:
-    entry = _normalized_address_for_pdf(entry)
+    entry = normalized_address_for_pdf(entry)
     lines = [f"Prior address {entry_index}:"]
     region_label = None
     region_keys: tuple[str, ...] = ()
-    if _value_is_answered(entry.get("state")):
+    if value_is_answered(entry.get("state")):
         region_label = "State"
         region_keys = ("state",)
-    elif _value_is_answered(entry.get("province")):
+    elif value_is_answered(entry.get("province")):
         region_label = "Province"
         region_keys = ("province",)
 
@@ -960,10 +818,10 @@ def _address_continuation_text(entry: dict[str, Any], entry_index: int) -> str:
         ]
     )
     for label, keys in fields:
-        value = next((entry.get(key) for key in keys if _value_is_answered(entry.get(key))), None)
-        if _value_is_answered(value):
+        value = next((entry.get(key) for key in keys if value_is_answered(entry.get(key))), None)
+        if value_is_answered(value):
             if label in {"From", "To"}:
-                value = _as_pdf_date(value)
+                value = as_pdf_date(value)
             lines.append(f"{label}: {value}")
     return "\n".join(lines)
 
@@ -1022,21 +880,6 @@ def _part14_text_chunks(text: str) -> list[str]:
     ]
 
 
-def _employment_continuation_line(entry: dict[str, Any]) -> str:
-    dates = " - ".join(str(entry.get(key, "")).strip() for key in ("from", "to") if _value_is_answered(entry.get(key)))
-    pieces = [
-        str(entry.get("name", "")).strip(),
-        str(entry.get("occupation", "")).strip(),
-        dates,
-        _join_entry_address(entry),
-    ]
-    if _value_is_answered(entry.get("financial_support")):
-        pieces.append(f"support: {str(entry['financial_support']).strip()}")
-    if _value_is_answered(entry.get("notes")):
-        pieces.append(str(entry["notes"]).strip())
-    return " | ".join(piece for piece in pieces if piece)
-
-
 EMPLOYMENT_ACTIVITY_LABELS = {
     "employment": "Employer",
     "self_employment": "Self-employed",
@@ -1054,10 +897,10 @@ def _employment_field_value(field_name: str, source_key: str, value: Any) -> str
 
 def _employment_entries_from_value(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
-        return [entry for entry in value if isinstance(entry, dict) and _value_is_answered(entry)]
-    if isinstance(value, dict) and _value_is_answered(value):
+        return [entry for entry in value if isinstance(entry, dict) and value_is_answered(entry)]
+    if isinstance(value, dict) and value_is_answered(value):
         return [value]
-    if _value_is_answered(value):
+    if value_is_answered(value):
         return [{"name": value}]
     return []
 
@@ -1072,15 +915,15 @@ def _add_employment_entry_fields(
     fallback_country: Any = None,
     force_foreign: bool = False,
 ) -> list[str]:
-    entry = _normalized_address_for_pdf(entry, fallback_country=fallback_country, force_foreign=force_foreign)
+    entry = normalized_address_for_pdf(entry, fallback_country=fallback_country, force_foreign=force_foreign)
     mapped_fields: list[str] = []
     for source_key, field_name in field_map.items():
         value = entry.get(source_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         text_values[field_name] = _employment_field_value(field_name, source_key, value)
         mapped_fields.append(field_name)
-    _add_unit_fields(
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=entry.get("line2"),
@@ -1090,6 +933,66 @@ def _add_employment_entry_fields(
         number_field=unit_fields[3],
     )
     return mapped_fields
+
+
+def _add_foreign_employer_fields(
+    *,
+    answers: dict[str, Any],
+    checkbox_values: dict[str, str],
+    foreign_entry: dict[str, Any] | None,
+    mapped_fields: list[str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    overflow_fits: bool,
+    text_values: dict[str, str],
+) -> None:
+    if foreign_entry:
+        mapped_fields.extend(
+            _add_employment_entry_fields(
+                entry=foreign_entry,
+                text_values=text_values,
+                checkbox_values=checkbox_values,
+                field_map={
+                    "name": "Pt4Line8_EmployerName[0]",
+                    "occupation": "Pt4Line8_Occupation[0]",
+                    "line1": "P4Line8_StreetName[0]",
+                    "city": "P4Line8_City[0]",
+                    "state": "P4Line8_State[0]",
+                    "zip": "P4Line8_ZipCode[0]",
+                    "province": "P4Line8_Province[0]",
+                    "postal_code": "P4Line8_PostalCode[0]",
+                    "country": "P4Line8_Country[0]",
+                    "from": "Pt4Line8_DateFrom[0]",
+                    "to": "Pt4Line8_DateTo[0]",
+                    "financial_support": "Part4Line8_StreetName[0]",
+                },
+                unit_fields=("P4Line8_Unit[0]", "P4Line8_Unit[1]", "P4Line8_Unit[2]", "P4Line8_Number[0]"),
+                fallback_country=answers.get("beneficiary_country_of_birth") or answers.get("beneficiary_country_of_citizenship"),
+                force_foreign=True,
+            )
+        )
+        if value_is_answered(answers.get("beneficiary_foreign_employer_or_school")) and overflow_fits:
+            mapped_question_ids.add("beneficiary_foreign_employer_or_school")
+            mapped_questions.append(
+                {
+                    "question_id": "beneficiary_foreign_employer_or_school",
+                    "label": QUESTION_BY_ID["beneficiary_foreign_employer_or_school"]["label"],
+                    "pdf_fields": [
+                        "Pt4Line8_EmployerName[0]",
+                        "Pt4Line8_Occupation[0]",
+                        "P4Line8_StreetName[0]",
+                        "P4Line8_City[0]",
+                        "P4Line8_State[0]",
+                        "P4Line8_ZipCode[0]",
+                        "P4Line8_Province[0]",
+                        "P4Line8_PostalCode[0]",
+                        "P4Line8_Country[0]",
+                        "Pt4Line8_DateFrom[0]",
+                        "Pt4Line8_DateTo[0]",
+                        "Part4Line8_StreetName[0]",
+                    ],
+                }
+            )
 
 
 def _add_employment_history_fields(
@@ -1102,7 +1005,7 @@ def _add_employment_history_fields(
 ) -> None:
     all_entries = _list_entries(answers.get("beneficiary_employment_history"))
     # An entry that is only free text from before the list was structured has no row, so it continues in Part 14.
-    entries = [entry for entry in all_entries if _entry_has_content(_without_notes(entry))]
+    entries = [entry for entry in all_entries if entry_has_content(without_notes(entry))]
     mapped_fields: list[str] = []
     outside_entry = None
     if entries:
@@ -1133,61 +1036,24 @@ def _add_employment_history_fields(
     overflow_entries = [
         entry
         for entry in all_entries
-        if not any(entry is placed for placed in placed_entries) or _value_is_answered(entry.get("notes"))
+        if not any(entry is placed for placed in placed_entries) or value_is_answered(entry.get("notes"))
     ]
     foreign_answer = _employment_entries_from_value(answers.get("beneficiary_foreign_employer_or_school"))
-    overflow_entries.extend(entry for entry in foreign_answer if _value_is_answered(entry.get("notes")))
-    overflow_text = "\n".join(_employment_continuation_line(entry) for entry in overflow_entries)
+    overflow_entries.extend(entry for entry in foreign_answer if value_is_answered(entry.get("notes")))
+    overflow_text = "\n".join(employment_continuation_line(entry) for entry in overflow_entries)
     overflow_fits = _part14_has_room(text_values, overflow_text)
 
     foreign_entry = outside_entry or next(iter(foreign_answer), None)
-    if foreign_entry:
-        mapped_fields.extend(
-            _add_employment_entry_fields(
-                entry=foreign_entry,
-                text_values=text_values,
-                checkbox_values=checkbox_values,
-                field_map={
-                    "name": "Pt4Line8_EmployerName[0]",
-                    "occupation": "Pt4Line8_Occupation[0]",
-                    "line1": "P4Line8_StreetName[0]",
-                    "city": "P4Line8_City[0]",
-                    "state": "P4Line8_State[0]",
-                    "zip": "P4Line8_ZipCode[0]",
-                    "province": "P4Line8_Province[0]",
-                    "postal_code": "P4Line8_PostalCode[0]",
-                    "country": "P4Line8_Country[0]",
-                    "from": "Pt4Line8_DateFrom[0]",
-                    "to": "Pt4Line8_DateTo[0]",
-                    "financial_support": "Part4Line8_StreetName[0]",
-                },
-                unit_fields=("P4Line8_Unit[0]", "P4Line8_Unit[1]", "P4Line8_Unit[2]", "P4Line8_Number[0]"),
-                fallback_country=answers.get("beneficiary_country_of_birth") or answers.get("beneficiary_country_of_citizenship"),
-                force_foreign=True,
-            )
-        )
-        if _value_is_answered(answers.get("beneficiary_foreign_employer_or_school")) and overflow_fits:
-            mapped_question_ids.add("beneficiary_foreign_employer_or_school")
-            mapped_questions.append(
-                {
-                    "question_id": "beneficiary_foreign_employer_or_school",
-                    "label": QUESTION_BY_ID["beneficiary_foreign_employer_or_school"]["label"],
-                    "pdf_fields": [
-                        "Pt4Line8_EmployerName[0]",
-                        "Pt4Line8_Occupation[0]",
-                        "P4Line8_StreetName[0]",
-                        "P4Line8_City[0]",
-                        "P4Line8_State[0]",
-                        "P4Line8_ZipCode[0]",
-                        "P4Line8_Province[0]",
-                        "P4Line8_PostalCode[0]",
-                        "P4Line8_Country[0]",
-                        "Pt4Line8_DateFrom[0]",
-                        "Pt4Line8_DateTo[0]",
-                        "Part4Line8_StreetName[0]",
-                    ],
-                }
-            )
+    _add_foreign_employer_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        foreign_entry=foreign_entry,
+        mapped_fields=mapped_fields,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        overflow_fits=overflow_fits,
+        text_values=text_values,
+    )
 
     if overflow_entries and overflow_fits:
         mapped_fields.extend(
@@ -1235,7 +1101,7 @@ def _add_name_at_birth_fields(
     mapped_question_ids: set[str],
 ) -> None:
     value = answers.get(question_id)
-    if not _value_is_answered(value):
+    if not value_is_answered(value):
         return
     family_name, given_name, middle_name = _split_name(value)
     text_values[family_field] = family_name
@@ -1263,7 +1129,7 @@ def _add_address_fields(
 ) -> list[str]:
     if not isinstance(value, dict):
         return []
-    value = _normalized_address_for_pdf(
+    value = normalized_address_for_pdf(
         value,
         fallback_country=fallback_country,
         force_foreign=force_foreign,
@@ -1271,12 +1137,12 @@ def _add_address_fields(
     mapped_fields = []
     for source_key, field_name in field_map.items():
         raw_value = value.get(source_key)
-        if _value_is_answered(raw_value):
+        if value_is_answered(raw_value):
             text_values[field_name] = _as_pdf_field_value(field_name=field_name, source_key=source_key, value=raw_value)
             mapped_fields.append(field_name)
     if unit_fields:
         before = set(text_values) | set(checkbox_values)
-        _add_unit_fields(
+        add_unit_fields(
             text_values=text_values,
             checkbox_values=checkbox_values,
             value=value.get("line2"),
@@ -1288,55 +1154,6 @@ def _add_address_fields(
         after = set(text_values) | set(checkbox_values)
         mapped_fields.extend(sorted(after - before))
     return mapped_fields
-
-
-US_COUNTRY_NAMES = {
-    "united states",
-    "united states of america",
-    "usa",
-    "us",
-    "u s",
-    "u s a",
-    "america",
-}
-
-
-def _normalized_country_key(value: Any) -> str:
-    return " ".join(str(value or "").lower().replace(".", " ").replace(",", " ").split())
-
-
-def _is_us_country(value: Any) -> bool:
-    return _normalized_country_key(value) in US_COUNTRY_NAMES
-
-
-def _looks_foreign_address(value: dict[str, Any]) -> bool:
-    country = value.get("country")
-    if _value_is_answered(country):
-        return not _is_us_country(country)
-    return any(_value_is_answered(value.get(key)) for key in ("province", "postal_code"))
-
-
-def _normalized_address_for_pdf(
-    value: dict[str, Any],
-    *,
-    fallback_country: Any = None,
-    force_foreign: bool = False,
-) -> dict[str, Any]:
-    normalized = dict(value)
-    if not _value_is_answered(normalized.get("country")) and _value_is_answered(fallback_country):
-        if force_foreign or _looks_foreign_address(normalized):
-            normalized["country"] = fallback_country
-
-    is_foreign = force_foreign or _looks_foreign_address(normalized)
-    if is_foreign:
-        state = normalized.get("state")
-        if not _value_is_answered(normalized.get("province")) and _value_is_answered(state):
-            state_text = str(state).strip()
-            if state_text.upper() not in US_STATE_CODES:
-                normalized["province"] = state_text
-        normalized["state"] = ""
-        normalized["zip"] = ""
-    return normalized
 
 
 def _part14_has_room(text_values: dict[str, str], text: str) -> bool:
@@ -1370,27 +1187,18 @@ def _entries_for_mapping(value: Any) -> list[dict[str, Any]]:
     for raw in raw_entries:
         if isinstance(raw, str) and raw.strip():
             entries.append({"notes": raw.strip()})
-        elif isinstance(raw, dict) and _entry_has_content(raw):
+        elif isinstance(raw, dict) and entry_has_content(raw):
             entries.append(raw)
     return entries
 
 
-def _entry_has_content(entry: dict[str, Any]) -> bool:
-    # A false checkbox alone is only the form control's default, not an answer.
-    return any(_value_is_answered(value) and not isinstance(value, bool) for value in entry.values())
-
-
-def _without_notes(entry: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in entry.items() if key != "notes"}
-
-
 def _entry_has_note_and_fields(entry: dict[str, Any]) -> bool:
-    return _value_is_answered(entry.get("notes")) and _entry_has_content(_without_notes(entry))
+    return value_is_answered(entry.get("notes")) and entry_has_content(without_notes(entry))
 
 
 def _entry_field_value(key: str, value: Any) -> str:
     if key in ENTRY_DATE_KEYS:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
     if key == "a_number":
         return _digits(value)
     return str(value).strip()
@@ -1400,7 +1208,7 @@ def _entry_fits_row(mapping: EntryListMapping, entry: dict[str, Any], row_index:
     row = mapping.rows[row_index]
     choices = mapping.choices[row_index] if mapping.choices else {}
     for key, value in entry.items():
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         if key in choices:
             if value not in choices[key]:
@@ -1414,7 +1222,7 @@ def _entry_continuation_text(mapping: EntryListMapping, entry: dict[str, Any]) -
     fields = {field["key"]: field for field in QUESTION_BY_ID[mapping.question_id].get("entry_fields", [])}
     parts = []
     for key, value in entry.items():
-        if key == "notes" or not _value_is_answered(value):
+        if key == "notes" or not value_is_answered(value):
             continue
         field = fields.get(key, {})
         option_labels = {option["value"]: option["label"] for option in field.get("options", [])}
@@ -1423,7 +1231,7 @@ def _entry_continuation_text(mapping: EntryListMapping, entry: dict[str, Any]) -
         else:
             shown = option_labels.get(value) or _entry_field_value(key, value)
         parts.append(f"{field.get('label', key)}: {shown}")
-    if _value_is_answered(entry.get("notes")):
+    if value_is_answered(entry.get("notes")):
         note = str(entry["notes"]).strip()
         parts.append(f"Note: {note}" if parts else note)
     return f"{mapping.entry_label}: " + "; ".join(parts)
@@ -1446,7 +1254,7 @@ def _add_entry_list_fields(
         noted: list[dict[str, Any]] = []
         for entry in entries:
             # Free text from before the list was structured has no box, so it must not keep the row off the form.
-            row_entry = _without_notes(entry) if _entry_has_note_and_fields(entry) else entry
+            row_entry = without_notes(entry) if _entry_has_note_and_fields(entry) else entry
             if len(placed) < len(mapping.rows) and _entry_fits_row(mapping, row_entry, len(placed)):
                 placed.append(row_entry)
                 if row_entry is not entry:
@@ -1466,7 +1274,7 @@ def _add_entry_list_fields(
         for row_index, entry in enumerate(placed):
             row = mapping.rows[row_index]
             for key, field_name in row.items():
-                if _value_is_answered(entry.get(key)):
+                if value_is_answered(entry.get(key)):
                     text_values[field_name] = _entry_field_value(key, entry[key])
                     fields.append(field_name)
             for key, choices in (mapping.choices[row_index] if mapping.choices else {}).items():
@@ -1525,10 +1333,10 @@ def _family_status_text(answers: dict[str, Any]) -> str:
         return written
     parts = []
     marital_status = answers.get("beneficiary_current_marital_status")
-    if _value_is_answered(marital_status):
+    if value_is_answered(marital_status):
         parts.append(str(marital_status).replace("_", " ").capitalize())
     household_size = answers.get("household_size")
-    if _value_is_answered(household_size):
+    if value_is_answered(household_size):
         parts.append(f"household size {household_size}" if parts else f"Household size {household_size}")
     return "; ".join(parts)
 
@@ -1557,7 +1365,7 @@ def _add_public_charge_fields(
             fits = False
         if fits:
             for question_id in ("household_size", "public_charge_family_status"):
-                if _value_is_answered(answers.get(question_id)):
+                if value_is_answered(answers.get(question_id)):
                     _record_mapped_question(
                         question_id=question_id,
                         fields=[FAMILY_STATUS_FIELD, *continuation],
@@ -1591,18 +1399,18 @@ def _add_public_charge_fields(
 
     all_benefits = _list_entries(answers.get("means_tested_benefit_history"))
     if all_benefits:
-        benefits = [entry for entry in all_benefits if _entry_has_content(_without_notes(entry))]
+        benefits = [entry for entry in all_benefits if entry_has_content(without_notes(entry))]
         continuation_lines = []
         for index, entry in enumerate(benefits, start=1):
             name = str(entry.get("benefit_name") or "").strip()
             reason = str(entry.get("reason") or "").strip()
             if index > BENEFIT_ROW_LIMIT or len(name) > BENEFIT_NAME_MAX_CHARS or len(reason) > BENEFIT_REASON_MAX_CHARS:
                 continuation_lines.append(
-                    f"{name}: {_as_pdf_date(entry.get('start_date'))} to {_as_pdf_date(entry.get('end_date')) or 'present'}; "
+                    f"{name}: {as_pdf_date(entry.get('start_date'))} to {as_pdf_date(entry.get('end_date')) or 'present'}; "
                     f"amount {str(entry.get('dollar_amount') or '').strip() or 'N/A'}; reason: {reason}"
                 )
         continuation_lines.extend(
-            f"Public benefit note: {str(entry['notes']).strip()}" for entry in all_benefits if _value_is_answered(entry.get("notes"))
+            f"Public benefit note: {str(entry['notes']).strip()}" for entry in all_benefits if value_is_answered(entry.get("notes"))
         )
         continuation_text = "\n".join(continuation_lines)
         if not continuation_lines or _part14_has_room(text_values, continuation_text):
@@ -1612,8 +1420,8 @@ def _add_public_charge_fields(
                 reason = str(entry.get("reason") or "").strip()
                 row_values = {
                     1: name if len(name) <= BENEFIT_NAME_MAX_CHARS else SEE_PART14,
-                    2: _as_pdf_date(entry.get("start_date")),
-                    3: _as_pdf_date(entry.get("end_date")),
+                    2: as_pdf_date(entry.get("start_date")),
+                    3: as_pdf_date(entry.get("end_date")),
                     4: str(entry.get("dollar_amount") or "").strip(),
                     5: reason if len(reason) <= BENEFIT_REASON_MAX_CHARS else SEE_PART14,
                 }
@@ -1636,13 +1444,13 @@ def _add_public_charge_fields(
             )
 
 
-def _add_special_fields(
+def _add_arrival_fields(
     *,
     answers: dict[str, Any],
-    text_values: dict[str, str],
     checkbox_values: dict[str, str],
-    mapped_questions: list[dict[str, Any]],
     mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    text_values: dict[str, str],
 ) -> None:
     arrival_type = answers.get("beneficiary_last_arrival_type")
     arrival_checkbox = {
@@ -1681,8 +1489,16 @@ def _add_special_fields(
             }
         )
 
+
+def _add_weight_fields(
+    *,
+    answers: dict[str, Any],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    text_values: dict[str, str],
+) -> None:
     weight = answers.get("beneficiary_weight_pounds")
-    if _value_is_answered(weight):
+    if value_is_answered(weight):
         digits = str(weight).zfill(3)[-3:]
         for field_name, digit in zip(
             ("Pt7Line4_Weight1[0]", "Pt7Line4_Weight2[0]", "Pt7Line4_Weight3[0]"),
@@ -1699,6 +1515,15 @@ def _add_special_fields(
             }
         )
 
+
+def _add_petitioner_address_fields(
+    *,
+    answers: dict[str, Any],
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    text_values: dict[str, str],
+) -> None:
     petitioner_fields = _add_address_fields(
         value=answers.get("petitioner_current_address"),
         text_values=text_values,
@@ -1724,6 +1549,15 @@ def _add_special_fields(
             }
         )
 
+
+def _add_mailing_address_fields(
+    *,
+    answers: dict[str, Any],
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    text_values: dict[str, str],
+) -> None:
     mailing_fields = _add_address_fields(
         value=answers.get("beneficiary_mailing_address"),
         text_values=text_values,
@@ -1747,6 +1581,15 @@ def _add_special_fields(
             }
         )
 
+
+def _add_recent_foreign_address_fields(
+    *,
+    answers: dict[str, Any],
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    text_values: dict[str, str],
+) -> None:
     recent_foreign_fields = _add_address_fields(
         value=answers.get("beneficiary_recent_foreign_address"),
         text_values=text_values,
@@ -1776,6 +1619,54 @@ def _add_special_fields(
             }
         )
 
+
+def _add_special_fields(
+    *,
+    answers: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_questions: list[dict[str, Any]],
+    mapped_question_ids: set[str],
+) -> None:
+    _add_arrival_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        text_values=text_values,
+    )
+
+    _add_weight_fields(
+        answers=answers,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        text_values=text_values,
+    )
+
+    _add_petitioner_address_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        text_values=text_values,
+    )
+
+    _add_mailing_address_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        text_values=text_values,
+    )
+
+    _add_recent_foreign_address_fields(
+        answers=answers,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        text_values=text_values,
+    )
+
     _add_name_at_birth_fields(
         answers=answers,
         text_values=text_values,
@@ -1798,21 +1689,18 @@ def _add_special_fields(
     )
 
 
-def build_i485_pdf_field_payload(
-    answers: dict[str, Any],
-    available_fields: set[str] | None = None,
-    button_choices: dict[str, dict[str, str]] | None = None,
-) -> I485PdfFieldPayload:
-    text_values: dict[str, str] = {}
-    checkbox_values: dict[str, str] = {}
-    mapped_questions: list[dict[str, Any]] = []
-    mapped_question_ids: set[str] = set()
-
-    normalized_answers = _normalized_answers_for_pdf(answers)
-
+def _add_mapped_question_fields(
+    *,
+    button_choices: Any,
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    normalized_answers: dict[str, Any],
+    text_values: dict[str, str],
+) -> None:
     for question_id, field_names in TEXT_FIELD_MAP.items():
         value = normalized_answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         for field_name in field_names:
             text_values[field_name] = _as_pdf_field_value(field_name=field_name, source_key=question_id, value=value)
@@ -1827,7 +1715,7 @@ def build_i485_pdf_field_payload(
 
     for question_id, choices in CHECKBOX_FIELD_MAP.items():
         value = normalized_answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         selected = choices.get(value)
         if not selected:
@@ -1845,7 +1733,7 @@ def build_i485_pdf_field_payload(
 
     for question_id, choices in MULTI_CHECKBOX_FIELD_MAP.items():
         value = normalized_answers.get(question_id)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         selected_values = value if isinstance(value, list) else [value]
         selected_fields: list[str] = []
@@ -1885,7 +1773,16 @@ def build_i485_pdf_field_payload(
                 }
             )
 
-    _add_unit_fields(
+
+def _add_current_address_unit_fields(
+    *,
+    checkbox_values: dict[str, str],
+    mapped_question_ids: set[str],
+    mapped_questions: list[dict[str, Any]],
+    normalized_answers: dict[str, Any],
+    text_values: dict[str, str],
+) -> None:
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=normalized_answers.get("beneficiary_current_address_line2"),
@@ -1894,7 +1791,7 @@ def build_i485_pdf_field_payload(
         flr_field="Pt1Line18US_Unit[1]",
         number_field="Pt1Line18US_AptSteFlrNumber[0]",
     )
-    if _value_is_answered(normalized_answers.get("beneficiary_current_address_line2")):
+    if value_is_answered(normalized_answers.get("beneficiary_current_address_line2")):
         mapped_question_ids.add("beneficiary_current_address_line2")
         mapped_questions.append(
             {
@@ -1903,6 +1800,58 @@ def build_i485_pdf_field_payload(
                 "pdf_fields": ["Pt1Line18US_AptSteFlrNumber[0]"],
             }
         )
+
+
+def _unmapped_answered_questions(*, answers: dict[str, Any], mapped_question_ids: set[str]) -> Any:
+    unmapped_answered_questions = []
+    for question_id, value in sorted(answers.items()):
+        if (
+            question_id in mapped_question_ids
+            or question_id in NON_PDF_CONTROL_QUESTIONS
+            or question_id in RETIRED_QUESTION_IDS
+            or not value_is_answered(value)
+        ):
+            continue
+        question = QUESTION_BY_ID.get(question_id, {})
+        unmapped_answered_questions.append(
+            {
+                "question_id": question_id,
+                "label": question.get("label", question_id),
+                "pdf_ref": question.get("pdf_ref", ""),
+            }
+        )
+    return unmapped_answered_questions
+
+
+def build_i485_pdf_field_payload(
+    answers: dict[str, Any],
+    available_fields: set[str] | None = None,
+    button_choices: dict[str, dict[str, str]] | None = None,
+) -> I485PdfFieldPayload:
+    """Returns the PDF field values and mapping report for an I-485."""
+    text_values: dict[str, str] = {}
+    checkbox_values: dict[str, str] = {}
+    mapped_questions: list[dict[str, Any]] = []
+    mapped_question_ids: set[str] = set()
+
+    normalized_answers = _normalized_answers_for_pdf(answers)
+
+    _add_mapped_question_fields(
+        button_choices=button_choices,
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        normalized_answers=normalized_answers,
+        text_values=text_values,
+    )
+
+    _add_current_address_unit_fields(
+        checkbox_values=checkbox_values,
+        mapped_question_ids=mapped_question_ids,
+        mapped_questions=mapped_questions,
+        normalized_answers=normalized_answers,
+        text_values=text_values,
+    )
 
     _add_prior_address_fields(
         answers=normalized_answers,
@@ -1954,23 +1903,7 @@ def build_i485_pdf_field_payload(
     filled_fields = set(text_values) | set(checkbox_values)
     missing_template_fields = sorted(filled_fields - available) if available else []
 
-    unmapped_answered_questions = []
-    for question_id, value in sorted(answers.items()):
-        if (
-            question_id in mapped_question_ids
-            or question_id in NON_PDF_CONTROL_QUESTIONS
-            or question_id in RETIRED_QUESTION_IDS
-            or not _value_is_answered(value)
-        ):
-            continue
-        question = QUESTION_BY_ID.get(question_id, {})
-        unmapped_answered_questions.append(
-            {
-                "question_id": question_id,
-                "label": question.get("label", question_id),
-                "pdf_ref": question.get("pdf_ref", ""),
-            }
-        )
+    unmapped_answered_questions = _unmapped_answered_questions(answers=answers, mapped_question_ids=mapped_question_ids)
 
     return I485PdfFieldPayload(
         text_values=text_values,
@@ -1979,37 +1912,6 @@ def build_i485_pdf_field_payload(
         unmapped_answered_questions=unmapped_answered_questions,
         missing_template_fields=missing_template_fields,
     )
-
-
-def _template_field_names(reader: PdfReader) -> set[str]:
-    names: set[str] = set()
-    for full_name, field in (reader.get_fields() or {}).items():
-        names.add(str(full_name))
-        field_name = field.get("/T")
-        if field_name:
-            names.add(str(field_name))
-    return names
-
-
-def _annotation_full_name(annotation: Any) -> str | None:
-    parts: list[str] = []
-    current = annotation
-    seen: set[int] = set()
-    while current:
-        marker = id(current)
-        if marker in seen:
-            break
-        seen.add(marker)
-        field_name = current.get("/T")
-        if field_name:
-            parts.append(str(field_name))
-        parent = current.get("/Parent")
-        if not parent:
-            break
-        current = parent.get_object()
-    if not parts:
-        return None
-    return ".".join(reversed(parts))
 
 
 def _template_button_choices(reader: PdfReader) -> dict[str, dict[str, str]]:
@@ -2036,169 +1938,13 @@ def _template_button_choices(reader: PdfReader) -> dict[str, dict[str, str]]:
     return choices
 
 
-def _set_text_values(writer: PdfWriter, values: dict[str, str]) -> None:
-    for page in writer.pages:
-        page_values = {}
-        for annotation_ref in page.get("/Annots", []) or []:
-            annotation = annotation_ref.get_object()
-            field_name = annotation.get("/T")
-            full_name = _annotation_full_name(annotation)
-            selected_name = full_name if full_name in values else None
-            if selected_name is None and field_name and str(field_name) in values:
-                selected_name = str(field_name)
-            if selected_name and field_name:
-                if selected_name in PART14_ADDITIONAL_INFO_FIELDS:
-                    annotation.update({NameObject("/DA"): TextStringObject(PART14_ADDITIONAL_INFO_DA)})
-                page_values[str(field_name)] = values[selected_name]
-        if page_values:
-            writer.update_page_form_field_values(page, page_values, auto_regenerate=False)
-
-
-def _defined_appearance(annotation: Any, requested: str) -> NameObject:
-    # USCIS templates spell unit states inconsistently ("/ APT ", "/APT ", "/STE"), even within one form.
-    # A state the widget does not define does not print, so match on the state's letters.
-    appearance = annotation.get("/AP")
-    normal = appearance.get_object().get("/N") if appearance else None
-    if normal is None or requested in normal.get_object():
-        return NameObject(requested)
-    wanted = requested.replace("/", "").strip()
-    for state in normal.get_object():
-        if state.replace("/", "").strip() == wanted:
-            return NameObject(state)
-    return NameObject(requested)
-
-
-def _set_checkbox_values(writer: PdfWriter, values: dict[str, str]) -> None:
-    for page in writer.pages:
-        for annotation_ref in page.get("/Annots", []) or []:
-            annotation = annotation_ref.get_object()
-            field_name = annotation.get("/T")
-            if not field_name:
-                continue
-            full_name = _annotation_full_name(annotation)
-            selected_name = full_name if full_name in values else str(field_name)
-            if selected_name not in values:
-                continue
-            appearance = _defined_appearance(annotation, values[selected_name])
-            annotation.update(
-                {
-                    NameObject("/V"): appearance,
-                    NameObject("/AS"): appearance,
-                }
-            )
-
-
-def fill_continuation_slots(
-    *,
-    text_values: dict[str, str],
-    slots: tuple[tuple[str, str, str, str], ...],
-    page_number: str,
-    part_number: str,
-    item_number: str,
-    text: str,
-    wrap_width: int,
-    max_lines: int,
-) -> list[str] | None:
-    """Writes text to a form's additional-information slots; None means it does not fit and nothing was written."""
-    # Saved appearances do not wrap on their own, so line breaks must be in the value.
-    lines = textwrap.wrap(text, width=wrap_width, break_long_words=True, replace_whitespace=False) if text else []
-    chunks = ["\n".join(lines[index : index + max_lines]) for index in range(0, len(lines), max_lines)]
-    open_slots = [slot for slot in slots if slot[3] not in text_values]
-    if len(chunks) > len(open_slots):
-        return None
-    fields: list[str] = []
-    for chunk, (page_field, part_field, item_field, info_field) in zip(chunks, open_slots, strict=False):
-        text_values[page_field] = page_number
-        text_values[part_field] = part_number
-        text_values[item_field] = item_number
-        text_values[info_field] = chunk
-        fields.extend([page_field, part_field, item_field, info_field])
-    return fields
-
-
-FIELD_MULTILINE_FLAG = 1 << 12
-
-
-def overlong_field_names(reader: PdfReader, text_values: dict[str, str]) -> list[str]:
-    """Fields wider than their box; a printed form clips the overflow. `_field_length_warning` covers template limits."""
-    overlong: set[str] = set()
-    for page in reader.pages:
-        for annotation_ref in page.get("/Annots", []) or []:
-            annotation = annotation_ref.get_object()
-            field_name = str(annotation.get("/T") or "")
-            value = text_values.get(field_name) or text_values.get(_annotation_full_name(annotation) or "")
-            if not value:
-                continue
-            font_size = re.search(r"([\d.]+)\s+Tf", str(annotation.get("/DA") or ""))
-            if (
-                annotation.get("/MaxLen") is not None
-                or int(annotation.get("/Ff") or 0) & FIELD_MULTILINE_FLAG
-                or not font_size
-                or not float(font_size.group(1))
-            ):
-                continue
-            left, _, right, _ = (float(number) for number in annotation["/Rect"])
-            # Template fields use Courier, whose characters are 0.6 em wide.
-            if len(value) > int((right - left - 4) / (0.6 * float(font_size.group(1)))):
-                overlong.add(field_name)
-    return sorted(overlong)
-
-
-OVERLONG_WARNING = "Longer than the form's box allows and may print cut off. Check the printed page, and shorten these or use the additional information section: "
-
-
-def _field_length_warning(reader: PdfReader, values: dict[str, str]) -> list[str]:
-    too_long: dict[str, str] = {}
-    for page in reader.pages:
-        for annotation_ref in page.get("/Annots", []) or []:
-            annotation = annotation_ref.get_object()
-            field_name = annotation.get("/T")
-            max_length = annotation.get("/MaxLen")
-            if not field_name or max_length is None:
-                continue
-            full_name = _annotation_full_name(annotation)
-            value = values.get(full_name) if full_name in values else values.get(str(field_name))
-            if value is not None and len(value) > int(max_length):
-                too_long[str(field_name)] = f"{value!r} ({len(value)} characters, the form allows {int(max_length)})"
-    if not too_long:
-        return []
-    return ["These answers may be cut off when printed: " + "; ".join(too_long.values()) + "."]
-
-
-def _unprintable_character_warning(writer: PdfWriter) -> list[str]:
-    # The form fonts cannot draw every character: the field keeps "Łukasz" but prints "?ukasz".
-    unprintable: set[str] = set()
-    for page in writer.pages:
-        for annotation_ref in page.get("/Annots", []) or []:
-            annotation = annotation_ref.get_object()
-            value = annotation.get("/V")
-            normal_appearance = (annotation.get("/AP") or {}).get("/N")
-            if not isinstance(value, str) or value.isascii() or normal_appearance is None:
-                continue
-            stream = normal_appearance.get_object()
-            if hasattr(stream, "get_data") and stream.get_data().count(b"?") > value.count("?"):
-                unprintable.add(value)
-    if not unprintable:
-        return []
-    return [
-        "These answers contain characters the form cannot print and will show a question mark: "
-        + "; ".join(sorted(unprintable))
-        + ". Enter them as they should appear on the filing, using the Latin spelling on the passport where one is shown."
-    ]
-
-
-def _use_saved_appearances(writer: PdfWriter) -> None:
-    # Viewers that redraw fields print the form's PDF417 barcode as plain text, which scanners cannot read.
-    writer.set_need_appearances_writer(False)
-
-
 def _preview_from_answers(case_id: UUID, answers: dict[str, Any]) -> dict[str, Any]:
     normalized_answers = _normalized_answers_for_pdf(answers)
     evaluation = evaluate_i485_answers(normalized_answers)
     missing_required = []
     conditional_required_ids = conditional_required_i485_question_ids(normalized_answers)
     for question in QUESTION_BY_ID.values():
-        if (question.get("required") or question["id"] in conditional_required_ids) and not _value_is_answered(normalized_answers.get(question["id"])):
+        if (question.get("required") or question["id"] in conditional_required_ids) and not value_is_answered(normalized_answers.get(question["id"])):
             missing_required.append(question)
     blocking_flags = [flag for flag in evaluation["flags"] if flag["severity"] == "blocking"]
     outside_niche_flags = [flag for flag in evaluation["flags"] if flag["category"] == "outside_niche"]
@@ -2231,6 +1977,7 @@ def generate_i485_pdf_from_answers(
     allow_incomplete: bool = True,
     preview: dict[str, Any] | None = None,
 ) -> GeneratedI485Pdf:
+    """Writes an I-485 PDF from a set of answers."""
     if not template_path.exists():
         raise ValueError(f"I-485 PDF template not found: {template_path}")
 
@@ -2241,14 +1988,14 @@ def generate_i485_pdf_from_answers(
         )
 
     reader = PdfReader(template_path)
-    available_fields = _template_field_names(reader)
+    available_fields = template_field_names(reader)
     button_choices = _template_button_choices(reader)
     payload = build_i485_pdf_field_payload(answers, available_fields, button_choices)
 
     writer = PdfWriter(clone_from=reader)
-    _use_saved_appearances(writer)
-    _set_text_values(writer, payload.text_values)
-    _set_checkbox_values(writer, payload.checkbox_values)
+    use_saved_appearances(writer)
+    set_text_values(writer, payload.text_values)
+    set_checkbox_values(writer, payload.checkbox_values)
 
     final_output_path = output_path or output_dir / f"{case_id}-i-485.pdf"
     final_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2267,8 +2014,8 @@ def generate_i485_pdf_from_answers(
         warnings.append("Some answered questionnaire fields do not yet have explicit PDF field mappings.")
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
-    warnings.extend(_field_length_warning(reader, payload.text_values))
-    warnings.extend(_unprintable_character_warning(writer))
+    warnings.extend(field_length_warning(reader, payload.text_values))
+    warnings.extend(unprintable_character_warning(writer))
     overflowing = overlong_field_names(reader, payload.text_values)
     if overflowing:
         warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
@@ -2304,6 +2051,7 @@ def generate_i485_pdf(
     output_dir: Path = DEFAULT_I485_OUTPUT_DIR,
     allow_incomplete: bool = True,
 ) -> GeneratedI485Pdf:
+    """Writes a case's I-485 PDF from its saved answers."""
     preview = build_i485_form_fill_preview(session, case_id)
     state = get_i485_state(session, case_id)
     return generate_i485_pdf_from_answers(

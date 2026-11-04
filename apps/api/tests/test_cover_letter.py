@@ -57,7 +57,7 @@ def test_cover_letter_lines_use_receipt_placeholder_when_missing():
     assert "[Lockbox Address - depends on your filing location]" in joined
     assert "Applicant (Beneficiary): [insert beneficiary name]" in joined
     assert "Petitioner (U.S. Citizen Spouse): [insert petitioner name]" in joined
-    assert "I-130 Receipt Number: [insert pending Form I-130 receipt number]" in joined
+    assert "I-130 Receipt Number: [insert Form I-130 receipt number]" in joined
 
 
 def test_generate_cover_letter_pdf_writes_extractable_review_draft(tmp_path):
@@ -86,5 +86,18 @@ def test_generate_cover_letter_pdf_writes_extractable_review_draft(tmp_path):
     assert "X________________________________" in text
     assert "[Signature]" not in text
     assert result.warnings == [
-        "Cover letter: confirm the pending Form I-130 receipt number and hand-sign if you use the draft.",
+        "Cover letter: confirm the Form I-130 status and receipt number, and hand-sign if you use the draft.",
     ]
+
+
+def test_cover_letter_does_not_call_a_denied_petition_pending():
+    joined = "\n".join(
+        build_cover_letter_lines(
+            values={"i130_filing_status": "denied_revoked_withdrawn"},
+            sections=[],
+            generated_on=date(2026, 11, 1),
+        )
+    )
+
+    assert "pending" not in joined
+    assert "[state the current status of the Form I-130 before filing]" in " ".join(joined.split())

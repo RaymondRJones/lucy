@@ -1,7 +1,9 @@
+"""Generates Form G-1650 and its payment packets."""
+
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 from typing import Any
 from uuid import UUID
 
@@ -12,11 +14,11 @@ from sqlmodel import Session
 from app.services.g1450 import (
     G1450PacketPlan,
     GeneratedG1450,
-    _set_checkbox,
-    _use_saved_appearances,
-    _whole_dollar_amount,
-    _split_name,
     generate_case_payment_packet,
+    set_checkbox,
+    split_name,
+    use_saved_appearances,
+    whole_dollar_amount,
 )
 
 # Field names come from the 06/03/25 template, verified 2026-10-30 at https://www.uscis.gov/g-1650.
@@ -50,6 +52,7 @@ def _routing_checksum_is_valid(routing_number: str) -> bool:
 
 
 def validate_g1650_payload(payload: dict[str, Any]) -> None:
+    """Raises ValueError if bank payment details are incomplete or invalid."""
     ownership = _clean_string(payload, "account_ownership").lower()
     if ownership not in ACCOUNT_OWNERSHIP_CHECKBOXES:
         raise ValueError("account_ownership must be personal or business.")
@@ -79,14 +82,15 @@ def generate_g1650_pdf_from_payload(
     form_code: str | None = None,
     filing_category: str | None = None,
 ) -> GeneratedG1450:
+    """Writes a G-1650 from payment details."""
     if not template_path.exists():
         raise ValueError(f"G-1650 template PDF not found at {template_path}.")
     validate_g1650_payload(payload)
     # The form preprints ".00" after the amount.
-    amount = _whole_dollar_amount(amount_override or payload.get("authorized_amount"))
+    amount = whole_dollar_amount(amount_override or payload.get("authorized_amount"))
     holder_name = _clean_string(payload, "account_holder_name")
-    family_name, given_name, middle_name = _split_name(_clean_string(payload, "applicant_name") or holder_name)
-    holder_family, holder_given, holder_middle = _split_name(holder_name)
+    family_name, given_name, middle_name = split_name(_clean_string(payload, "applicant_name") or holder_name)
+    holder_family, holder_given, holder_middle = split_name(holder_name)
     # USCIS requires the account holder's own signature, so the signature field stays blank.
     text_values = {
         f"{APPLICANT_FIELDS}.GivenName[0]": given_name,
@@ -104,14 +108,14 @@ def generate_g1650_pdf_from_payload(
 
     # Clone rather than copy pages: qualified field names rely on the template's field hierarchy.
     writer = PdfWriter(clone_from=PdfReader(template_path))
-    _use_saved_appearances(writer)
+    use_saved_appearances(writer)
     for page in writer.pages:
         writer.update_page_form_field_values(page, text_values, auto_regenerate=False)
     for field_name, appearance in (
         ACCOUNT_OWNERSHIP_CHECKBOXES[_clean_string(payload, "account_ownership").lower()],
         ACCOUNT_TYPE_CHECKBOXES[_clean_string(payload, "account_type").lower()],
     ):
-        _set_checkbox(writer, field_name, appearance)
+        set_checkbox(writer, field_name, appearance)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as handle:
@@ -137,6 +141,7 @@ def generate_case_g1650_packet_from_payload(
     output_dir: Path,
     selected_checklist_codes: list[str] | None = None,
 ) -> G1450PacketPlan:
+    """Writes a case's G-1650 forms from payment details."""
     return generate_case_payment_packet(
         session=session,
         case_id=case_id,

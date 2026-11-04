@@ -18,21 +18,23 @@ from app.services.i485_pdf import (
     ENTRY_LIST_MAPPINGS,
     MULTI_CHECKBOX_FIELD_MAP,
     NON_PDF_CONTROL_QUESTIONS,
-    OVERLONG_WARNING,
-    PART14_ADDITIONAL_INFO_FIELDS,
     RETIRED_QUESTION_IDS,
     SEE_PART14,
     TEXT_FIELD_MAP,
     _immigration_status_label,
     _template_button_choices,
-    _template_field_names,
     build_i485_pdf_field_payload,
     generate_i485_pdf_from_answers,
+)
+from app.services.pdf_fields import (
+    OVERLONG_WARNING,
+    PART14_ADDITIONAL_INFO_FIELDS,
+    template_field_names,
 )
 
 QUESTIONS = {question["id"]: question for question in all_i485_questions()}
 READER = PdfReader(DEFAULT_I485_TEMPLATE_PATH)
-AVAILABLE_FIELDS = _template_field_names(READER)
+AVAILABLE_FIELDS = template_field_names(READER)
 BUTTON_CHOICES = _template_button_choices(READER)
 TOOLTIPS = {
     str(annotation.get_object().get("/T")): " ".join(str(annotation.get_object().get("/TU") or "").split())

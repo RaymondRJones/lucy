@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 from pypdf import PdfReader
 
-from app.services.i485_pdf import _annotation_full_name, _template_field_names
+from app.services.pdf_fields import annotation_full_name
+from app.services.pdf_fields import template_field_names as reader_field_names
 
 
 def template_field_names(path: Path) -> set[str]:
-    return _template_field_names(PdfReader(path))
+    return reader_field_names(PdfReader(path))
 
 
 def pdf_field_values(path: Path) -> dict[str, set[str]]:
@@ -23,7 +24,7 @@ def pdf_field_values(path: Path) -> dict[str, set[str]]:
             raw_value = annotation.get("/V")
             value = "" if raw_value is None else str(raw_value)
             field_name = annotation.get("/T")
-            full_name = _annotation_full_name(annotation)
+            full_name = annotation_full_name(annotation)
             if field_name:
                 values.setdefault(str(field_name), set()).add(value)
             if full_name:
@@ -40,7 +41,7 @@ def pdf_field_appearance_states(path: Path) -> dict[str, set[str]]:
             raw_value = annotation.get("/AS")
             value = "" if raw_value is None else str(raw_value)
             field_name = annotation.get("/T")
-            full_name = _annotation_full_name(annotation)
+            full_name = annotation_full_name(annotation)
             if field_name:
                 values.setdefault(str(field_name), set()).add(value)
             if full_name:
@@ -145,7 +146,7 @@ def read_pdf_widgets(path: Path) -> list[PdfWidget]:
                 PdfWidget(
                     page=page_number,
                     name=name,
-                    full_name=_annotation_full_name(annotation) or name,
+                    full_name=annotation_full_name(annotation) or name,
                     field_type=field_type,
                     value="" if raw_value is None else str(raw_value),
                     appearance_state=str(annotation.get("/AS") or ""),

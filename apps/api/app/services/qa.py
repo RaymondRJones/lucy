@@ -1,7 +1,9 @@
+"""Runs case QA and calculates readiness."""
+
 from __future__ import annotations
 
+from datetime import date
 import re
-from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -14,12 +16,13 @@ from app.models.entities import (
     CaseStatus,
     QAIssue,
     UploadedDocument,
+    utcnow,
 )
 from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
 from app.services.intake import derive_case_facts, get_merged_case_intake, normalize_country
+from app.services.prescreen import get_prescreen_state
 from app.services.rules.qa import QARuleContext, QARuleDependencies, QARuleEngine
 from app.services.upload_links import satisfied_checklist_codes_for_upload
-
 
 VERIFICATION_FIELD_RULES = (
     {
@@ -150,10 +153,6 @@ INTAKE_VERIFICATION_RULES = (
         "source_priority": ("form_i485", "form_i130"),
     },
 )
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def _names_match(expected: str | None, actual: str | None) -> bool:
@@ -535,7 +534,7 @@ def _readiness_summary(
         label = "Not ready"
     elif issue_counts["important"] > 1 or required_pct < 90:
         label = "Almost ready"
-    elif issue_counts["recommended"] > 0:
+    elif issue_counts["important"] > 0 or issue_counts["recommended"] > 0:
         label = "Ready for final review"
     else:
         label = "Ready to print and assemble"
@@ -593,7 +592,23 @@ def _i485_ingestion_issues(session: Session, case_id: UUID) -> list[QAIssue]:
     return issues
 
 
+def _prescreen_critical_issues(session: Session, case_id: UUID) -> list[QAIssue]:
+    evaluation = get_prescreen_state(session, case_id)["evaluation"]
+    return [
+        _build_issue(
+            case_id,
+            "blocking",
+            f"prescreen_{flag['code']}",
+            flag["title"],
+            f"{flag['description']} Review the prescreen page before relying on this case as packet-ready.",
+        )
+        for flag in evaluation["flags"]
+        if flag["severity"] == "critical"
+    ]
+
+
 def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, Any]]:
+    """Replaces a case's QA issues and updates its stored readiness."""
     case = session.get(CaseRecord, case_id)
     if not case:
         raise ValueError("Case not found")
@@ -650,6 +665,7 @@ def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, An
             intake_to_document_issues=_intake_to_document_issues,
             intake_address_history_issues=_intake_address_history_issues,
             i485_ingestion_issues=_i485_ingestion_issues,
+            prescreen_critical_issues=_prescreen_critical_issues,
         ),
     )
     issues = QARuleEngine().evaluate(qa_context)
@@ -661,7 +677,7 @@ def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, An
     case.readiness_score = summary["score"]
     case.readiness_label = summary["label"]
     case.status = CaseStatus.qa_reviewed.value
-    case.updated_at = _utcnow()
+    case.updated_at = utcnow()
     session.add(case)
     session.commit()
 
@@ -672,6 +688,7 @@ def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, An
 
 
 def get_qa_results(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, Any]]:
+    """Returns a case's stored QA issues and summary."""
     issues = list(
         session.exec(select(QAIssue).where(QAIssue.case_id == case_id).order_by(QAIssue.created_at.asc()))
     )

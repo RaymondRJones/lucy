@@ -6,54 +6,13 @@ generators' field maps, so a mapping that sends good data to the wrong box fails
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
-import pytest
-from pypdf import PdfReader
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine, select
-
-from app.cli.seed_happy_path import _seed_i485, _seed_supplemental_form
-from app.cli.seed_packet_scenarios import BIRTH_CITY_BY_COUNTRY, SCENARIOS, _create_case, _scenario_answers
-from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS
-from app.content.i485_questionnaire import I485_QUESTIONNAIRE
-from app.models.entities import CaseRecord, IntakeResponse
-from app.services.family_pdf import (
-    I130A_CHECKBOX_FIELD_MAP,
-    I130A_TEXT_FIELD_MAP,
-    I130A_UNIT_FIELD_MAP,
-    I130_CHECKBOX_FIELD_MAP,
-    I130_TEXT_FIELD_MAP,
-    I130_UNIT_FIELD_MAP,
-    G1145_TEXT_FIELD_MAP,
-    generate_g1145_pdf,
-)
-from app.services.form_ingestion import build_form_fill_preview, import_form_answers_from_case_data, save_form_page_answers
-from app.services.form_pdf import (
-    CHECKBOX_FIELD_MAP,
-    TEXT_FIELD_MAP,
-    UNIT_FIELD_MAP,
-    generate_form_pdf,
-    generate_form_pdf_from_answers,
-)
-from app.services.g1450 import generate_g1450_pdf_from_payload
-from app.services.g1650 import generate_g1650_pdf_from_payload
-from app.services.i485 import I485_PROJECTION_STEP, save_i485_page_answers
-from app.services.i485_pdf import (
-    CHECKBOX_FIELD_MAP as I485_CHECKBOX_FIELD_MAP,
-    TEXT_FIELD_MAP as I485_TEXT_FIELD_MAP,
-    I485_STATUS_FIELD_LENGTH,
-    _add_unit_fields,
-    _immigration_status_label,
-    generate_i485_pdf,
-)
-from app.services.intake import upsert_intake_step
-from app.services.packet_assembly import assemble_packet_pdf
 from pdf_form_assertions import (
     PdfWidget,
     assert_widget_values_are_formatted,
@@ -69,6 +28,53 @@ from pdf_profiles import (
     build_profile,
     card_payment_payload,
     form_answers,
+)
+from pypdf import PdfReader
+import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine, select
+
+from app.cli.seed_happy_path import seed_i485, seed_supplemental_form
+from app.cli.seed_packet_scenarios import BIRTH_CITY_BY_COUNTRY, SCENARIOS, _create_case, _scenario_answers
+from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS
+from app.content.i485_questionnaire import I485_QUESTIONNAIRE
+from app.models.entities import CaseRecord, IntakeResponse
+from app.services.family_pdf import (
+    G1145_TEXT_FIELD_MAP,
+    I130_CHECKBOX_FIELD_MAP,
+    I130_TEXT_FIELD_MAP,
+    I130_UNIT_FIELD_MAP,
+    I130A_CHECKBOX_FIELD_MAP,
+    I130A_TEXT_FIELD_MAP,
+    I130A_UNIT_FIELD_MAP,
+    generate_g1145_pdf,
+)
+from app.services.form_ingestion import build_form_fill_preview, import_form_answers_from_case_data, save_form_page_answers
+from app.services.form_pdf import (
+    CHECKBOX_FIELD_MAP,
+    TEXT_FIELD_MAP,
+    UNIT_FIELD_MAP,
+    generate_form_pdf,
+    generate_form_pdf_from_answers,
+)
+from app.services.g1450 import generate_g1450_pdf_from_payload
+from app.services.g1650 import generate_g1650_pdf_from_payload
+from app.services.i485 import I485_PROJECTION_STEP, save_i485_page_answers
+from app.services.i485_pdf import (
+    CHECKBOX_FIELD_MAP as I485_CHECKBOX_FIELD_MAP,
+)
+from app.services.i485_pdf import (
+    I485_STATUS_FIELD_LENGTH,
+    _immigration_status_label,
+    generate_i485_pdf,
+)
+from app.services.i485_pdf import (
+    TEXT_FIELD_MAP as I485_TEXT_FIELD_MAP,
+)
+from app.services.intake import upsert_intake_step
+from app.services.packet_assembly import assemble_packet_pdf
+from app.services.pdf_fields import (
+    add_unit_fields,
 )
 
 TEMPLATE_DIR = Path("blank-immigration-documents")
@@ -885,7 +891,7 @@ def test_every_mapped_unit_box_is_labeled_for_its_unit_type(form_key: str):
         for label, field_name, tooltip_word in (("Apt 1", apt, "apartment"), ("Ste 1", ste, "suite"), ("Fl 1", flr, "floor")):
             text_values: dict[str, str] = {}
             checkbox_values: dict[str, str] = {}
-            _add_unit_fields(
+            add_unit_fields(
                 text_values=text_values,
                 checkbox_values=checkbox_values,
                 value=label,
@@ -1206,9 +1212,9 @@ def test_seeded_scenario_fills_every_form_with_its_own_identity(tmp_path: Path, 
     with _session() as session:
         case = _create_case(session, scenario, answers)
         upsert_intake_step(session, case.id, f"packet_scenario:{scenario.slug}", answers)
-        _seed_i485(session, case, answers)
+        seed_i485(session, case, answers)
         for form_key in SUPPLEMENTAL_FORM_KEYS:
-            _seed_supplemental_form(session, case, form_key, answers)
+            seed_supplemental_form(session, case, form_key, answers)
         session.commit()
 
         for form_key in QUESTIONNAIRE_FORMS:
@@ -1235,7 +1241,7 @@ def test_seeded_scenario_i864_reports_the_scenarios_own_income(tmp_path: Path):
     with _session() as session:
         case = _create_case(session, scenario, answers)
         upsert_intake_step(session, case.id, "scenario", answers)
-        _seed_supplemental_form(session, case, "i864", answers)
+        seed_supplemental_form(session, case, "i864", answers)
         session.commit()
         path = tmp_path / "i864.pdf"
         generate_form_pdf(session=session, case_id=case.id, form_key="i864", output_path=path)
@@ -1251,8 +1257,8 @@ def test_seeded_scenario_i131_is_ready_with_a_numeric_trip_length():
     with _session() as session:
         case = _create_case(session, scenario, answers)
         upsert_intake_step(session, case.id, "scenario", answers)
-        _seed_i485(session, case, answers)
-        _seed_supplemental_form(session, case, "i131", answers)
+        seed_i485(session, case, answers)
+        seed_supplemental_form(session, case, "i131", answers)
         session.commit()
         preview = build_form_fill_preview(session, case.id, "i131")
 
