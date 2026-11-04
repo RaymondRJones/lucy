@@ -5,11 +5,14 @@ from uuid import uuid4
 from pypdf import PdfReader
 import pytest
 
+from app.cli.seed_happy_path import _answer_for_question, sample_answers
+from app.cli.seed_packet_scenarios import SCENARIOS, _scenario_answers
 from app.content.admission_classes import I130_CLASS_OF_ADMISSION_CODES
 from app.content.family_questionnaires import all_i130_questions, all_i130a_questions
-from app.content.supplemental_forms import all_supplemental_form_questions
+from app.content.supplemental_forms import all_supplemental_form_questions, get_supplemental_form_config
 from app.services.case_facts import enrich_case_fact_aliases, value_is_answered
 from app.services.family_pdf import (
+    I130_CHECKBOX_FIELD_MAP,
     I130_CLASS_NOT_OFFERED_WARNING,
     I130A_FOREIGN_ADDRESS_FIELD_MAP,
     build_i130_pdf_field_payload,
@@ -19,6 +22,7 @@ from app.services.family_pdf import (
 from app.services.form_ingestion import build_form_answer_proposals_from_case_data
 from app.services.form_pdf import NON_PDF_CONTROL_QUESTIONS, OTHER_NAME_MAPPINGS, build_form_pdf_field_payload
 from app.services.pdf_fields import (
+    employment_continuation_line,
     template_field_names,
 )
 
@@ -310,3 +314,101 @@ def test_a_cleared_address_does_not_block_its_proposal() -> None:
         {"beneficiary_recent_foreign_address": {"line1": "", "city": ""}}, _available("i-130a")
     )
     assert "beneficiary_recent_foreign_address" not in {entry["field_key"] for entry in payload.mapped_fields}
+
+
+def test_employment_continuation_line_prints_form_dates():
+    line = employment_continuation_line({"name": "Acme", "from": "2025-04-01", "to": "2026-01-15"})
+
+    assert "04/01/2025 - 01/15/2026" in line
+
+
+def test_i131_leaves_overseas_location_blank_for_a_us_delivery_address():
+    answers = {"i131_processing_city": "Bogota", "i131_processing_country": "Colombia"}
+
+    domestic = build_form_pdf_field_payload(
+        "i131", {**answers, "i131_processing_location": "domestic_address"}, _available("i-131")
+    )
+    overseas = build_form_pdf_field_payload(
+        "i131", {**answers, "i131_processing_location": "overseas_office"}, _available("i-131")
+    )
+
+    assert "Colombia" not in domestic.text_values.values()
+    assert "Colombia" in overseas.text_values.values()
+    assert "Bogota" in overseas.text_values.values()
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.slug)
+def test_seeded_employer_country_does_not_assume_colombia(scenario):
+    config = get_supplemental_form_config("i130a")
+    questions = {question["id"]: question for page in config["pages"] for question in page["questions"]}
+
+    answer = _answer_for_question("i130a", questions["beneficiary_current_employer_country"], _scenario_answers(scenario))
+
+    assert answer == "United States"
+
+
+@pytest.mark.parametrize("form_key", ["i130", "i130a", "i765", "i131", "i864"])
+def test_happy_path_seed_does_not_print_placeholder_text(form_key):
+    sample = sample_answers()
+    config = get_supplemental_form_config(form_key)
+
+    answers = {
+        question["id"]: _answer_for_question(form_key, question, sample)
+        for page in config["pages"]
+        for question in page["questions"]
+    }
+
+    assert "Sample response" not in answers.values()
+
+
+def test_i130_prints_petitioner_biographics_and_prior_petition_answer():
+    payload = build_i130_pdf_field_payload(
+        {
+            "petitioner_ethnicity": "hispanic_or_latino",
+            "petitioner_race": ["white", "asian"],
+            "petitioner_height_feet": 5,
+            "petitioner_height_inches": 0,
+            "petitioner_weight_pounds": 95,
+            "petitioner_eye_color": "hazel",
+            "petitioner_hair_color": "white",
+            "petitioner_filed_prior_petition": True,
+        },
+        _available("i-130"),
+    )
+
+    assert payload.missing_template_fields == []
+    assert payload.checkbox_values == {
+        "Pt3Line1_Ethnicity[1]": "/H",
+        "Pt3Line2_Race_White[0]": "/W",
+        "Pt3Line2_Race_Asian[0]": "/A",
+        "Pt3Line5_EyeColor[2]": "/HZL",
+        "Pt3Line6_HairColor[7]": "/WHT",
+        "Part4Line1_Yes[0]": "/Y",
+    }
+    assert payload.text_values["Pt3Line3_HeightFeet[0]"] == "5"
+    assert payload.text_values["Pt3Line3_HeightInches[0]"] == "0"
+    assert [payload.text_values[f"Pt3Line4_Pound{digit}[0]"] for digit in (1, 2, 3)] == ["0", "9", "5"]
+
+
+def test_every_i130_eye_and_hair_answer_has_a_checkbox():
+    questions = {question["id"]: question for question in all_i130_questions()}
+
+    for question_id in ("petitioner_eye_color", "petitioner_hair_color"):
+        options = {option["value"] for option in questions[question_id]["options"]}
+        assert options <= set(I130_CHECKBOX_FIELD_MAP[question_id])
+
+
+def test_i130a_part_3_prints_the_foreign_employer():
+    payload = build_i130a_pdf_field_payload(
+        {
+            "beneficiary_foreign_employer_or_school": [
+                {"name": "Universidad", "city": "Bogota", "country": "Colombia", "occupation": "Student", "from": "2018-02-01"}
+            ]
+        },
+        _available("i-130a"),
+    )
+
+    assert payload.missing_template_fields == []
+    assert payload.text_values["Pt3Line1_EmployerOrCompName[0]"] == "Universidad"
+    assert payload.text_values["Pt3Line2h_Country[0]"] == "Colombia"
+    assert payload.text_values["Pt3Line4a_DateFrom[0]"] == "02/01/2018"

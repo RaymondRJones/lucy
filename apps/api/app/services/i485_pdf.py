@@ -26,12 +26,12 @@ from app.services.pdf_fields import (
     OVERLONG_WARNING,
     PART14_ADDITIONAL_INFO_FIELDS,
     US_STATE_CODES,
-    _is_us_country,
     add_unit_fields,
     as_pdf_date,
     employment_continuation_line,
     entry_has_content,
     field_length_warning,
+    is_us_country,
     normalize_us_state,
     normalized_address_for_pdf,
     overlong_field_names,
@@ -70,24 +70,23 @@ STATE_CHOICE_FIELDS = {
     "P6Line8_State[0]",
 }
 
+# Part 2's principal applicant block is left blank: the form asks for it only from a derivative applicant.
 TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_a_number": tuple(
-        ["Pt2Line2_AlienNumber[0]"] + [f"Pt1Line4_AlienNumber[{index}]" for index in range(25)]
+        [f"Pt1Line4_AlienNumber[{index}]" for index in range(25)]
     ),
     "beneficiary_last_name": (
         "Pt1Line1_FamilyName[0]",
         "P1Line12_FamilyName[0]",
-        "Pt2Line2_FamilyName[0]",
         "Pt1Line1_FamilyName[1]",
     ),
     "beneficiary_first_name": (
         "Pt1Line1_GivenName[0]",
         "P1Line13_GivenName[0]",
-        "Pt2Line2_GivenName[0]",
         "Pt1Line1_GivenName[1]",
     ),
-    "beneficiary_middle_name": ("Pt1Line1_MiddleName[0]", "Pt2Line2_MiddleName[0]", "Pt1Line1_MiddleName[1]"),
-    "beneficiary_date_of_birth": ("Pt1Line3_DOB[0]", "Pt1Line2_DOB[0]"),
+    "beneficiary_middle_name": ("Pt1Line1_MiddleName[0]", "Pt1Line1_MiddleName[1]"),
+    "beneficiary_date_of_birth": ("Pt1Line3_DOB[0]",),
     "beneficiary_city_of_birth": ("Pt1Line7_CityTownOfBirth[0]",),
     "beneficiary_country_of_birth": ("Pt1Line7_CountryOfBirth[0]",),
     "beneficiary_country_of_citizenship": ("Pt1Line8_CountryofCitizenshipNationality[0]",),
@@ -663,7 +662,7 @@ def _is_us_address_for_inference(value: Any) -> bool:
         return False
     country = value.get("country")
     if value_is_answered(country):
-        return _is_us_country(country)
+        return is_us_country(country)
     state = normalize_us_state(value.get("state"))
     zip_code = str(value.get("zip") or value.get("postal_code") or "").strip()
     return state in US_STATE_CODES and bool(zip_code)

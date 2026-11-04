@@ -211,6 +211,14 @@ def sample_i864_answers() -> dict[str, object]:
 def sample_i130_answers() -> dict[str, object]:
     return {
         "relationship_spouse": True,
+        "petitioner_ethnicity": "not_hispanic_or_latino",
+        "petitioner_race": ["white", "asian"],
+        "petitioner_height_feet": 5,
+        "petitioner_height_inches": 10,
+        "petitioner_weight_pounds": 170,
+        "petitioner_eye_color": "brown",
+        "petitioner_hair_color": "black",
+        "petitioner_filed_prior_petition": False,
         "first_marriage_for_both": True,
         "petitioner_a_number": "ANUMBER_SAMPLE_1",
         "petitioner_uscis_online_account_number": "123456789012",

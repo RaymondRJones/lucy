@@ -78,6 +78,8 @@ I130A_DATE_FIELD_KEYS = {
 }
 
 I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
+    "petitioner_height_feet": ("Pt3Line3_HeightFeet[0]",),
+    "petitioner_height_inches": ("Pt3Line3_HeightInches[0]",),
     "petitioner_a_number": ("Pt2Line1_AlienNumber[0]",),
     "petitioner_uscis_online_account_number": ("Pt2Line2_USCISOnlineActNumber[0]",),
     "petitioner_last_name": ("Pt2Line4a_FamilyName[0]",),
@@ -265,7 +267,46 @@ I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "prior_i130_result": ("Pt5Line5_Result[0]",),
 }
 
+I130_RACE_CHECKBOXES = {
+    "white": ("Pt3Line2_Race_White[0]", "/W"),
+    "asian": ("Pt3Line2_Race_Asian[0]", "/A"),
+    "black": ("Pt3Line2_Race_Black[0]", "/B"),
+    "american_indian": ("Pt3Line2_Race_AmericanIndianAlaskaNative[0]", "/AA"),
+    "pacific_islander": ("Pt3Line2_Race_NativeHawaiianOtherPacificIslander[0]", "/N"),
+}
+I130_WEIGHT_FIELDS = ("Pt3Line4_Pound1[0]", "Pt3Line4_Pound2[0]", "Pt3Line4_Pound3[0]")
+
 I130_CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
+    "petitioner_ethnicity": {
+        "hispanic_or_latino": ("Pt3Line1_Ethnicity[1]", "/H"),
+        "not_hispanic_or_latino": ("Pt3Line1_Ethnicity[0]", "/NH"),
+    },
+    "petitioner_eye_color": {
+        "black": ("Pt3Line5_EyeColor[7]", "/BLK"),
+        "blue": ("Pt3Line5_EyeColor[0]", "/BLU"),
+        "brown": ("Pt3Line5_EyeColor[1]", "/BRN"),
+        "gray": ("Pt3Line5_EyeColor[6]", "/GRAY"),
+        "green": ("Pt3Line5_EyeColor[5]", "/GRN"),
+        "hazel": ("Pt3Line5_EyeColor[2]", "/HZL"),
+        "maroon": ("Pt3Line5_EyeColor[4]", "/MRN"),
+        "pink": ("Pt3Line5_EyeColor[3]", "/PNK"),
+        "unknown_other": ("Pt3Line5_EyeColor[8]", "/OTH"),
+    },
+    "petitioner_hair_color": {
+        "bald": ("Pt3Line6_HairColor[0]", "/BLD"),
+        "black": ("Pt3Line6_HairColor[1]", "/BLK"),
+        "blond": ("Pt3Line6_HairColor[2]", "/BND"),
+        "brown": ("Pt3Line6_HairColor[3]", "/BRN"),
+        "gray": ("Pt3Line6_HairColor[4]", "/GRY"),
+        "red": ("Pt3Line6_HairColor[5]", "/RED"),
+        "sandy": ("Pt3Line6_HairColor[6]", "/SDY"),
+        "white": ("Pt3Line6_HairColor[7]", "/WHT"),
+        "unknown_other": ("Pt3Line6_HairColor[8]", "/OTH"),
+    },
+    "petitioner_filed_prior_petition": {
+        True: ("Part4Line1_Yes[0]", "/Y"),
+        False: ("Part4Line1_No[0]", "/N"),
+    },
     "relationship_spouse": {
         True: ("Pt1Line1_Spouse[0]", "/Y"),
         "spouse": ("Pt1Line1_Spouse[0]", "/Y"),
@@ -825,6 +866,41 @@ I130A_PART7_WRAP_WIDTH = 38
 I130A_PART7_MAX_LINES = 14
 
 
+I130A_FOREIGN_EMPLOYER_ROW = {
+    "name": "Pt3Line1_EmployerOrCompName[0]",
+    "line1": "Pt3Line2a_StreetNumberName[0]",
+    "city": "Pt3Line2c_CityOrTown[0]",
+    "province": "Pt3Line2f_Province[0]",
+    "postal_code": "Pt3Line2g_PostalCode[0]",
+    "country": "Pt3Line2h_Country[0]",
+    "occupation": "Pt3Line3_Occupation[0]",
+    "from": "Pt3Line4a_DateFrom[0]",
+    "to": "Pt3Line4b_DateTo[0]",
+}
+
+
+def _add_i130a_foreign_employer(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    raw = values.get("beneficiary_foreign_employer_or_school")
+    entry = raw[0] if isinstance(raw, list) and raw else raw
+    if isinstance(entry, str):
+        entry = {"name": entry}
+    if not isinstance(entry, dict):
+        return
+    used_fields = []
+    for source_key, field_name in I130A_FOREIGN_EMPLOYER_ROW.items():
+        value = entry.get(source_key)
+        if value_is_answered(value):
+            text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+            used_fields.append(field_name)
+    if used_fields:
+        mapped_fields.append({"field_key": "beneficiary_foreign_employer_or_school", "pdf_fields": used_fields})
+
+
 def _same_employer(entry: dict[str, Any], name: str) -> bool:
     return str(entry.get("name") or "").strip().casefold() == name.strip().casefold()
 
@@ -930,6 +1006,12 @@ def build_i130_pdf_field_payload(
         values=normalized,
         field_map=I130_UNIT_FIELD_MAP,
     )
+    _add_i130_biographics(
+        values=normalized,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
 
     return FamilyPdfFieldPayload(
         form_code="form_i130",
@@ -942,6 +1024,24 @@ def build_i130_pdf_field_payload(
             available_fields=available_fields,
         ),
     )
+
+
+def _add_i130_biographics(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    races = values.get("petitioner_race")
+    selected = [I130_RACE_CHECKBOXES[race] for race in races if race in I130_RACE_CHECKBOXES] if isinstance(races, list) else []
+    checkbox_values.update(selected)
+    if selected:
+        mapped_fields.append({"field_key": "petitioner_race", "pdf_fields": [name for name, _state in selected]})
+    digits = str(values.get("petitioner_weight_pounds") or "").strip()
+    if digits.isdigit() and len(digits) <= len(I130_WEIGHT_FIELDS):
+        text_values.update(zip(I130_WEIGHT_FIELDS, digits.zfill(len(I130_WEIGHT_FIELDS)), strict=True))
+        mapped_fields.append({"field_key": "petitioner_weight_pounds", "pdf_fields": list(I130_WEIGHT_FIELDS)})
 
 
 def build_i130a_pdf_field_payload(
@@ -992,6 +1092,7 @@ def build_i130a_pdf_field_payload(
         checkbox_values=checkbox_values,
         mapped_fields=mapped_fields,
     )
+    _add_i130a_foreign_employer(values=values, text_values=text_values, mapped_fields=mapped_fields)
 
     return FamilyPdfFieldPayload(
         form_code="form_i130a",

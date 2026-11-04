@@ -419,6 +419,11 @@ CHECKBOX_FIELD_MAP: dict[str, dict[str, dict[Any, tuple[str, str]]]] = {
     },
 }
 
+I130A_FOREIGN_EMPLOYER_KEY = "beneficiary_foreign_employer_or_school"
+
+# Part 4, Item 7.b applies only when a travel document is collected overseas.
+I131_OVERSEAS_PROCESSING_QUESTIONS = {"i131_processing_city", "i131_processing_country"}
+
 UNIT_FIELD_MAP: dict[str, dict[str, tuple[str, str, str, str]]] = {
     "i765": {
         "beneficiary_mailing_address_line2": (
@@ -808,6 +813,8 @@ def build_form_pdf_field_payload(
     """Returns the PDF field values and mapping report for a supplemental form."""
     normalized_form_key = normalize_form_key(form_key)
     question_by_id = {question["id"]: question for question in all_supplemental_form_questions(normalized_form_key)}
+    if normalized_form_key == "i131" and answers.get("i131_processing_location") == "domestic_address":
+        answers = {key: value for key, value in answers.items() if key not in I131_OVERSEAS_PROCESSING_QUESTIONS}
     if normalized_form_key in {"i130", "i130a"}:
         family_payload = (
             build_i130_pdf_field_payload(answers, available_fields)
@@ -1015,9 +1022,13 @@ def generate_form_pdf(
     preview = build_form_fill_preview(session, case_id, form_key)
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
-    for proposal in build_form_answer_proposals_from_case_data(form_key, get_form_case_intake(session, case_id, form_key)):
+    case_intake = get_form_case_intake(session, case_id, form_key)
+    for proposal in build_form_answer_proposals_from_case_data(form_key, case_intake):
         if not value_is_answered(answers.get(proposal["question_id"])):
             answers[proposal["question_id"]] = proposal["value"]
+    # I-130A Part 3 has no question of its own: it repeats the I-485's foreign employer or school.
+    if normalize_form_key(form_key) == "i130a" and value_is_answered(case_intake.get(I130A_FOREIGN_EMPLOYER_KEY)):
+        answers[I130A_FOREIGN_EMPLOYER_KEY] = case_intake[I130A_FOREIGN_EMPLOYER_KEY]
     return generate_form_pdf_from_answers(
         case_id=case_id,
         form_key=form_key,

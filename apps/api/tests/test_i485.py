@@ -307,12 +307,14 @@ def test_i485_pdf_payload_maps_known_questionnaire_answers():
     assert payload.text_values["P1Line12_FamilyName[0]"] == "Sample"
     assert payload.text_values["P1Line13_GivenName[0]"] == "Avery"
     assert payload.text_values["P1Line12_I94[0]"] == "987654321A1"
-    assert payload.text_values["Pt2Line2_FamilyName[0]"] == "Sample"
-    assert payload.text_values["Pt2Line2_GivenName[0]"] == "Avery"
-    assert payload.text_values["Pt2Line2_MiddleName[0]"] == "Marie"
-    assert payload.text_values["Pt2Line2_AlienNumber[0]"] == "000000000"
     assert payload.text_values["Pt1Line3_DOB[0]"] == "11/23/2001"
-    assert payload.text_values["Pt1Line2_DOB[0]"] == "11/23/2001"
+    assert not {
+        "Pt2Line2_FamilyName[0]",
+        "Pt2Line2_GivenName[0]",
+        "Pt2Line2_MiddleName[0]",
+        "Pt2Line2_AlienNumber[0]",
+        "Pt1Line2_DOB[0]",
+    } & set(payload.text_values)
     assert payload.text_values["Pt1Line10_State[0]"] == "CA"
     assert payload.text_values["Pt1Line18_State[0]"] == "CA"
     assert payload.text_values["Pt1Line18US_AptSteFlrNumber[0]"] == "3103"

@@ -34,6 +34,14 @@ COUNTRY_ALIASES = {
 }
 
 
+COUNTRY_NAMES_BY_CODE = {"CO": "Colombia", "US": "United States"}
+
+
+def country_name(value: Any) -> Any:
+    """Returns a country as forms print it, expanding the codes normalize_country stores."""
+    return COUNTRY_NAMES_BY_CODE.get(COUNTRY_ALIASES.get(str(value).strip().lower()), value)
+
+
 def normalize_country(value: Any) -> str | None:
     """Returns a country in its stored form."""
     if value is None:
@@ -54,7 +62,7 @@ def merge_intake_state(steps: list[IntakeResponse]) -> dict[str, Any]:
         merged.update(step.payload)
     merged = enrich_case_fact_aliases(merged)
     if "beneficiary_country_of_birth" in merged:
-        merged["beneficiary_country_of_birth"] = normalize_country(merged["beneficiary_country_of_birth"])
+        merged["beneficiary_country_of_birth"] = country_name(merged["beneficiary_country_of_birth"])
     if "country_of_focus" in merged:
         merged["country_of_focus"] = normalize_country(merged["country_of_focus"])
     return merged

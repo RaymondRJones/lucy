@@ -1048,9 +1048,10 @@ def _default_supplemental_help(
             f"Answer for the {subject}, not the petitioner or sponsor unless this question says otherwise. {required_note} {context}",
         )
     if question_id.startswith("petitioner_"):
+        subject = "sponsor" if form_key == "i864" else "petitioner"
         return (
-            _person_question_prompt(label, "sponsor", ("sponsor ",)),
-            f"Answer for the person signing Form {form_code} as sponsor. {required_note} Keep sponsor identity, address, income, and tax facts consistent with evidence.",
+            _person_question_prompt(label, subject, (f"{subject} ",)),
+            f"Answer for the person signing Form {form_code} as {subject}. {required_note} Keep {subject} identity, address, income, and tax facts consistent with evidence.",
         )
     if risk_code:
         return (

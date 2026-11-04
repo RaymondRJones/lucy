@@ -175,7 +175,7 @@ def join_entry_address(entry: dict[str, Any]) -> str:
 
 def employment_continuation_line(entry: dict[str, Any]) -> str:
     """Returns a job as one line for a continuation page."""
-    dates = " - ".join(str(entry.get(key, "")).strip() for key in ("from", "to") if value_is_answered(entry.get(key)))
+    dates = " - ".join(as_pdf_date(entry[key]) for key in ("from", "to") if value_is_answered(entry.get(key)))
     pieces = [
         str(entry.get("name", "")).strip(),
         str(entry.get("occupation", "")).strip(),
@@ -204,14 +204,15 @@ def _normalized_country_key(value: Any) -> str:
     return " ".join(str(value or "").lower().replace(".", " ").replace(",", " ").split())
 
 
-def _is_us_country(value: Any) -> bool:
+def is_us_country(value: Any) -> bool:
+    """Returns whether a country answer names the United States."""
     return _normalized_country_key(value) in US_COUNTRY_NAMES
 
 
 def _looks_foreign_address(value: dict[str, Any]) -> bool:
     country = value.get("country")
     if value_is_answered(country):
-        return not _is_us_country(country)
+        return not is_us_country(country)
     return any(value_is_answered(value.get(key)) for key in ("province", "postal_code"))
 
 

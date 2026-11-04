@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-I130_QUESTIONNAIRE_VERSION = "i130-04-01-24-marriage-v1"
+from app.content.i485_questionnaire import EYE_COLOR_OPTIONS, HAIR_COLOR_OPTIONS
+
+I130_QUESTIONNAIRE_VERSION = "i130-04-01-24-marriage-v2"
 I130A_QUESTIONNAIRE_VERSION = "i130a-04-01-24-spouse-v2"
 FAMILY_FORMS_VERIFIED_ON = "2026-05-01"
 I130_OFFICIAL_URL = "https://www.uscis.gov/i-130"
@@ -260,6 +262,13 @@ I130_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("petitioner_prior_occupation", "Petitioner prior occupation", "text", required=False, pdf_ref="Part 2, Item 48", db_path="intake.petitioner_prior_occupation"),
             q("petitioner_prior_employment_from", "Date petitioner started prior employment", "date", required=False, pdf_ref="Part 2, Item 49.a", db_path="intake.petitioner_prior_employment_from"),
             q("petitioner_prior_employment_to", "Date petitioner ended prior employment", "date", required=False, pdf_ref="Part 2, Item 49.b", db_path="intake.petitioner_prior_employment_to"),
+            q("petitioner_ethnicity", "Petitioner ethnicity", "select", pdf_ref="Part 3, Item 1", db_path="intake.petitioner_ethnicity", options=[{"value": "hispanic_or_latino", "label": "Hispanic or Latino"}, {"value": "not_hispanic_or_latino", "label": "Not Hispanic or Latino"}]),
+            q("petitioner_race", "Petitioner race selections", "multi_select", pdf_ref="Part 3, Item 2", db_path="intake.petitioner_race", options=[{"value": "white", "label": "White"}, {"value": "asian", "label": "Asian"}, {"value": "black", "label": "Black or African American"}, {"value": "american_indian", "label": "American Indian or Alaska Native"}, {"value": "pacific_islander", "label": "Native Hawaiian or Other Pacific Islander"}]),
+            q("petitioner_height_feet", "Petitioner height: feet", "number", pdf_ref="Part 3, Item 3", db_path="intake.petitioner_height_feet"),
+            q("petitioner_height_inches", "Petitioner height: inches", "number", pdf_ref="Part 3, Item 3", db_path="intake.petitioner_height_inches"),
+            q("petitioner_weight_pounds", "Petitioner weight in pounds", "number", pdf_ref="Part 3, Item 4", db_path="intake.petitioner_weight_pounds"),
+            q("petitioner_eye_color", "Petitioner eye color", "select", pdf_ref="Part 3, Item 5", db_path="intake.petitioner_eye_color", options=EYE_COLOR_OPTIONS),
+            q("petitioner_hair_color", "Petitioner hair color", "select", pdf_ref="Part 3, Item 6", db_path="intake.petitioner_hair_color", options=HAIR_COLOR_OPTIONS),
         ],
     },
     {
@@ -374,6 +383,7 @@ I130_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_consular_city", "Consular processing city, if not adjusting status", "text", required=False, pdf_ref="Part 4, Item 62.a", db_path="intake.beneficiary_consular_city"),
             q("beneficiary_consular_province", "Consular processing province, if any", "text", required=False, pdf_ref="Part 4, Item 62.b", db_path="intake.beneficiary_consular_province"),
             q("beneficiary_consular_country", "Consular processing country, if any", "country", required=False, pdf_ref="Part 4, Item 62.c", db_path="intake.beneficiary_consular_country"),
+            q("petitioner_filed_prior_petition", "Has the petitioner ever filed a petition for this beneficiary or any other alien?", "boolean", pdf_ref="Part 5, Item 1", db_path="intake.petitioner_filed_prior_petition"),
             q("prior_i130_last_name", "Prior I-130 beneficiary family name, if any", "text", required=False, pdf_ref="Part 5, Item 2", db_path="intake.prior_i130_last_name"),
             q("prior_i130_first_name", "Prior I-130 beneficiary given name, if any", "text", required=False, pdf_ref="Part 5, Item 2", db_path="intake.prior_i130_first_name"),
             q("prior_i130_middle_name", "Prior I-130 beneficiary middle name, if any", "text", required=False, pdf_ref="Part 5, Item 2", db_path="intake.prior_i130_middle_name"),
