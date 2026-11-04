@@ -152,17 +152,7 @@ export function ManageTasksWorkspace() {
       <PageHeader
         eyebrow="Step 3"
         title="Checklist"
-        description="Everything each form needs, from the checklist Lucy built for your answers. Tick items off as you collect them."
-        actions={
-          <div className="w-full min-w-64 sm:w-80">
-            <CaseSelector
-              selectedCaseId={caseSummary?.id ?? ""}
-              onSelect={(nextCase) => window.location.assign(`/manage-tasks?caseId=${encodeURIComponent(nextCase.id)}`)}
-              disabled={isPending}
-              label="Case"
-            />
-          </div>
-        }
+        description="Everything each form needs, from the checklist Lucy built for your answers. Tick items off as you collect them, then attach the files on the Print packet step."
       />
 
       <StatusMessage message={message} />
@@ -190,7 +180,14 @@ export function ManageTasksWorkspace() {
             </Link>
           }
         >
-          Start a case from the prescreen to get a checklist.
+          <p>Open a saved case, or start a new one from the prescreen to get a checklist.</p>
+          <div className="mt-3 max-w-sm">
+            <CaseSelector
+              selectedCaseId=""
+              onSelect={(nextCase) => window.location.assign(`/manage-tasks?caseId=${encodeURIComponent(nextCase.id)}`)}
+              label="Saved cases"
+            />
+          </div>
         </Notice>
       ) : null}
 
@@ -199,7 +196,7 @@ export function ManageTasksWorkspace() {
           <Card as="aside" className="h-fit p-3 md:p-3">
             <div className="px-2 pb-3 pt-1">
               <div className="flex items-center justify-between text-xs font-semibold text-muted">
-                <span>All required items</span>
+                <span>Required items marked done</span>
                 <span className="tabular-nums">
                   {totalDone} of {totalRequired}
                 </span>

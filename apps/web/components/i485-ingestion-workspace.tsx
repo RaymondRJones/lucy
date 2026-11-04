@@ -842,7 +842,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                   disabled={!caseId || isPending}
                   className="rounded-md px-3 py-2 text-left text-sm hover:bg-paper disabled:opacity-50"
                 >
-                  <span className="block font-semibold text-ink">Refill from case data</span>
+                  <span className="block font-semibold text-ink">Refill from other forms</span>
                   <span className="block text-xs text-muted">Copies answers saved on other forms</span>
                 </button>
                 <button
@@ -856,7 +856,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 </button>
               </div>
             </details>
-            <button type="button" onClick={generatePdf} disabled={!caseId || isPending} className={buttonClass("primary", "md")}>
+            <button type="button" onClick={generatePdf} disabled={!caseId || isPending} className={buttonClass("secondary", "md")}>
               Preview draft PDF
             </button>
           </>
@@ -875,29 +875,8 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
         />
       ) : null}
 
-      {isFormComplete ? (
-        <FormCompleteNotice
-          formCode="I-485"
-          nextHref={nextStepHref}
-          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
-        />
-      ) : null}
 
-      <CaseBar
-        caseId={caseId ?? ""}
-        onSelect={selectCase}
-        disabled={isPending}
-        stats={
-          fillPreview
-            ? [
-                { label: "fields filled", value: fillPreview.field_count },
-                { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
-                { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
-                { label: "to review", value: fillPreview.low_confidence_count },
-              ]
-            : undefined
-        }
-      />
+      {!caseId ? <CaseBar caseId="" onSelect={selectCase} disabled={isPending} /> : null}
 
       <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
 
@@ -915,6 +894,16 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
           onSelect={goToPage}
           completionPct={completionPct}
           statusLabel={formatStatus(readiness)}
+          stats={
+            fillPreview
+              ? [
+                  { label: "fields filled", value: fillPreview.field_count },
+                  { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                  { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                  { label: "to review", value: fillPreview.low_confidence_count },
+                ]
+              : undefined
+          }
         />
 
         <section id="form-page" aria-labelledby="form-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
@@ -998,6 +987,14 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
           ) : null}
         </section>
       </div>
+
+      {isFormComplete ? (
+        <FormCompleteNotice
+          formCode="I-485"
+          nextHref={nextStepHref}
+          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
+        />
+      ) : null}
 
       <SourcesDisclosure
         version={questionnaire.version}

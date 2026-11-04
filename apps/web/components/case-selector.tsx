@@ -6,8 +6,6 @@ import { inputClass, labelClass } from "@/components/ui";
 import { listCases } from "@/lib/api";
 import type { CaseSummary } from "@/lib/types";
 
-const SHORT_ID_LENGTH = 8;
-
 function compactName(...parts: Array<string | null | undefined>) {
   return parts.map((part) => part?.trim()).filter(Boolean).join(" ");
 }
@@ -26,19 +24,34 @@ function casePersonLabel(caseSummary: CaseSummary) {
   return caseSummary.case_name;
 }
 
+function displayCountry(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  if (/^[A-Z]{2}$/.test(value)) {
+    try {
+      return new Intl.DisplayNames(["en"], { type: "region" }).of(value) ?? value;
+    } catch {
+      return value;
+    }
+  }
+  if (value === value.toUpperCase()) {
+    return value.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+  return value;
+}
+
 export function formatCaseSelectLabel(caseSummary: CaseSummary) {
   const personLabel = casePersonLabel(caseSummary);
   const context = [
-    caseSummary.country_of_focus,
+    displayCountry(caseSummary.country_of_focus),
     caseSummary.readiness_label && caseSummary.readiness_label !== "Not started"
       ? caseSummary.readiness_label
       : null,
   ]
     .filter(Boolean)
-    .join(" · ");
-  const shortId = caseSummary.id.slice(0, SHORT_ID_LENGTH);
-
-  return [personLabel, context, shortId].filter(Boolean).join(" · ");
+    .join(" \u00b7 ");
+  return [personLabel, context].filter(Boolean).join(" \u00b7 ");
 }
 
 export function CaseSelector({

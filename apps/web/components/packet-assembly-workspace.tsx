@@ -33,6 +33,7 @@ import {
   uploadBinary,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { GENERATED_ONLY_UPLOAD_CODES, NOT_EVIDENCE_CODES, getSatisfiedChecklistCodes } from "@/lib/evidence";
 import { formatFieldList, getG1450PaymentFieldIssues, getG1650PaymentFieldIssues } from "@/lib/g1450-validation";
 import type {
   CaseSummary,
@@ -58,9 +59,6 @@ const FORM_LABELS: Record<string, string> = {
 
 const CARD_TYPES = ["Visa", "Mastercard", "American Express", "Discover"];
 const PACKET_PAYMENT_CODES = new Set(["form_i130", "form_i485", "form_i765", "form_i131"]);
-// The payment row is filled from the Payment section, so it is not counted as evidence.
-const NOT_EVIDENCE_CODES = new Set(["payment_g1450"]);
-const GENERATED_ONLY_UPLOAD_CODES = new Set(["form_g1145", "form_i130", "form_i130a", "form_i485", "form_i864", "form_i765", "form_i131"]);
 const MAX_PACKET_UPLOAD_SIZE_MB = 100;
 
 const DEFAULT_PAYMENT_FORM = {
@@ -207,16 +205,6 @@ function categoryLabel(value: string) {
     .join(" ");
 }
 
-function getSatisfiedChecklistCodes(upload: UploadRecord) {
-  const extraCodes = Array.isArray(upload.extracted_fields.satisfies_checklist_codes)
-    ? upload.extracted_fields.satisfies_checklist_codes
-        .filter((value): value is string => typeof value === "string" && value.length > 0)
-    : [];
-  return Array.from(
-    new Set([...(upload.checklist_item_code ? [upload.checklist_item_code] : []), ...extraCodes]),
-  );
-}
-
 function itemGroupKey(item: ChecklistItem) {
   const formCodes = Array.isArray(item.item_metadata.form_codes)
     ? item.item_metadata.form_codes.filter((value): value is string => typeof value === "string")
@@ -309,8 +297,9 @@ function LinkedText({ text }: { text: string }) {
     <>
       {parts.map((part, index) =>
         part.startsWith("https://") ? (
-          <a key={index} href={part} target="_blank" rel="noreferrer" className="break-all font-semibold text-pine underline-offset-4 hover:underline">
-            {part.replace("https://www.", "")}
+          <a key={index} href={part} target="_blank" rel="noreferrer" className="font-semibold text-pine underline-offset-4 hover:underline">
+            USCIS source
+            <span className="sr-only"> ({part})</span>
           </a>
         ) : (
           <span key={index}>{part}</span>
@@ -807,7 +796,7 @@ export function PacketAssemblyWorkspace() {
         className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-white py-1 pl-3 pr-1 text-xs text-ink"
       >
         <span aria-hidden="true" className="text-pine">
-          {"▤"}
+          {"\u25A4"}
         </span>
         <span className="truncate font-medium">{upload.original_filename}</span>
         {showStatus ? <Badge tone="success" className="capitalize">{formatStatus(upload.upload_status)}</Badge> : null}
@@ -847,7 +836,7 @@ export function PacketAssemblyWorkspace() {
             <SectionHeader
               id="result-heading"
               eyebrow="Packet ready"
-              title={`${includeSupportingEvidence ? "Full packet" : "Forms-only packet"} · ${result.total_page_count} pages`}
+              title={`${includeSupportingEvidence ? "Full packet" : "Forms-only packet"} \u00b7 ${result.total_page_count} pages`}
               description="Open the PDF and check every page before printing single-sided on letter paper."
               actions={
                 <>
@@ -898,7 +887,7 @@ export function PacketAssemblyWorkspace() {
                   rel="noreferrer"
                   className={buttonClass("ghost", "sm", "mt-2 -ml-3")}
                 >
-                  Check the USCIS address page {"↗"}
+                  Check the USCIS address page {"\u2197"}
                 </a>
               </>
             ) : (
@@ -924,7 +913,7 @@ export function PacketAssemblyWorkspace() {
                   <span className="ml-2 text-muted">{result.skipped_documents.length} with reasons</span>
                 </span>
                 <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
-                  {"▾"}
+                  {"\u25BE"}
                 </span>
               </summary>
               <ul className="grid gap-2 border-t border-line px-5 py-4">
@@ -943,76 +932,24 @@ export function PacketAssemblyWorkspace() {
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-6">
-          <Card aria-labelledby="case-heading">
-            <SectionHeader id="case-heading" eyebrow="Part 1" title="Case" />
-            <form className="mt-4 grid gap-4" onSubmit={handleCaseSearch}>
-              <div className="max-w-xl">
-                <CaseSelector
-                  selectedCaseId={caseSummary?.id ?? caseIdInput}
-                  onSelect={handleSavedCaseSelect}
-                  disabled={isPending}
-                  label="Saved case"
-                />
+          {!caseSummary ? (
+            <Card>
+              <SectionHeader title="No case open" description="Open a saved case to attach evidence and assemble its packet." />
+              <div className="mt-4 max-w-xl">
+                <CaseSelector selectedCaseId={caseIdInput} onSelect={handleSavedCaseSelect} disabled={isPending} label="Saved cases" />
               </div>
-              <details className="group">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-pine hover:underline [&::-webkit-details-marker]:hidden">
-                  More ways to open a case
-                  <span aria-hidden="true" className="transition-transform group-open:rotate-180">
-                    {"▾"}
-                  </span>
-                </summary>
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-1.5">
-                    <span className={labelClass}>Test scenario</span>
-                    <select
-                      value={activeScenarioCaseId}
-                      onChange={(event) => handleScenarioSelect(event.target.value)}
-                      disabled={!scenarioCases.length || isPending}
-                      className={inputClass}
-                    >
-                      <option value="">{scenarioCases.length ? "Choose a seeded scenario" : "Run npm run seed:packet-scenarios"}</option>
-                      {scenarioCases.map((scenario) => {
-                        const defaults = scenarioDefaults(scenario.case_name);
-                        const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
-                        return (
-                          <option key={scenario.id} value={scenario.id}>
-                            {scenarioShortLabel(scenario.case_name)} · {defaults?.stateCode ?? "?"} · {carrierLabel}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </label>
-                  <div className="grid gap-1.5">
-                    <label htmlFor="case-id-input" className={labelClass}>
-                      Case ID
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="case-id-input"
-                        value={caseIdInput}
-                        onChange={(event) => setCaseIdInput(event.target.value)}
-                        placeholder="Paste a case ID"
-                        className={inputClass}
-                      />
-                      <button type="submit" disabled={isPending} className={buttonClass("secondary", "md", "shrink-0")}>
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </details>
-            </form>
-          </Card>
+            </Card>
+          ) : null}
 
           <Card aria-labelledby="evidence-heading">
             <SectionHeader
               id="evidence-heading"
-              eyebrow="Part 2"
+              eyebrow="Part 1"
               title="Evidence"
               description="Attach a PDF for each item. Lucy generates the USCIS forms itself, so those rows need no upload."
               actions={
                 <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
-                  {evidenceItemsWithFiles} of {totalManualUploadItems} items have a file
+                  {evidenceItemsWithFiles} of {totalManualUploadItems} evidence files attached
                 </Badge>
               }
             />
@@ -1030,6 +967,9 @@ export function PacketAssemblyWorkspace() {
                 const uploadItems = group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code));
                 const evidenceItems = uploadItems.filter((item) => !NOT_EVIDENCE_CODES.has(item.code));
                 const attachedCount = evidenceItems.filter((item) => (uploadsByCode.get(item.code) ?? []).length).length;
+                const missingNames = evidenceItems
+                  .filter((item) => !(uploadsByCode.get(item.code) ?? []).length)
+                  .map((item) => item.label);
                 const requiredMissing = evidenceItems.filter(
                   (item) => item.applicability === "required" && !(uploadsByCode.get(item.code) ?? []).length,
                 ).length;
@@ -1038,7 +978,7 @@ export function PacketAssemblyWorkspace() {
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-3 hover:bg-paper [&::-webkit-details-marker]:hidden">
                       <span className="flex items-center gap-2">
                         <span aria-hidden="true" className="text-muted transition-transform group-open/evidence:rotate-90">
-                          {"▸"}
+                          {"\u25B8"}
                         </span>
                         <span className="text-base font-semibold text-ink">{group.label}</span>
                       </span>
@@ -1053,6 +993,11 @@ export function PacketAssemblyWorkspace() {
                         </span>
                       </span>
                     </summary>
+                    {missingNames.length ? (
+                      <p className="px-4 pb-3 pl-10 text-xs leading-5 text-muted group-open/evidence:hidden">
+                        No file yet: {missingNames.join(", ")}
+                      </p>
+                    ) : null}
                     <div className="border-t border-line px-4">
                       {generatedItems.length ? (
                         <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-3 text-sm">
@@ -1185,7 +1130,7 @@ export function PacketAssemblyWorkspace() {
           <Card aria-labelledby="payment-heading">
             <SectionHeader
               id="payment-heading"
-              eyebrow="Part 3"
+              eyebrow="Part 2"
               title="Payment"
               description={paymentOptions?.payment_note ? <LinkedText text={paymentOptions.payment_note} /> : null}
               actions={segmented<PaymentMode>(
@@ -1327,7 +1272,10 @@ export function PacketAssemblyWorkspace() {
                         })}
                       </div>
                     </div>
-                    <p className={hintClass}>Leave the card fields blank to assemble the packet without a payment form.</p>
+                    <p className={hintClass}>
+                      These details only fill in Form G-1450 on this computer. Lucy does not charge your card. Leave them blank to
+                      assemble the packet without a payment form.
+                    </p>
                   </fieldset>
                 ) : (
                   <fieldset className="grid gap-4">
@@ -1405,13 +1353,62 @@ export function PacketAssemblyWorkspace() {
               </div>
             )}
           </Card>
+          <form onSubmit={handleCaseSearch}>
+              <details className="group">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
+                  Test scenarios and case ID
+                  <span aria-hidden="true" className="transition-transform group-open:rotate-180">
+                    {"\u25BE"}
+                  </span>
+                </summary>
+                <div className="mt-3 grid gap-4 rounded-lg border border-line bg-white p-4 md:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className={labelClass}>Test scenario</span>
+                    <select
+                      value={activeScenarioCaseId}
+                      onChange={(event) => handleScenarioSelect(event.target.value)}
+                      disabled={!scenarioCases.length || isPending}
+                      className={inputClass}
+                    >
+                      <option value="">{scenarioCases.length ? "Choose a seeded scenario" : "Run npm run seed:packet-scenarios"}</option>
+                      {scenarioCases.map((scenario) => {
+                        const defaults = scenarioDefaults(scenario.case_name);
+                        const carrierLabel = defaults?.carrier === "private" ? "Private carrier" : "USPS";
+                        return (
+                          <option key={scenario.id} value={scenario.id}>
+                            {`${scenarioShortLabel(scenario.case_name)} \u00b7 ${defaults?.stateCode ?? "?"} \u00b7 ${carrierLabel}`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <div className="grid gap-1.5">
+                    <label htmlFor="case-id-input" className={labelClass}>
+                      Case ID
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="case-id-input"
+                        value={caseIdInput}
+                        onChange={(event) => setCaseIdInput(event.target.value)}
+                        placeholder="Paste a case ID"
+                        className={inputClass}
+                      />
+                      <button type="submit" disabled={isPending} className={buttonClass("secondary", "md", "shrink-0")}>
+                        Open
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </details>
+          </form>
         </div>
 
         <aside id="assemble" aria-labelledby="assemble-heading" className="scroll-mt-24 xl:sticky xl:top-20 xl:h-fit">
           <Card className="border-pine/30">
             <SectionHeader
               id="assemble-heading"
-              eyebrow="Part 4"
+              eyebrow="Part 3"
               title="Mail and assemble"
               description="Lucy uses where the filer lives to pick the USCIS lockbox."
               level={2}
@@ -1485,13 +1482,14 @@ export function PacketAssemblyWorkspace() {
                   <>
                     <Spinner /> Working...
                   </>
+                ) : !stateCode ? (
+                  "Choose the filer's state first"
                 ) : includeSupportingEvidence ? (
                   "Assemble full packet"
                 ) : (
                   "Assemble forms only"
                 )}
               </button>
-              {!stateCode && caseSummary ? <p className={hintClass}>Choose where the filer lives to continue.</p> : null}
               {stateCode &&
               caseSummary &&
               (paymentMode === "existing"

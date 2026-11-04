@@ -155,7 +155,7 @@ export function LucyLanding() {
               {HAPPY_PATH.map((point) => (
                 <li key={point} className={cx(cardClass, "flex items-start gap-3 px-4 py-3 text-sm font-medium text-ink")}>
                   <span aria-hidden="true" className="mt-0.5 text-pine">
-                    {"✓"}
+                    {"\u2713"}
                   </span>
                   {point}
                 </li>

@@ -642,8 +642,7 @@ export function PrescreenWorkspace() {
         </div>
       ) : (
         <>
-          <Card className="grid gap-5 p-4 md:p-5 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
-            <CaseSelector selectedCaseId={caseSummary.id} onSelect={handleCaseSelect} disabled={isPending} label="Case" />
+          <Card className="p-4 md:p-5">
             {prescreen ? (
               <div className="grid gap-3">
                 <div className="flex flex-wrap items-center gap-2">

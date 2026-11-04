@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CaseSelector } from "@/components/case-selector";
 import { Badge, cx } from "@/components/ui";
 import { getCase } from "@/lib/api";
+import { clearSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import type { CaseSummary } from "@/lib/types";
 
 export type WorkflowStep = "prescreen" | "forms" | "checklist" | "review" | "packet";
 
@@ -91,21 +94,7 @@ export function AppShell({
             <StepList activeIndex={activeIndex} caseId={caseId} />
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-2 lg:ml-0">
-            {shownName ? (
-              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-line bg-paper px-3 py-1.5">
-                <span className="hidden text-xs font-semibold text-muted sm:inline">Case</span>
-                <span className="max-w-[10rem] truncate text-sm font-semibold text-ink sm:max-w-[14rem]" title={shownName}>
-                  {shownName}
-                </span>
-                {shownReadiness ? (
-                  <Badge tone={readinessTone(shownReadiness)} className="hidden md:inline-flex">
-                    {shownReadiness}
-                  </Badge>
-                ) : null}
-              </div>
-            ) : (
-              <span className="text-sm text-muted">{caseId ? "" : "No case open"}</span>
-            )}
+            <CaseSwitcher caseId={caseId} name={shownName} readiness={shownReadiness} />
           </div>
         </div>
         <MobileSteps activeIndex={activeIndex} caseId={caseId} />
@@ -114,6 +103,56 @@ export function AppShell({
         {children}
       </main>
     </div>
+  );
+}
+
+function switchToCase(nextCase: CaseSummary) {
+  rememberCaseId(nextCase.id);
+  const url = new URL(window.location.href);
+  url.searchParams.set("caseId", nextCase.id);
+  window.location.assign(url.toString());
+}
+
+// The one place to see and change which case is open.
+function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; name: string | null; readiness: string | null }) {
+  return (
+    <details className="group relative min-w-0">
+      <summary
+        className="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg border border-line bg-paper px-3 py-1.5 hover:border-line-strong [&::-webkit-details-marker]:hidden"
+        aria-label={name ? `Case: ${name}. Change case` : "Open a case"}
+      >
+        <span className="hidden text-xs font-semibold text-muted sm:inline">Case</span>
+        <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[16rem]">{name ?? (caseId ? "Loading..." : "No case open")}</span>
+        {readiness ? (
+          <Badge tone={readinessTone(readiness)} className="hidden md:inline-flex">
+            {readiness}
+          </Badge>
+        ) : null}
+        <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
+          {"\u25BE"}
+        </span>
+      </summary>
+      <div className="absolute right-0 z-40 mt-2 grid w-80 max-w-[calc(100vw-2rem)] gap-3 rounded-lg border border-line bg-white p-4 shadow-pop">
+        {name ? (
+          <div>
+            <p className="text-xs font-semibold text-muted">Open case</p>
+            <p className="mt-0.5 text-sm font-semibold text-ink">{name}</p>
+            {readiness ? <p className="mt-0.5 text-sm text-muted">{readiness}</p> : null}
+          </div>
+        ) : null}
+        <CaseSelector selectedCaseId={caseId ?? ""} onSelect={switchToCase} label="Switch to another case" />
+        <button
+          type="button"
+          onClick={() => {
+            clearSavedCaseId();
+            window.location.assign("/prescreen");
+          }}
+          className="w-fit text-sm font-semibold text-pine underline-offset-4 hover:underline"
+        >
+          Start a new case
+        </button>
+      </div>
+    </details>
   );
 }
 

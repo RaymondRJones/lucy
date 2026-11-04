@@ -12,13 +12,13 @@ import {
   PageHeader,
   ProgressBar,
   SectionHeader,
-  Stat,
   StatusMessage,
   buttonClass,
   cx,
 } from "@/components/ui";
 import { generateChecklist, getCase, getChecklist, getPrescreenState, getQa, listUploads, runQa } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { evidenceAttachment } from "@/lib/evidence";
 import { packetFormHref, packetFormOptionForKey, type PacketFormKey } from "@/lib/packet-form-flow";
 import type { CaseSummary, ChecklistItem, PrescreenState, QaIssue, QaResults, UploadRecord } from "@/lib/types";
 
@@ -109,6 +109,7 @@ export function ReviewWorkspace() {
   const [prescreen, setPrescreen] = useState<PrescreenState | null>(null);
   const [message, setMessage] = useState<string | null>("Choose a case to review the packet.");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [acknowledgedIssues, setAcknowledgedIssues] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const loadCase = useCallback(async (caseId: string, successMessage: string | null) => {
@@ -155,6 +156,8 @@ export function ReviewWorkspace() {
     .filter((issue) => !issue.is_resolved)
     .sort((left, right) => severityRank(left.severity) - severityRank(right.severity));
   const blockingCount = openIssues.filter((issue) => severityTone(issue.severity) === "danger").length;
+  const evidence = evidenceAttachment(checklist, uploads);
+  const requiredEvidenceMissing = evidence.missing.filter((item) => item.applicability === "required");
   const readinessLabel = qa?.summary.label || caseSummary?.readiness_label || "Not started";
 
   function handleCaseSelect(nextCase: CaseSummary) {
@@ -206,27 +209,21 @@ export function ReviewWorkspace() {
         eyebrow="Step 4"
         title="Review the packet"
         description="See what still needs attention before you print. Fix open issues here, then continue to the print packet."
-        actions={
-          <div className="w-full min-w-64 sm:w-80">
-            <CaseSelector selectedCaseId={caseSummary?.id ?? ""} onSelect={handleCaseSelect} disabled={isPending} label="Case" />
-          </div>
-        }
       />
 
       <StatusMessage message={message} />
 
       {!caseSummary ? (
         isLoaded ? (
-          <Notice
-            title="No case open"
-            actions={
-              <Link href="/prescreen" className={buttonClass("primary", "sm")}>
-                Start a case
+          <Card className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-end">
+            <SectionHeader title="No case open" description="Open a saved case to review it, or start a new one from the prescreen." />
+            <div className="grid gap-3">
+              <CaseSelector selectedCaseId="" onSelect={handleCaseSelect} disabled={isPending} label="Saved cases" />
+              <Link href="/prescreen" className={buttonClass("secondary", "md")}>
+                Start a new case
               </Link>
-            }
-          >
-            Choose a saved case above, or start a new one from the prescreen.
-          </Notice>
+            </div>
+          </Card>
         ) : null
       ) : (
         <>
@@ -247,28 +244,79 @@ export function ReviewWorkspace() {
                   : qa?.summary.explanation || "Run the review checks to look for missing answers and mismatches."}{" "}
                 Payment and the mailing address are added on the Print packet step.
               </p>
-              <div className="mt-4 max-w-xl">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted">
-                  <span>Required checklist items</span>
-                  <span className="tabular-nums">
-                    {completedRequired} of {requiredItems.length}
-                  </span>
+              <div className="mt-4 grid max-w-2xl gap-4 sm:grid-cols-2">
+                <div>
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted">
+                    <span>Checklist items marked done</span>
+                    <span className="tabular-nums">
+                      {completedRequired} of {requiredItems.length}
+                    </span>
+                  </div>
+                  <ProgressBar value={checklistPct} label="Required checklist items marked done" className="mt-1.5" />
                 </div>
-                <ProgressBar value={checklistPct} label="Required checklist items done" className="mt-1.5" />
+                <div>
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted">
+                    <span>Evidence files attached</span>
+                    <span className="tabular-nums">
+                      {evidence.attached.length} of {evidence.attached.length + evidence.missing.length}
+                    </span>
+                  </div>
+                  <ProgressBar
+                    value={evidence.attached.length + evidence.missing.length ? (evidence.attached.length / (evidence.attached.length + evidence.missing.length)) * 100 : 0}
+                    label="Evidence files attached"
+                    className="mt-1.5"
+                  />
+                </div>
               </div>
+              {evidence.missing.length ? (
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+                  <span className={cx("font-semibold", requiredEvidenceMissing.length ? "text-amber-900" : "text-ink")}>
+                    No file attached yet:
+                  </span>{" "}
+                  {evidence.missing.map((item) => item.label).join(", ")}.{" "}
+                  <Link href={actionHref("/packet-assembly", caseSummary.id)} className="font-semibold text-pine underline-offset-4 hover:underline">
+                    Attach on the Print packet step
+                  </Link>
+                  . A ticked checklist item without a file is not included in the printed PDF.
+                </p>
+              ) : null}
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+            <div className="flex flex-col gap-2 sm:flex-row lg:w-80 lg:flex-col">
               {openIssues.length ? (
                 <a href="#issues-heading" className={buttonClass("primary", "lg")}>
                   Review {openIssues.length} open {openIssues.length === 1 ? "issue" : "issues"}
                 </a>
               ) : null}
-              <Link
-                href={actionHref("/packet-assembly", caseSummary.id)}
-                className={buttonClass(openIssues.length ? "secondary" : "primary", openIssues.length ? "md" : "lg")}
-              >
-                {openIssues.length ? "Continue to print packet anyway" : "Continue to print packet"}
-              </Link>
+              {openIssues.length ? (
+                <div className="grid gap-2 rounded-lg border border-line bg-paper p-3">
+                  <label className="flex items-start gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={acknowledgedIssues}
+                      onChange={(event) => setAcknowledgedIssues(event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                      {blockingCount
+                        ? "I understand the blocking issues mean this packet is not ready, and I want to see the print step anyway."
+                        : "I have read the open issues and want to continue anyway."}
+                    </span>
+                  </label>
+                  {acknowledgedIssues ? (
+                    <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md")}>
+                      Continue to print packet
+                    </Link>
+                  ) : (
+                    <span aria-disabled="true" className={buttonClass("secondary", "md", "cursor-not-allowed opacity-50")}>
+                      Continue to print packet
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("primary", "lg")}>
+                  Continue to print packet
+                </Link>
+              )}
               <button type="button" onClick={handleRunQa} disabled={isPending} className={buttonClass(openIssues.length ? "ghost" : "secondary", "md")}>
                 {isPending ? "Checking..." : "Run review checks again"}
               </button>
@@ -465,23 +513,6 @@ export function ReviewWorkspace() {
             </aside>
           </div>
 
-          <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Required items done" value={`${checklistPct}%`} detail={`${completedRequired} of ${requiredItems.length}`} />
-            <Stat
-              label="Open issues"
-              value={openIssues.length}
-              detail={
-                blockingCount
-                  ? `${blockingCount} must be fixed first`
-                  : openIssues.length
-                    ? `${openIssues.length} to review`
-                    : "Nothing open"
-              }
-              tone={blockingCount ? "danger" : openIssues.length ? "warning" : "neutral"}
-            />
-            <Stat label="Prescreen flags" value={flags.length} detail="From your prescreen answers" tone={flags.length ? "warning" : "neutral"} />
-            <Stat label="Files uploaded" value={uploads.length} detail="Linked to checklist items" />
-          </section>
         </>
       )}
     </AppShell>

@@ -30,13 +30,15 @@ export default function HowItWorksPage() {
       title="Five steps from first question to a mail-ready packet."
       description="Everything you enter is saved on your computer, so you can stop and pick up where you left off. You stay in control of what gets signed and mailed."
     >
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <ol className="grid max-w-3xl gap-4">
         {STEPS.map((step, index) => (
-          <PublicCard key={step.title} title={step.title} eyebrow={`Step ${index + 1}`}>
-            {step.body}
-          </PublicCard>
+          <li key={step.title}>
+            <PublicCard title={step.title} eyebrow={`Step ${index + 1}`}>
+              {step.body}
+            </PublicCard>
+          </li>
         ))}
-      </div>
+      </ol>
     </PublicPage>
   );
 }

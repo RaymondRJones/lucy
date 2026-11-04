@@ -103,7 +103,7 @@ export function ComeBackToggle({
         flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
       )}
     >
-      <span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span>
+      <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
       {flagged ? "Marked for later" : "Mark for later"}
     </button>
   );
@@ -184,12 +184,14 @@ export function PageNav({
   onSelect,
   completionPct,
   statusLabel,
+  stats,
 }: {
   items: PageNavItem[];
   selectedId: string;
   onSelect: (id: string) => void;
   completionPct: number;
   statusLabel: string;
+  stats?: Array<{ label: string; value: ReactNode; tone?: "danger" | "warning" }>;
 }) {
   return (
     <aside className={cx(cardClass, "h-fit p-3 lg:sticky lg:top-20")}>
@@ -199,13 +201,44 @@ export function PageNav({
           <span className="tabular-nums">{completionPct}%</span>
         </div>
         <ProgressBar value={completionPct} label="Required answers complete" className="mt-1.5" />
+        {stats?.length ? (
+          <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+            {stats.map((stat) => (
+              <div key={stat.label} className="flex items-baseline gap-1">
+                <dd
+                  className={cx(
+                    "order-1 font-semibold tabular-nums",
+                    stat.tone === "danger" ? "text-red-800" : stat.tone === "warning" ? "text-amber-800" : "text-ink",
+                  )}
+                >
+                  {stat.value}
+                </dd>
+                <dt className="order-2 text-muted">{stat.label}</dt>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </div>
-      <nav aria-label="Form pages">
-        <ol className="relative flex gap-1 overflow-x-auto pb-1 lg:max-h-[calc(100vh-12rem)] lg:flex-col lg:overflow-y-auto lg:pb-0">
+      <label className="grid gap-1.5 px-2 pb-1 lg:hidden">
+        <span className="text-sm font-semibold text-ink">Page</span>
+        <select
+          value={selectedId}
+          onChange={(event) => onSelect(event.target.value)}
+          className="h-10 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-ink"
+        >
+          {items.map((item, index) => (
+            <option key={item.id} value={item.id}>
+              {`${index + 1}. ${item.title}${item.missingCount ? ` (${item.missingCount} left)` : item.complete ? " (done)" : ""}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <nav aria-label="Form pages" className="hidden lg:block">
+        <ol className="relative flex flex-col gap-1 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
           {items.map((item, index) => {
             const isSelected = item.id === selectedId;
             return (
-              <li key={item.id} className="min-w-52 lg:min-w-0">
+              <li key={item.id}>
                 <button
                   type="button"
                   onClick={() => onSelect(item.id)}
@@ -228,7 +261,7 @@ export function PageNav({
                             : "border border-line-strong text-muted",
                     )}
                   >
-                    {item.complete && !item.missingCount ? "✓" : index + 1}
+                    {item.complete && !item.missingCount ? "\u2713" : index + 1}
                   </span>
                   <span className="min-w-0">
                     <span className={cx("block font-semibold leading-5", isSelected ? "text-pine-strong" : "text-ink")}>{item.title}</span>
@@ -245,7 +278,7 @@ export function PageNav({
                     ) : null}
                     {item.flagCount ? (
                       <span className="text-xs font-semibold text-amber-800" title={`${item.flagCount} marked to come back to`}>
-                        {"⚑"} {item.flagCount}
+                        {"\u2691"} {item.flagCount}
                       </span>
                     ) : null}
                   </span>
@@ -438,7 +471,7 @@ export function SourcesDisclosure({
           <span className="ml-2 text-muted">Verified {verifiedOn}</span>
         </span>
         <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
-          {"▾"}
+          {"\u25BE"}
         </span>
       </summary>
       <div className="border-t border-line px-5 py-4">
@@ -459,7 +492,7 @@ export function SourcesDisclosure({
         </ul>
         {officialUrl ? (
           <a href={officialUrl} target="_blank" rel="noreferrer" className={buttonClass("ghost", "sm", "mt-3 -ml-3")}>
-            Open the official USCIS page {"↗"}
+            Open the official USCIS page {"\u2197"}
           </a>
         ) : null}
       </div>
@@ -483,21 +516,29 @@ export function PageFooterActions({
   disabled?: boolean;
 }) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
-      <span className="mr-auto flex items-center gap-2 text-xs text-muted" aria-live="polite">
+    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
+      <span className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted" aria-live="polite">
         {isDirty && !isPending ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" /> : null}
         {isPending
           ? "Saving..."
           : isDirty
-            ? "Unsaved changes. They are saved when you switch pages or select Save."
-            : "All changes on this page are saved."}
+            ? (
+              <>
+                Unsaved changes<span className="hidden sm:inline">. Lucy also saves them when you switch pages.</span>
+              </>
+            ) : (
+              <>
+                <span className="sm:hidden">Saved</span>
+                <span className="hidden sm:inline">No unsaved changes on this page.</span>
+              </>
+            )}
       </span>
-      <button type="button" onClick={onSave} disabled={isPending || disabled} className={buttonClass("secondary", "md")}>
-        Save page
+      <button type="button" onClick={onSave} disabled={isPending || disabled || !isDirty} className={buttonClass("secondary", "md", "shrink-0")}>
+        Save<span className="hidden sm:inline">&nbsp;page</span>
       </button>
       {hasNext ? (
-        <button type="button" onClick={onSaveAndNext} disabled={isPending || disabled} className={buttonClass("primary", "md")}>
-          Save and continue
+        <button type="button" onClick={onSaveAndNext} disabled={isPending || disabled} className={buttonClass("primary", "md", "shrink-0")}>
+          {isDirty ? "Save and continue" : "Next page"}
         </button>
       ) : null}
     </div>

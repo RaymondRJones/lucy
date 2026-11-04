@@ -838,13 +838,13 @@ export function FormIngestionWorkspace({
         actions={
           <>
             <button type="button" onClick={importFromCaseData} disabled={!caseId || isPending} className={buttonClass("secondary", "md")}>
-              Refill from case data
+              Refill from other forms
             </button>
             <button
               type="button"
               onClick={generatePdf}
               disabled={!caseId || isPending || !canGeneratePdf}
-              className={buttonClass("primary", "md")}
+              className={buttonClass("secondary", "md")}
             >
               {canGeneratePdf ? "Preview draft PDF" : "PDF template pending"}
             </button>
@@ -864,29 +864,8 @@ export function FormIngestionWorkspace({
         />
       ) : null}
 
-      {isFormComplete ? (
-        <FormCompleteNotice
-          formCode={questionnaire.form_code}
-          nextHref={nextStepHref}
-          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
-        />
-      ) : null}
 
-      <CaseBar
-        caseId={caseId ?? ""}
-        onSelect={selectCase}
-        disabled={isPending}
-        stats={
-          fillPreview
-            ? [
-                { label: "fields filled", value: fillPreview.field_count },
-                { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
-                { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
-                { label: "to review", value: fillPreview.low_confidence_count },
-              ]
-            : undefined
-        }
-      />
+      {!caseId ? <CaseBar caseId="" onSelect={selectCase} disabled={isPending} /> : null}
 
       <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
 
@@ -904,6 +883,16 @@ export function FormIngestionWorkspace({
           onSelect={goToPage}
           completionPct={completionPct}
           statusLabel={formatStatus(readiness)}
+          stats={
+            fillPreview
+              ? [
+                  { label: "fields filled", value: fillPreview.field_count },
+                  { label: "missing", value: fillPreview.missing_required_count, tone: fillPreview.missing_required_count ? "warning" : undefined },
+                  { label: "risk flags", value: fillPreview.blocking_flag_count, tone: fillPreview.blocking_flag_count ? "danger" : undefined },
+                  { label: "to review", value: fillPreview.low_confidence_count },
+                ]
+              : undefined
+          }
         />
 
         <section id="form-page" aria-labelledby="form-page-heading" className={classNames(cardClass, "scroll-mt-24 p-5 md:p-6")}>
@@ -949,6 +938,14 @@ export function FormIngestionWorkspace({
           ) : null}
         </section>
       </div>
+
+      {isFormComplete ? (
+        <FormCompleteNotice
+          formCode={questionnaire.form_code}
+          nextHref={nextStepHref}
+          nextLabel={nextFormOption ? `Continue to ${nextFormOption.label}` : "Continue to checklist"}
+        />
+      ) : null}
 
       <SourcesDisclosure
         version={questionnaire.version}
