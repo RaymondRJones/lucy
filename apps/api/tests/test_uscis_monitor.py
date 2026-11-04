@@ -4,7 +4,12 @@ from pathlib import Path
 from urllib.error import URLError
 
 from app.content.fee_schedule import FILING_FEES_SOURCE_URL
-from app.content.packet_mailing import ADDRESS_SOURCES_LAST_REVIEWED, I130_FILING_ADDRESS_SOURCE_URL
+from app.content.packet_mailing import (
+    ADDRESS_SOURCES_LAST_REVIEWED,
+    I130_FILING_ADDRESS_SOURCE_URL,
+    PACKET_MAILING_SOURCE_LAST_REVIEWED,
+    PACKET_MAILING_SOURCE_URL,
+)
 from app.services import uscis_monitor
 from app.services.uscis_monitor import check_uscis_updates, parse_edition_date, parse_last_reviewed, render_report
 
@@ -18,11 +23,16 @@ def _reviewed_page(iso_date: str) -> bytes:
     return f"<span>Last Reviewed/Updated:</span> {month}/{day}/{year}".encode()
 
 
+def _lockbox_chart_page(chart: str) -> bytes:
+    return _reviewed_page(PACKET_MAILING_SOURCE_LAST_REVIEWED) + f"<p>Mail your form to:</p> {chart} <b>E-Notification:</b>".encode()
+
+
 def _current_site(tmp_path: Path) -> tuple[dict[str, bytes], Path]:
     pages = {
         url: _form_page(edition) for url, (_label, edition) in uscis_monitor._expected_editions().items()
     }
     pages.update({url: _reviewed_page(date) for url, date in ADDRESS_SOURCES_LAST_REVIEWED.items()})
+    pages[PACKET_MAILING_SOURCE_URL] = _lockbox_chart_page(uscis_monitor.expected_lockbox_chart())
     pages[FILING_FEES_SOURCE_URL] = _reviewed_page(uscis_monitor.FILING_FEES_SOURCE_LAST_REVIEWED)
     template = tmp_path / "i-485.pdf"
     template.write_bytes(b"blank form")
@@ -47,7 +57,29 @@ def test_matching_site_reports_nothing(tmp_path) -> None:
 
     assert report.changes == []
     assert report.unreadable == []
-    assert report.checked == len(pages)
+    # The lockbox chart is read twice, for its date and its contents.
+    assert report.checked == len(pages) + 1
+
+
+def test_chart_change_under_an_unchanged_date_is_reported(tmp_path) -> None:
+    pages, templates = _current_site(tmp_path)
+    chart = uscis_monitor.expected_lockbox_chart().replace("P.O. Box 805887", "P.O. Box 999999")
+    pages[PACKET_MAILING_SOURCE_URL] = _lockbox_chart_page(chart)
+
+    report = check_uscis_updates(fetch=pages.__getitem__, templates_dir=templates)
+
+    assert [finding.kind for finding in report.changes] == ["lockbox_chart"]
+    assert "update the lockbox table" in render_report(report)
+
+
+def test_redesigned_chart_is_unreadable_not_silently_fine(tmp_path) -> None:
+    pages, templates = _current_site(tmp_path)
+    pages[PACKET_MAILING_SOURCE_URL] = _reviewed_page(PACKET_MAILING_SOURCE_LAST_REVIEWED)
+
+    report = check_uscis_updates(fetch=pages.__getitem__, templates_dir=templates)
+
+    assert report.changes == []
+    assert [finding.kind for finding in report.unreadable] == ["lockbox_chart"]
 
 
 def test_new_edition_changed_address_page_and_template_are_all_reported(tmp_path) -> None:

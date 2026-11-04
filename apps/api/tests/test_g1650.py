@@ -186,5 +186,5 @@ def test_fee_table_matches_verified_g1055_edition(code: str, fee: str):
 def test_every_location_has_a_mailing_recommendation_with_verification_date():
     for location in LOCKBOX_BY_LOCATION:
         recommendation = mailing_recommendation_for_location(location)
-        assert recommendation["verified_on"] == "2026-10-30"
+        assert recommendation["verified_on"] == "2026-11-01"
         assert "Oct. 7, 2026" in recommendation["note"]

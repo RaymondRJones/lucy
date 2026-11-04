@@ -312,6 +312,6 @@ These rows are intentionally centralized so filing amounts are not duplicated ar
 npm run check:uscis
 ```
 
-Compares stored form editions, fee and address page review dates, and blank templates with live USCIS pages. Exit code `0` means no differences, `1` means something changed, and `2` means a source could not be read. A daily workflow, `.github/workflows/uscis-updates.yml`, runs the same command and opens an issue on any change.
+Compares stored form editions, fee and address page review dates, the family-based lockbox table, and blank templates with live USCIS pages. Exit code `0` means no differences, `1` means something changed, and `2` means a source could not be read. A daily workflow, `.github/workflows/uscis-updates.yml`, runs the same command and opens an issue on any change.
 
 A difference means a person should review the page. Update the stored value only after checking the content it covers.

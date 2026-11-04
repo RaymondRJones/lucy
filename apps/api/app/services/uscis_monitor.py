@@ -20,7 +20,13 @@ from app.content.fee_schedule import (
     G1450_FORM_EDITION,
     G1650_FORM_EDITION,
 )
-from app.content.packet_mailing import ADDRESS_SOURCES_LAST_REVIEWED
+from app.content.packet_mailing import (
+    ADDRESS_SOURCES_LAST_REVIEWED,
+    LOCATION_LABELS,
+    LOCKBOX_BY_LOCATION,
+    LOCKBOXES,
+    PACKET_MAILING_SOURCE_URL,
+)
 from app.content.uscis_requirements import USCIS_REQUIREMENTS
 from app.core.config import REPO_ROOT
 
@@ -80,6 +86,30 @@ def parse_last_reviewed(content: bytes) -> str | None:
     return datetime.strptime(match.group(1), "%m/%d/%Y").strftime("%Y-%m-%d") if match else None
 
 
+def parse_lockbox_chart(content: bytes) -> str | None:
+    """Returns the states and addresses on the family-based lockbox chart, if any."""
+    match = re.search(r"Mail your form to:\s*(.*?)\s*E-Notification:", _page_text(content))
+    return match.group(1) if match else None
+
+
+def expected_lockbox_chart() -> str:
+    """Returns the stored lockbox table as the chart's text reads."""
+    sections = []
+    for key, lockbox in LOCKBOXES.items():
+        states = [LOCATION_LABELS[code] for code, lockbox_key in LOCKBOX_BY_LOCATION.items() if lockbox_key == key]
+        sections.extend(
+            [
+                *states,
+                lockbox["lockbox"],
+                "U.S. Postal Service (USPS):",
+                *lockbox["usps_address_lines"],
+                "FedEx, UPS, and DHL deliveries:",
+                *lockbox["private_carrier_address_lines"],
+            ]
+        )
+    return " ".join(sections)
+
+
 def _expected_editions() -> dict[str, tuple[str, str]]:
     # Keyed by page URL so forms sharing a page, like I-130 and I-130A, are read once.
     pages = {
@@ -109,7 +139,7 @@ def _check_page(
         report.unreadable.append(MonitorFinding(kind, subject, url, expected, f"Could not fetch: {exc}"))
         return
     if found is None:
-        report.unreadable.append(MonitorFinding(kind, subject, url, expected, "Date not found on the page"))
+        report.unreadable.append(MonitorFinding(kind, subject, url, expected, "Expected text not found on the page"))
     elif found != expected:
         report.changes.append(MonitorFinding(kind, subject, url, expected, found))
 
@@ -138,6 +168,15 @@ def check_uscis_updates(fetch: Fetch = fetch_url, templates_dir: Path = BLANK_FO
     _check_page(
         report,
         fetch,
+        parse_lockbox_chart,
+        "lockbox_chart",
+        "Family-based lockbox chart",
+        PACKET_MAILING_SOURCE_URL,
+        expected_lockbox_chart(),
+    )
+    _check_page(
+        report,
+        fetch,
         parse_last_reviewed,
         "fee_page",
         "Filing fees page",
@@ -152,6 +191,7 @@ def check_uscis_updates(fetch: Fetch = fetch_url, templates_dir: Path = BLANK_FO
 KIND_GUIDANCE = {
     "edition": "New form edition. Replace the template, update field maps, and update the accepted edition and rejection dates.",
     "address_page": "The page changed. Recheck every stored lockbox address against it, then update the stored date.",
+    "lockbox_chart": "A state or address differs from the stored table. Recheck the chart, then update the lockbox table.",
     "fee_page": "The page changed. Recheck fees against Form G-1055, then update the stored date.",
     "template": "The PDF differs from the stored template, even if the edition did not change. Compare fields and text.",
 }
