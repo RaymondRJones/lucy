@@ -53,7 +53,7 @@ I485_PART_GUIDANCE: dict[str, str] = {
         "visas, I-94 records, prior USCIS records, and address history, so use document-based answers and flag any mismatch."
     ),
     "Part 2": (
-        "Part 2 tells USCIS why the applicant is eligible to file I-485. In this MVP's happy path, the expected answer is "
+        "Part 2 tells USCIS why the applicant is eligible to file I-485. On Lucy's standard path, the expected answer is "
         "principal applicant in the spouse-of-U.S.-citizen family category; other categories should be treated as review flags."
     ),
     "Part 3": (
@@ -1009,7 +1009,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
     },
     {
         "id": "page_05_filing_category",
-        "title": "Filing Category and Niche Gate",
+        "title": "Filing Category and Eligibility",
         "pdf_part": "Part 2, Items 1-5",
         "local_pdf_pages": [5, 6, 7],
         "questions": [

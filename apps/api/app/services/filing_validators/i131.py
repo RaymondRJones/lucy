@@ -232,7 +232,7 @@ def _check_i131_supporting_evidence(
                 code="form_i131_underlying_i485_not_confirmed",
                 title="Underlying I-485 basis is not confirmed for I-131",
                 description=(
-                    "For this MVP path, I-131 is expected to rely on a concurrent or pending Form I-485. "
+                    "On the standard path, I-131 is expected to rely on a concurrent or pending Form I-485. "
                     "Confirm the I-485 draft or upload before treating I-131 as ready."
                 ),
                 source="case_intake",

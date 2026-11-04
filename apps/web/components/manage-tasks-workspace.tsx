@@ -241,7 +241,7 @@ export function ManageTasksWorkspace() {
                     )}
                   >
                     <span className="font-semibold">{form.label}</span>
-                    <span className="text-xs font-semibold tabular-nums text-muted">
+                    <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted">
                       {plan?.requiredCount ? (
                         complete ? (
                           <span className="text-pine">Done</span>
@@ -298,10 +298,9 @@ export function ManageTasksWorkspace() {
                               <span className="font-semibold text-ink">
                                 {task.label}
                               </span>
-                              <Badge tone={necessity === "required" ? "warning" : "neutral"} className="capitalize">
+                              <Badge tone={necessity === "required" ? "strong" : "neutral"} className="capitalize">
                                 {formatStatus(necessity)}
                               </Badge>
-                              {checked ? <Badge tone="success">Done</Badge> : null}
                               {task.item && !checked && task.item.completion_status !== "not_started" ? (
                                 <Badge className="capitalize">{formatStatus(task.item.completion_status)}</Badge>
                               ) : null}

@@ -135,7 +135,12 @@ export function ReviewWorkspace() {
       setPrescreen(loadedPrescreen);
       setMessage(successMessage);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load this case.");
+      const reason = error instanceof Error ? error.message : "";
+      setMessage(
+        /not found/i.test(reason)
+          ? "Could not find that case on this computer. It may have been deleted, or the link came from another computer. Open a saved case below."
+          : reason || "Could not load this case.",
+      );
     } finally {
       setIsLoaded(true);
     }
@@ -161,9 +166,20 @@ export function ReviewWorkspace() {
   const blockingCount = openIssues.filter((issue) => severityTone(issue.severity) === "danger").length;
   const evidence = evidenceAttachment(checklist, uploads);
   const requiredEvidenceMissing = evidence.missing.filter((item) => item.applicability === "required");
+  const otherEvidenceMissing = evidence.missing.filter((item) => item.applicability !== "required");
   // Missing required files are not a QA rule, but they leave documents out of the printed PDF, so they gate the same way.
   const attentionCount = openIssues.length + (requiredEvidenceMissing.length ? 1 : 0);
   const readinessLabel = qa?.summary.label || caseSummary?.readiness_label || "Not started";
+  // The headline names the most serious open signal; the backend label stays visible above it.
+  const headline = blockingCount
+    ? "Not ready to print yet"
+    : attentionCount
+      ? `Check ${attentionCount} ${attentionCount === 1 ? "item" : "items"} before printing`
+      : otherEvidenceMissing.length
+        ? `Ready, with ${otherEvidenceMissing.length} optional ${otherEvidenceMissing.length === 1 ? "file" : "files"} not attached`
+        : readinessLabel.startsWith("Ready to print")
+          ? "Ready to print"
+          : readinessLabel;
 
   function handleCaseSelect(nextCase: CaseSummary) {
     startTransition(() => {
@@ -232,11 +248,13 @@ export function ReviewWorkspace() {
         ) : null
       ) : (
         <>
-          <Card className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <Card className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-muted">Packet readiness</p>
+              <p className="text-sm font-semibold text-muted">
+                Lucy&apos;s readiness check: <span className="text-ink">{readinessLabel}</span>
+              </p>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="font-display text-3xl text-ink">{readinessLabel}</h2>
+                <h2 className="font-display text-3xl text-ink">{headline}</h2>
                 {requiredEvidenceMissing.length ? (
                   <Badge tone="warning">
                     {requiredEvidenceMissing.length} required {requiredEvidenceMissing.length === 1 ? "file" : "files"} missing
@@ -274,21 +292,6 @@ export function ReviewWorkspace() {
                   />
                 </div>
               </div>
-              {evidence.missing.length ? (
-                <Notice
-                  tone="warning"
-                  className="mt-4 max-w-3xl"
-                  title={`${evidence.missing.length} ${evidence.missing.length === 1 ? "item has" : "items have"} no file attached`}
-                  actions={
-                    <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "sm")}>
-                      Attach files
-                    </Link>
-                  }
-                >
-                  {evidence.missing.map((item) => `${item.label} (${item.applicability.replaceAll("_", " ")})`).join(", ")}. A ticked
-                  checklist item without a file is not in the printed PDF, so attach it or add a paper copy yourself.
-                </Notice>
-              ) : null}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:w-80 lg:flex-col">
               {attentionCount ? (
@@ -297,13 +300,18 @@ export function ReviewWorkspace() {
                 </a>
               ) : null}
               {attentionCount ? (
-                <div className="grid gap-2 rounded-lg border border-line bg-paper p-3">
-                  <label className="flex items-start gap-2 text-sm text-ink">
+                <div className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                  <p className="text-sm leading-6 text-amber-950">
+                    <span className="font-semibold">Before you continue: </span>
+                    some items may mean this case is outside what Lucy is built for. If you are unsure, talk to an immigration attorney or
+                    accredited representative before mailing.
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md bg-white p-3 text-sm text-ink ring-1 ring-amber-200">
                     <input
                       type="checkbox"
                       checked={acknowledgedIssues}
                       onChange={(event) => setAcknowledgedIssues(event.target.checked)}
-                      className="mt-0.5 h-4 w-4"
+                      className="mt-0.5 h-5 w-5 shrink-0"
                     />
                     <span>
                       {blockingCount
@@ -311,10 +319,6 @@ export function ReviewWorkspace() {
                         : "I have read the open items and want to continue anyway."}
                     </span>
                   </label>
-                  <p className="text-xs leading-5 text-muted">
-                    Some issues may mean the case is outside what Lucy is built for. If you are unsure, talk to an immigration
-                    attorney or accredited representative before mailing.
-                  </p>
                   {acknowledgedIssues ? (
                     <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "md")}>
                       Continue to print packet
@@ -349,7 +353,7 @@ export function ReviewWorkspace() {
                       : "Review checks have not run for this case yet."
                   }
                 />
-                {attentionCount ? (
+                {attentionCount || otherEvidenceMissing.length ? (
                   <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
                     {requiredEvidenceMissing.length ? (
                       <li className="grid gap-3 bg-white px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
@@ -364,6 +368,26 @@ export function ReviewWorkspace() {
                           <p className="mt-1 text-sm leading-6 text-muted">
                             {requiredEvidenceMissing.map((item) => item.label).join(", ")}. These will be missing from the printed packet
                             unless you attach them or add paper copies yourself.
+                          </p>
+                        </div>
+                        <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "sm", "w-fit")}>
+                          Attach files
+                        </Link>
+                      </li>
+                    ) : null}
+                    {otherEvidenceMissing.length ? (
+                      <li className="grid gap-3 bg-white px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge>Check</Badge>
+                            <p className="text-sm font-semibold text-ink">
+                              {otherEvidenceMissing.length} recommended or conditional {otherEvidenceMissing.length === 1 ? "file has" : "files have"} no
+                              upload
+                            </p>
+                          </div>
+                          <p className="mt-1 text-sm leading-6 text-muted">
+                            {otherEvidenceMissing.map((item) => `${item.label} (${item.applicability.replaceAll("_", " ")})`).join(", ")}. Attach
+                            any that apply to your case. A ticked checklist item without a file is not in the printed PDF.
                           </p>
                         </div>
                         <Link href={actionHref("/packet-assembly", caseSummary.id)} className={buttonClass("secondary", "sm", "w-fit")}>
@@ -395,11 +419,7 @@ export function ReviewWorkspace() {
                   </ul>
                 ) : (
                   <Notice tone="success" className="mt-4">
-                    {qa
-                      ? `Nothing open. The review checks found no issues and every required file is attached.${
-                          evidence.missing.length ? " Some optional or conditional files are still missing; see above." : ""
-                        }`
-                      : "Run review checks to look for issues."}
+                    {qa ? "Nothing open. The review checks found no issues and every file is attached." : "Run review checks to look for issues."}
                   </Notice>
                 )}
               </Card>
@@ -474,44 +494,46 @@ export function ReviewWorkspace() {
                 </Card>
               ) : null}
 
-              <Card aria-labelledby="missing-heading">
-                <SectionHeader
-                  id="missing-heading"
-                  title="Required items still missing"
-                  actions={
-                    <Link href={actionHref("/manage-tasks", caseSummary.id)} className={buttonClass("secondary", "sm")}>
-                      Open checklist
-                    </Link>
-                  }
-                />
-                {!checklist.length ? (
-                  <Notice
-                    tone="warning"
-                    className="mt-4"
-                    title="No checklist yet"
+              {!checklist.length || missingRequired.length ? (
+                <Card aria-labelledby="missing-heading">
+                  <SectionHeader
+                    id="missing-heading"
+                    title="Required items still missing"
                     actions={
-                      <button type="button" onClick={handleGenerateChecklist} disabled={isPending} className={buttonClass("primary", "sm")}>
-                        Build checklist
-                      </button>
+                      <Link href={actionHref("/manage-tasks", caseSummary.id)} className={buttonClass("secondary", "sm")}>
+                        Open checklist
+                      </Link>
                     }
-                  >
-                    Build the checklist from your saved answers to see what to collect.
-                  </Notice>
-                ) : missingRequired.length ? (
-                  <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
-                    {missingRequired.map((item) => (
-                      <li key={item.id} className="bg-white px-4 py-3">
-                        <p className="text-sm font-semibold text-ink">{item.label}</p>
-                        {item.what_to_save_now ? <p className="mt-0.5 text-sm leading-6 text-muted">{item.what_to_save_now}</p> : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <Notice tone="success" className="mt-4">
-                    Every required checklist item is done.
-                  </Notice>
-                )}
-              </Card>
+                  />
+                  {!checklist.length ? (
+                    <Notice
+                      tone="warning"
+                      className="mt-4"
+                      title="No checklist yet"
+                      actions={
+                        <button type="button" onClick={handleGenerateChecklist} disabled={isPending} className={buttonClass("primary", "sm")}>
+                          Build checklist
+                        </button>
+                      }
+                    >
+                      Build the checklist from your saved answers to see what to collect.
+                    </Notice>
+                  ) : missingRequired.length ? (
+                    <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line">
+                      {missingRequired.map((item) => (
+                        <li key={item.id} className="bg-white px-4 py-3">
+                          <p className="text-sm font-semibold text-ink">{item.label}</p>
+                          {item.what_to_save_now ? <p className="mt-0.5 text-sm leading-6 text-muted">{item.what_to_save_now}</p> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <Notice tone="success" className="mt-4">
+                      Every required checklist item is done.
+                    </Notice>
+                  )}
+                </Card>
+              ) : null}
             </div>
 
             <aside className="grid content-start gap-4">

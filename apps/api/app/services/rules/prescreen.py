@@ -137,12 +137,12 @@ class PrescreenQuestionRule:
             "severity": rule.get("severity") or self.question.get("flag_severity") or "important",
             "category": rule.get("category") or self.question.get("flag_category") or "outside_happy_path",
             "question_id": self.question["id"],
-            "title": rule.get("title") or self.question.get("flag_title") or "Answer is outside the happy-path MVP",
+            "title": rule.get("title") or self.question.get("flag_title") or "Answer is outside the standard path",
             "description": rule.get("description")
             or self.question.get("flag_description")
             or (
                 f"The answer to '{self.question['label']}' does not match the standard U.S.-citizen-spouse, "
-                "foreign-spouse-inside-the-United-States path this MVP is designed to handle."
+                "foreign-spouse-inside-the-United-States path Lucy is designed to handle."
             ),
         }
 

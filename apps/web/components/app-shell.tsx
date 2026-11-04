@@ -7,6 +7,7 @@ import { CaseSelector } from "@/components/case-selector";
 import { Badge, cx } from "@/components/ui";
 import { getCase, getChecklist, getPrescreenState, listUploads } from "@/lib/api";
 import { evidenceAttachment } from "@/lib/evidence";
+import { loadFormStatuses } from "@/lib/form-status";
 import { clearSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type { CaseSummary } from "@/lib/types";
 
@@ -74,8 +75,9 @@ export function AppShell({
       getPrescreenState(caseId).catch(() => null),
       getChecklist(caseId).catch(() => null),
       listUploads(caseId).catch(() => []),
+      loadFormStatuses(caseId).catch(() => ({})),
     ])
-      .then(([loaded, prescreen, checklist, uploads]) => {
+      .then(([loaded, prescreen, checklist, uploads, forms]) => {
         if (cancelled) {
           return;
         }
@@ -86,6 +88,13 @@ export function AppShell({
           value.prescreen = { state: "attention", note: `${criticalFlags} critical ${criticalFlags === 1 ? "flag" : "flags"}` };
         } else if (prescreen?.evaluation.completion_pct === 100) {
           value.prescreen = { state: "done", note: "complete" };
+        }
+        const formEntries = Object.values(forms);
+        const formsMissing = formEntries.reduce((sum, form) => sum + (form?.missing ?? 0), 0);
+        if (formEntries.length && !formsMissing) {
+          value.forms = { state: "done", note: "every form has its required answers" };
+        } else if (formsMissing) {
+          value.forms = { state: "attention", note: `${formsMissing} required ${formsMissing === 1 ? "answer" : "answers"} left` };
         }
         const required = checklist?.items.filter((item) => item.applicability === "required") ?? [];
         if (required.length && required.every((item) => DONE_STATUSES.has(item.completion_status))) {
@@ -120,14 +129,14 @@ export function AppShell({
         Skip to content
       </a>
       <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
-        <div className="mx-auto flex max-w-shell items-center gap-4 px-4 py-2.5 md:px-8">
+        <div className="mx-auto flex max-w-shell items-center gap-4 px-4 py-2.5 md:px-8 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto]">
           <Link href="/" className="font-display text-2xl font-semibold leading-none text-ink">
             Lucy
           </Link>
-          <nav aria-label="Packet steps" className="hidden flex-1 justify-center lg:flex">
+          <nav aria-label="Packet steps" className="hidden justify-center lg:flex">
             <StepList activeIndex={activeIndex} caseId={caseId} statuses={stepStatuses} />
           </nav>
-          <div className="ml-auto flex min-w-0 items-center gap-2 lg:ml-0">
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 lg:ml-0">
             <CaseSwitcher caseId={caseId} name={shownName} readiness={shownReadiness} />
           </div>
         </div>
@@ -180,7 +189,7 @@ function CaseSwitcher({ caseId, name, readiness }: { caseId?: string | null; nam
         aria-label={name ? `Case: ${name}. Change case` : "Open a case"}
       >
         <span className="hidden text-xs font-semibold text-muted sm:inline">Case</span>
-        <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[16rem]">{name ?? (caseId ? "Loading..." : "No case open")}</span>
+        <span className="max-w-[9rem] truncate text-sm font-semibold text-ink sm:max-w-[14rem] xl:max-w-[18rem]">{name ?? (caseId ? "Loading..." : "No case open")}</span>
         {readiness ? (
           <Badge tone={readinessTone(readiness)} className="hidden md:inline-flex">
             {readiness}

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { CaseSelector } from "@/components/case-selector";
 import { Badge, Notice, ProgressBar, buttonClass, cardClass, cx } from "@/components/ui";
+import { loadFormStatuses, type FormStatuses } from "@/lib/form-status";
 import { packetFormHref, type PacketFormFlowOption } from "@/lib/packet-form-flow";
 import type { CaseSummary } from "@/lib/types";
 
@@ -17,6 +18,33 @@ export function FormTabs({
   activeKey: string;
   caseId?: string | null;
 }) {
+  const [statuses, setStatuses] = useState<{ caseId: string; value: FormStatuses } | null>(null);
+  useEffect(() => {
+    if (!caseId) {
+      return;
+    }
+    let cancelled = false;
+    loadFormStatuses(caseId)
+      .then((value) => {
+        if (!cancelled) {
+          setStatuses({ caseId, value });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId]);
+  const formStatuses = statuses && statuses.caseId === caseId ? statuses.value : {};
+
+  function statusText(formKey: PacketFormFlowOption["formKey"]) {
+    const status = formStatuses[formKey];
+    if (!status) {
+      return "";
+    }
+    return status.missing ? ` (${status.missing} left)` : " (done)";
+  }
+
   return (
     <>
       <label className="grid gap-1.5 sm:hidden">
@@ -28,7 +56,7 @@ export function FormTabs({
         >
           {options.map((option) => (
             <option key={option.formKey} value={option.formKey}>
-              {option.label}: {option.detail}
+              {`${option.label}: ${option.detail}${statusText(option.formKey)}`}
             </option>
           ))}
         </select>
@@ -47,7 +75,10 @@ export function FormTabs({
                     isActive ? "border-pine text-ink" : "border-transparent text-muted hover:border-line-strong hover:text-ink",
                   )}
                 >
-                  <span className="font-semibold">{option.label}</span>
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    {option.label}
+                    <FormStatusMark status={formStatuses[option.formKey]} />
+                  </span>
                   <span className="text-xs">{option.detail}</span>
                 </Link>
               </li>
@@ -56,6 +87,26 @@ export function FormTabs({
         </ul>
       </nav>
     </>
+  );
+}
+
+function FormStatusMark({ status }: { status?: { missing: number } }) {
+  if (!status) {
+    return null;
+  }
+  if (status.missing) {
+    return (
+      <span className="rounded-full bg-amber-100 px-1.5 text-[0.6875rem] font-bold tabular-nums text-amber-900">
+        {status.missing}
+        <span className="sr-only"> required answers left</span>
+      </span>
+    );
+  }
+  return (
+    <span className="text-pine" title="Every required answer is filled in">
+      <span aria-hidden="true">{"\u2713"}</span>
+      <span className="sr-only"> complete</span>
+    </span>
   );
 }
 
@@ -99,12 +150,12 @@ export function ComeBackToggle({
       title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question so it shows in your list to come back to."}
       className={cx(
         "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
-        compact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs",
+        compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs",
         flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
       )}
     >
       <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
-      <span className={flagged ? "" : "sr-only sm:not-sr-only"}>{flagged ? "Marked for later" : "Mark for later"}</span>
+      {flagged ? "Marked for later" : "Mark for later"}
     </button>
   );
 }
@@ -169,6 +220,14 @@ export function QuestionCard({
   );
 }
 
+// Backend readiness codes such as "ready for standard i485 review" read as plain status text.
+function readinessText(value: string) {
+  if (/^ready for standard/i.test(value)) {
+    return "Required answers complete";
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export type PageNavItem = {
   id: string;
   title: string;
@@ -197,7 +256,7 @@ export function PageNav({
     <aside className={cx(cardClass, "h-fit p-3 lg:sticky lg:top-20")}>
       <div className="px-2 pb-3 pt-1">
         <div className="flex items-center justify-between text-xs font-semibold text-muted">
-          <span>{statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1)}</span>
+          <span>{readinessText(statusLabel)}</span>
           <span className="tabular-nums">{completionPct}%</span>
         </div>
         <ProgressBar value={completionPct} label="Required answers complete" className="mt-1.5" />
@@ -503,6 +562,7 @@ export function SourcesDisclosure({
 export function PageFooterActions({
   onSave,
   onSaveAndNext,
+  onPrevious,
   isPending,
   isDirty = false,
   hasNext,
@@ -510,13 +570,14 @@ export function PageFooterActions({
 }: {
   onSave: () => void;
   onSaveAndNext: () => void;
+  onPrevious?: () => void;
   isPending: boolean;
   isDirty?: boolean;
   hasNext: boolean;
   disabled?: boolean;
 }) {
   return (
-    <div className="-mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 sm:sticky sm:bottom-0 sm:z-10 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
+    <div className="-mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 shadow-[0_-6px_16px_-12px_rgba(31,48,45,0.35)] sm:sticky sm:bottom-0 sm:z-10 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
       <span className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted" aria-live="polite">
         {isDirty && !isPending ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" /> : null}
         {isPending
@@ -535,6 +596,12 @@ export function PageFooterActions({
               </>
             )}
       </span>
+      {onPrevious ? (
+        <button type="button" onClick={onPrevious} disabled={isPending} className={buttonClass("ghost", "md", "shrink-0")}>
+          <span aria-hidden="true">{"\u2190"}</span>
+          <span className="sr-only sm:not-sr-only">Previous</span>
+        </button>
+      ) : null}
       {isDirty || isPending ? (
         <button type="button" onClick={onSave} disabled={isPending || disabled} className={buttonClass("secondary", "md", "shrink-0")}>
           <span>

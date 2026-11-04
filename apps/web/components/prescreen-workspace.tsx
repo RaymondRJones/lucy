@@ -31,6 +31,7 @@ import {
   savePrescreenAnswers,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { forgetFormStatuses, loadFormStatuses, type FormStatuses } from "@/lib/form-status";
 import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import { packetFormHref, packetFormsForIncluded } from "@/lib/packet-form-flow";
 import type { CaseSummary, PrescreenFlag, PrescreenQuestion, PrescreenQuestionnaire, PrescreenState } from "@/lib/types";
@@ -364,6 +365,7 @@ export function PrescreenWorkspace() {
   const [selectedPageId, setSelectedPageId] = useState("");
   const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
   const [isDirty, setIsDirty] = useState(false);
+  const [formStatuses, setFormStatuses] = useState<FormStatuses>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -398,6 +400,23 @@ export function PrescreenWorkspace() {
   }, [loadCase]);
 
   useUnsavedChangesGuard(isDirty);
+
+  useEffect(() => {
+    if (!caseSummary) {
+      return;
+    }
+    let cancelled = false;
+    loadFormStatuses(caseSummary.id)
+      .then((value) => {
+        if (!cancelled) {
+          setFormStatuses(value);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [caseSummary, prescreen]);
 
   const visibleQuestions = useMemo(() => prescreen?.evaluation.visible_questions ?? [], [prescreen]);
   const flags = prescreen?.evaluation.flags ?? [];
@@ -502,6 +521,7 @@ export function PrescreenWorkspace() {
             setSelectedPageId(nextPages[Math.min(currentIndex + 1, Math.max(nextPages.length - 1, 0))] ?? selectedPage.id);
             document.getElementById("form-page")?.scrollIntoView({ behavior: "smooth", block: "start" });
           }
+          forgetFormStatuses(caseSummary.id);
           setMessage(`Saved "${selectedPage.title}".`);
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Could not save this prescreen page.");
@@ -559,6 +579,12 @@ export function PrescreenWorkspace() {
   const statusInfo = STATUS_DISPLAY[status] ?? { label: formatStatus(status), tone: "neutral" as const };
   const skipItems = prescreen ? [...eliminatedForms, ...(prescreen.evaluation.eliminated_questions ?? [])] : [];
   const prescreenComplete = prescreen?.evaluation.completion_pct === 100;
+  const knownStatuses = nextFormOptions.filter((option) => formStatuses[option.formKey]);
+  const allFormsDone = knownStatuses.length === nextFormOptions.length && knownStatuses.every((option) => !formStatuses[option.formKey]?.missing);
+  // Suggest the first form that still has missing answers, or the first form until statuses load.
+  const suggestedFormKey = allFormsDone
+    ? null
+    : (nextFormOptions.find((option) => (formStatuses[option.formKey]?.missing ?? 1) > 0) ?? nextFormOptions[0])?.formKey;
   const questionnaireGrid = (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <PageNav
@@ -729,22 +755,33 @@ export function PrescreenWorkspace() {
               <SectionHeader
                 id="next-form-heading"
                 eyebrow="Prescreen complete"
-                title="Choose a form to fill in next"
-                description="Start with the suggested form. Each one opens with the answers you have already given."
+                title={allFormsDone ? "Every form has its required answers" : "Choose a form to fill in next"}
+                description={
+                  allFormsDone
+                    ? "You can still open any form to check or change answers. Next, tick off the checklist."
+                    : "Start with the suggested form. Each one opens with the answers you have already given."
+                }
                 actions={
-                  <button
-                    type="button"
-                    onClick={handleGenerateStarterChecklist}
-                    disabled={isPending}
-                    className={buttonClass("secondary", "sm")}
-                  >
-                    Build checklist
-                  </button>
+                  allFormsDone ? (
+                    <Link href={`/manage-tasks?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "sm")}>
+                      Continue to checklist <span aria-hidden="true">{"\u2192"}</span>
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleGenerateStarterChecklist}
+                      disabled={isPending}
+                      className={buttonClass("secondary", "sm")}
+                    >
+                      Build checklist
+                    </button>
+                  )
                 }
               />
               <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {nextFormOptions.map((option, index) => {
-                  const isSuggested = index === 0;
+                {nextFormOptions.map((option) => {
+                  const status = formStatuses[option.formKey];
+                  const isSuggested = option.formKey === suggestedFormKey;
                   return (
                     <li key={option.formKey}>
                       <Link
@@ -758,6 +795,13 @@ export function PrescreenWorkspace() {
                           <span className="flex flex-wrap items-center gap-2">
                             <span className="text-base font-semibold text-ink">{option.label}</span>
                             {isSuggested ? <Badge tone="accent">Suggested next</Badge> : null}
+                            {status ? (
+                              status.missing ? (
+                                <Badge tone="warning">{status.missing} left</Badge>
+                              ) : (
+                                <Badge tone="success">Done</Badge>
+                              )
+                            ) : null}
                           </span>
                           <span className="mt-0.5 block text-muted">{option.detail}</span>
                           <span className="mt-2 block text-xs font-semibold text-muted">{option.phase}</span>
@@ -775,8 +819,8 @@ export function PrescreenWorkspace() {
 
           {prescreenComplete ? (
             <details className={classNames(cardClass, "group/answers")}>
-              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
-                <span>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0">
                   <span className="font-semibold text-ink">Edit your prescreen answers</span>
                   <span className="ml-2 text-muted">
                     {visibleQuestions.length} answered across {pages.length} pages

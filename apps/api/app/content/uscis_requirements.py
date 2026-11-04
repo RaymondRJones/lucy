@@ -197,7 +197,7 @@ USCIS_REQUIREMENTS = [
                 "Government-issued photo ID",
                 "required",
                 "identity_document",
-                "This MVP tracks the beneficiary passport biographic page as the clearest government-issued photo-ID upload.",
+                "Lucy tracks the beneficiary passport biographic page as the clearest government-issued photo-ID upload.",
             ),
             _evidence(
                 "beneficiary_birth_certificate",

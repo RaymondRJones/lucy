@@ -30,6 +30,7 @@ import {
   saveI485Page,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
+import { forgetFormStatuses } from "@/lib/form-status";
 import { useUnsavedChangesGuard } from "@/lib/unsaved-changes";
 import {
   manualFlagCountForPage,
@@ -711,6 +712,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
       saveI485Page(caseId, selectedPage.id, pageAnswers, manualFlagsForPage(selectedPage, manualFlags))
         .then((state) => {
           applyState(state);
+          forgetFormStatuses(caseId);
           setMessage(`Saved "${selectedPage.title}".`);
           if (targetPageId) {
             setSelectedPageId(targetPageId);
@@ -977,6 +979,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
               </div>
 
               <PageFooterActions
+                onPrevious={pageIndex > 0 ? () => goToPage(questionnaire.pages[pageIndex - 1].id) : undefined}
                 onSave={() => saveCurrentPage(false)}
                 onSaveAndNext={() => saveCurrentPage(true)}
                 isPending={isPending}

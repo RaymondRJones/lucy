@@ -111,10 +111,11 @@ export function PageHeader({
   );
 }
 
-type Tone = "neutral" | "success" | "warning" | "danger" | "info" | "accent";
+type Tone = "neutral" | "strong" | "success" | "warning" | "danger" | "info" | "accent";
 
 const BADGE_TONES: Record<Tone, string> = {
   neutral: "border-line bg-paper text-muted",
+  strong: "border-line-strong bg-white text-ink",
   success: "border-pine/20 bg-pine-soft text-pine-strong",
   warning: "border-amber-200 bg-amber-50 text-amber-900",
   danger: "border-red-200 bg-red-50 text-red-800",
@@ -138,6 +139,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: Tone; 
 
 const NOTICE_TONES: Record<Tone, string> = {
   neutral: "border-line bg-white text-ink",
+  strong: "border-line-strong bg-white text-ink",
   success: "border-pine/25 bg-pine-soft text-ink",
   warning: "border-amber-200 bg-amber-50 text-amber-950",
   danger: "border-red-200 bg-red-50 text-red-950",
