@@ -226,3 +226,27 @@ def test_fresh_payment_replaces_uploaded_payment_pdf(tmp_path, monkeypatch):
         document["checklist_item_code"] == "payment_g1450" and "avoid paying twice" in document["reason"]
         for document in result.skipped_documents
     )
+
+
+def test_deliberately_skipped_uploads_do_not_warn_about_unreadable_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", tmp_path)
+    session = make_session()
+    case = _seed(session, tmp_path, "not_filed", [*EVIDENCE, "medical_exam_supporting_records"])
+
+    result = _assemble(session, case, tmp_path, include_generated_forms=False)
+
+    assert [document["checklist_item_code"] for document in result.skipped_documents] == [
+        "medical_exam_supporting_records"
+    ]
+    assert not any("unreadable" in warning for warning in result.warnings)
+
+
+def test_packet_without_a_payment_form_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", tmp_path)
+    session = make_session()
+    case = _seed(session, tmp_path, "not_filed", ["form_i130", "form_i485"])
+
+    result = _assemble(session, case, tmp_path)
+
+    assert any(warning.startswith("This packet has no payment form yet.") for warning in result.warnings)
+    assert not any("unreadable" in warning for warning in result.warnings)

@@ -18,7 +18,7 @@ from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, Na
 from sqlmodel import Session, select
 
 from app.content.fee_schedule import G1450_FORM_FEES
-from app.content.packet_mailing import mailing_recommendation_for_location
+from app.content.packet_mailing import LOCKBOX_ADDRESS_CAVEAT, mailing_recommendation_for_location
 from app.content.packet_ordering import (
     I130_REPEATED_EVIDENCE_CODES,
     I130_SECTION_UPLOAD_CODES,
@@ -46,6 +46,7 @@ from app.services.g1450 import generate_case_g1450_packet_from_payload, payable_
 from app.services.g1650 import generate_case_g1650_packet_from_payload
 from app.services.i485_pdf import generate_i485_pdf
 from app.services.intake import derive_case_facts, get_merged_case_intake
+from app.services.prescreen import get_prescreen_state
 
 PACKET_OUTPUT_DIR = settings.generated_dir
 DEFAULT_PACKET_FORMS = I485_PACKET_GENERATED_FORMS
@@ -629,7 +630,7 @@ def _append_payment_forms(
         skipped_documents.append(
             _skipped_entry(
                 label=f"Form {payment_form} payment for {code}",
-                reason="Payment form is not part of the I-485 packet payment set or is not applicable to this case.",
+                reason=PAYMENT_NOT_IN_SET_SKIP_REASON,
                 source_type=PAYMENT_SOURCE_TYPE,
                 section="Payment",
                 form_key=form_key,
@@ -647,10 +648,7 @@ def _append_payment_forms(
             skipped_documents.append(
                 _skipped_entry(
                     label=_payment_label(code, payment_form),
-                    reason=(
-                        "No fresh G-1450 or G-1650 was generated for this packet. Enter card or bank details "
-                        "in this request or upload a reviewed, signed payment PDF."
-                    ),
+                    reason=NO_PAYMENT_SKIP_REASON,
                     source_type=PAYMENT_SOURCE_TYPE,
                     section="Payment",
                     form_key=form_key,
@@ -715,11 +713,13 @@ def _upload_exclusion_reason(
 ) -> str | None:
     code = upload.checklist_item_code or ""
     if code in (generated_form_upload_codes or set()):
-        return "Generated form is already included in this packet; uploaded form PDFs are skipped to avoid duplicate forms."
+        return DUPLICATE_FORM_SKIP_REASON
+    if code == "medical_exam_supporting_records":
+        return CIVIL_SURGEON_RECORDS_SKIP_REASON
     if code in I485_PACKET_EXCLUDED_UPLOAD_CODES and not (concurrent_i130 and code in I130_SECTION_UPLOAD_CODES):
-        return "Excluded from this compilation because the packet is centered on I-485, not I-130/I-130A petition materials."
+        return PETITION_MATERIALS_SKIP_REASON
     if not explicit_upload_selection and code and code not in I485_PACKET_UPLOAD_ORDER:
-        return "Upload is not mapped to the USCIS-ordered I-485 packet document set."
+        return UNMAPPED_UPLOAD_SKIP_REASON
     return None
 
 
@@ -1068,6 +1068,30 @@ def _checklist_lookup(session: Session, case_id: UUID) -> dict[str, CaseChecklis
 
 
 FRESH_PAYMENT_SKIP_REASON = "A fresh payment form was generated for this packet, so this uploaded payment PDF was left out to avoid paying twice."
+DUPLICATE_FORM_SKIP_REASON = (
+    "Generated form is already included in this packet; uploaded form PDFs are skipped to avoid duplicate forms."
+)
+CIVIL_SURGEON_RECORDS_SKIP_REASON = "Kept out of the packet because these records are for the civil surgeon."
+PETITION_MATERIALS_SKIP_REASON = (
+    "Excluded from this compilation because the packet is centered on I-485, not I-130/I-130A petition materials."
+)
+UNMAPPED_UPLOAD_SKIP_REASON = "Upload is not mapped to the USCIS-ordered I-485 packet document set."
+PAYMENT_NOT_IN_SET_SKIP_REASON = (
+    "Payment form is not part of the I-485 packet payment set or is not applicable to this case."
+)
+NO_PAYMENT_SKIP_REASON = (
+    "No fresh G-1450 or G-1650 was generated for this packet. Enter card or bank details "
+    "in this request or upload a reviewed, signed payment PDF."
+)
+DELIBERATE_SKIP_REASONS = {
+    NO_PAYMENT_SKIP_REASON,
+    FRESH_PAYMENT_SKIP_REASON,
+    DUPLICATE_FORM_SKIP_REASON,
+    CIVIL_SURGEON_RECORDS_SKIP_REASON,
+    PETITION_MATERIALS_SKIP_REASON,
+    UNMAPPED_UPLOAD_SKIP_REASON,
+    PAYMENT_NOT_IN_SET_SKIP_REASON,
+}
 
 
 @dataclass
@@ -1180,6 +1204,10 @@ def _starting_packet_warnings() -> list[str]:
     return [
         "Review every generated form and supporting document before printing and mailing.",
         "This packet is an organizational draft, not legal advice.",
+        (
+            "Before signing, each signer must tick their own language statement by hand: Form I-130 Part 6, "
+            "Form I-130A Part 4, Form I-765 Part 3, and Form I-864 Part 8. Lucy leaves these blank."
+        ),
         (
             "USCIS mail-filing guidance verified by this app on "
             f"{PACKET_ASSEMBLY_GUIDANCE_VERIFIED_ON} places payment first, then G-1145, "
@@ -1356,14 +1384,16 @@ def _insert_cover_letter(builder: _PacketBuilder, mailing_recommendation: dict[s
 def _append_closing_warnings(
     builder: _PacketBuilder, *, state_code: str | None, mailing_recommendation: dict[str, Any] | None
 ) -> None:
-    if builder.skipped_documents:
+    if any(entry["reason"] == NO_PAYMENT_SKIP_REASON for entry in builder.skipped_documents):
+        builder.warnings.append("This packet has no payment form yet. " + NO_PAYMENT_SKIP_REASON)
+    if any(entry["reason"] not in DELIBERATE_SKIP_REASONS for entry in builder.skipped_documents):
         builder.warnings.append("Some files were skipped because they were missing, non-PDF, or unreadable.")
     if state_code and mailing_recommendation is None:
         builder.warnings.append("The selected location was not recognized for USCIS lockbox routing.")
     if mailing_recommendation is None:
         builder.warnings.append("Select the filer location before mailing so Lucy can show USCIS lockbox guidance.")
     else:
-        builder.warnings.append("Before mailing, verify the address on the live USCIS lockbox page.")
+        builder.warnings.append(LOCKBOX_ADDRESS_CAVEAT)
 
 
 def assemble_packet_pdf(
@@ -1416,6 +1446,13 @@ def assemble_packet_pdf(
         warnings.append(
             "The Form I-130 status is not set, so this packet leaves out Forms I-130 and I-130A and treats the "
             "petition as already filed. Answer the prescreen I-130 question if it has not been filed."
+        )
+    critical_flags = [
+        flag["title"] for flag in get_prescreen_state(session, case_id)["evaluation"]["flags"] if flag["severity"] == "critical"
+    ]
+    if critical_flags:
+        warnings.append(
+            "Prescreen found issues that need legal review, so treat this packet as a draft: " + "; ".join(critical_flags)
         )
     uploads = sorted(_confirmed_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
     incomplete_uploads = sorted(_incomplete_uploads(session, case_id, include_upload_ids), key=_upload_sort_key)
