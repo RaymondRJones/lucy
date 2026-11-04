@@ -1,10 +1,11 @@
+"""Rules that derive case facts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 CountryNormalizer = Callable[[Any], str | None]
 

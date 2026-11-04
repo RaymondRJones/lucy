@@ -213,6 +213,12 @@ The seeded profiles cover:
 - Texas packet with I-765 but no I-131, using the private-carrier lockbox address
 - Georgia core adjustment packet with no optional I-765/I-131
 - Arizona travel-document path with a prior-marriage termination record
+- Washington packet with a yes on I-485 Item 63 and a filled Item 64 benefit table
+- Colorado I-485-only packet with the I-130 already pending and a receipt notice
+
+Unless noted, profiles are concurrent filings with Forms I-130 and I-130A in the packet.
+
+- Illinois packet with long Item 57, Item 62, and Item 64 answers that continue in Part 14
 
 By default the command also runs packet assembly for every case and prints each packet URL, output PDF,
 page count, included/skipped counts, and USCIS lockbox result. To create the cases without generating
@@ -224,6 +230,24 @@ and `PLACEHOLDER` text so final packet previews do not contain visually blank ev
 ```bash
 npm run seed:packet-scenarios -- --no-generate-packets
 ```
+
+## PDF Population Regression Tests
+
+`apps/api/tests/test_pdf_population_regression.py` runs as part of `npm run test:api`. It seeds 8 fictional
+applicants from `apps/api/tests/pdf_profiles.py`, sends them through the real intake, questionnaire, and
+readiness flow, and reads each generated I-485, I-765, I-131, I-864, I-130, I-130A, G-1145, G-1450, and G-1650 back.
+
+- Expected values are written by hand from the USCIS field labels, not read from the generator field maps.
+- Text field maps are also checked against the tooltips in `blank-immigration-documents/`, which catches a
+  correct value sent to the wrong line. Template field names are not reliable; for example, the I-864 field
+  `P4_Line7_CityofBirth[0]` is the printed Item 7 Country of Birth.
+- Every filled field must print: checkbox states must exist in the template, dropdown values must be options,
+  text must fit `/MaxLen` and have a drawn appearance, and dates must be MM/DD/YYYY.
+- Answers longer than a field's `/MaxLen` add a "may be cut off" warning to the generated form and packet, and
+  characters the form fonts cannot draw (such as `Ł`, which prints as `?`) add a "cannot print" warning.
+
+When adding a form or field, add it to the matching `expected_*` function and to the profile builder. A mapped
+question that no seed reaches fails the coverage test until a seed fills it or it is listed as conditional.
 
 ## Credit-Card JSON Shape
 
@@ -281,3 +305,13 @@ These rows are intentionally centralized so filing amounts are not duplicated ar
 - `I-765`: `$260.00`, paper filing with a paid Form I-485 filed on or after April 1, 2024 and pending.
 - `I-131`: `$630.00`, paper-filed advance parole document for individuals inside the United States with pending Form I-485.
 - `I-130A`, `I-864`, `I-693`, and `G-1145`: tracked as `$0.00`, so packet mode reports them as skipped rather than generating payment forms.
+
+## USCIS update check
+
+```bash
+npm run check:uscis
+```
+
+Compares stored form editions, fee and address page review dates, the family-based lockbox table, and blank templates with live USCIS pages. Exit code `0` means no differences, `1` means something changed, and `2` means a source could not be read. A daily workflow, `.github/workflows/uscis-updates.yml`, runs the same command and opens an issue on any change.
+
+A difference means a person should review the page. Update the stored value only after checking the content it covers.

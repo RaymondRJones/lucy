@@ -1,10 +1,11 @@
+"""Typed application settings."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -30,7 +31,9 @@ class Settings(BaseSettings):
     )
     database_url: str = f"sqlite:///{(REPO_ROOT / 'storage' / 'app.db').as_posix()}"
     upload_dir: Path = REPO_ROOT / "storage" / "uploads"
+    generated_dir: Path = REPO_ROOT / "storage" / "generated"
     g1450_template_path: Path = REPO_ROOT / "blank-immigration-documents" / "g-1450.pdf"
+    g1650_template_path: Path = REPO_ROOT / "blank-immigration-documents" / "g-1650.pdf"
     max_upload_size_mb: int = 100
 
 

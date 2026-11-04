@@ -1,3 +1,5 @@
+"""Ingests the local evidence folder into a case workspace."""
+
 from __future__ import annotations
 
 import argparse
@@ -5,9 +7,10 @@ import json
 from pathlib import Path
 from uuid import UUID
 
+from sqlmodel import Session
+
 from app.db.session import create_db_and_tables, engine
 from app.services.ingestion import ingest_evidence_directory
-from sqlmodel import Session
 
 
 def build_parser() -> argparse.ArgumentParser:

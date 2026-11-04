@@ -19,12 +19,13 @@ import {
   uploadBinary,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
-import { formatFieldList, getG1450PaymentFieldIssues } from "@/lib/g1450-validation";
+import { formatFieldList, getG1450PaymentFieldIssues, getG1650PaymentFieldIssues } from "@/lib/g1450-validation";
 import type {
   CaseSummary,
   ChecklistItem,
   ChecklistResponse,
   G1450PaymentOptions,
+  G1650BankDetails,
   PacketAssemblyResponse,
   UploadRecord,
 } from "@/lib/types";
@@ -37,12 +38,12 @@ const FORM_LABELS: Record<string, string> = {
   form_i864: "I-864 support",
   form_i765: "I-765 work authorization",
   form_i131: "I-131 travel document",
-  payment_g1450: "G-1450 payment",
+  payment_g1450: "G-1450 or G-1650 payment",
 };
 
 const CARD_TYPES = ["Visa", "Mastercard", "American Express", "Discover"];
-const PACKET_PAYMENT_CODES = new Set(["form_i485", "form_i765", "form_i131"]);
-const GENERATED_ONLY_UPLOAD_CODES = new Set(["form_g1145", "form_i485", "form_i864", "form_i765", "form_i131"]);
+const PACKET_PAYMENT_CODES = new Set(["form_i130", "form_i485", "form_i765", "form_i131"]);
+const GENERATED_ONLY_UPLOAD_CODES = new Set(["form_g1145", "form_i130", "form_i130a", "form_i485", "form_i864", "form_i765", "form_i131"]);
 const MAX_PACKET_UPLOAD_SIZE_MB = 100;
 
 const DEFAULT_PAYMENT_FORM = {
@@ -61,6 +62,16 @@ const DEFAULT_PAYMENT_FORM = {
     state: "",
     postal_code: "",
   },
+};
+
+const DEFAULT_BANK_FORM: G1650BankDetails = {
+  account_ownership: "personal",
+  account_type: "checking",
+  account_holder_name: "",
+  business_name: "",
+  bank_name: "",
+  routing_number: "",
+  account_number: "",
 };
 
 const US_LOCATIONS = [
@@ -128,6 +139,7 @@ type UploadDraft = {
 };
 
 type PaymentMode = "generate" | "existing";
+type PaymentMethod = "card" | "ach";
 type PaymentFormState = typeof DEFAULT_PAYMENT_FORM;
 type PaymentTextField = Exclude<keyof PaymentFormState, "billing_address">;
 type BillingField = keyof PaymentFormState["billing_address"];
@@ -232,6 +244,12 @@ function paymentFormHasUserInput(form: PaymentFormState) {
   return textValues.some((value) => value.trim().length > 0) || form.credit_card_type !== DEFAULT_PAYMENT_FORM.credit_card_type;
 }
 
+function bankFormHasUserInput(form: G1650BankDetails) {
+  return [form.account_holder_name, form.business_name, form.bank_name, form.routing_number, form.account_number].some(
+    (value) => value.trim().length > 0,
+  );
+}
+
 function scenarioDefaults(caseName: string) {
   const normalized = caseName.toLowerCase();
   if (!normalized.startsWith("packet scenario - ")) {
@@ -281,6 +299,8 @@ export function PacketAssemblyWorkspace() {
   const [paymentOptions, setPaymentOptions] = useState<G1450PaymentOptions | null>(null);
   const [selectedPaymentCodes, setSelectedPaymentCodes] = useState<string[]>([]);
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>(DEFAULT_PAYMENT_FORM);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [bankForm, setBankForm] = useState<G1650BankDetails>(DEFAULT_BANK_FORM);
   const [paymentUploadFile, setPaymentUploadFile] = useState<File | null>(null);
   const [result, setResult] = useState<PacketAssemblyResponse | null>(null);
   const [message, setMessage] = useState("Loading the current case.");
@@ -481,6 +501,10 @@ export function PacketAssemblyWorkspace() {
     setPaymentForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateBankField(field: keyof G1650BankDetails, value: string) {
+    setBankForm((current) => ({ ...current, [field]: value }));
+  }
+
   function updateBillingField(field: BillingField, value: string) {
     setPaymentForm((current) => ({
       ...current,
@@ -619,17 +643,20 @@ export function PacketAssemblyWorkspace() {
       setMessage("Choose where the filer lives before generating the packet.");
       return;
     }
-    const shouldGeneratePayment = paymentMode === "generate" && paymentFormHasUserInput(paymentForm);
+    const payingByBank = paymentMethod === "ach";
+    const paymentFormName = payingByBank ? "G-1650" : "G-1450";
+    const shouldGeneratePayment =
+      paymentMode === "generate" && (payingByBank ? bankFormHasUserInput(bankForm) : paymentFormHasUserInput(paymentForm));
     if (shouldGeneratePayment) {
       if (!selectedPaymentCodes.length) {
-        setMessage("Select at least one G-1450 payment form, clear the card fields to generate without payment, or use an uploaded payment PDF.");
+        setMessage(`Select at least one ${paymentFormName} payment form, clear the payment fields to generate without payment, or use an uploaded payment PDF.`);
         return;
       }
-      if (paymentOptions && !paymentOptions.template_exists) {
-        setMessage("The local G-1450 template is missing. Upload your own signed G-1450 PDF instead.");
+      if (paymentOptions && !(payingByBank ? paymentOptions.g1650_template_exists : paymentOptions.template_exists)) {
+        setMessage(`The local ${paymentFormName} template is missing. Upload your own signed ${paymentFormName} PDF instead.`);
         return;
       }
-      const fieldIssues = getG1450PaymentFieldIssues(paymentForm);
+      const fieldIssues = payingByBank ? getG1650PaymentFieldIssues(bankForm) : getG1450PaymentFieldIssues(paymentForm);
       if (fieldIssues.length) {
         setMessage(`Complete ${formatFieldList(fieldIssues)} before generating the packet.`);
         return;
@@ -645,9 +672,7 @@ export function PacketAssemblyWorkspace() {
         allow_incomplete: true,
         ...(shouldGeneratePayment
           ? {
-              g1450_payment: {
-                ...paymentForm,
-              },
+              ...(payingByBank ? { g1650_payment: bankForm } : { g1450_payment: { ...paymentForm } }),
               g1450_selected_checklist_codes: selectedPaymentCodes,
             }
           : paymentMode === "generate"
@@ -777,7 +802,10 @@ export function PacketAssemblyWorkspace() {
         <div className="flex flex-col gap-3 border-b border-ink/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.16em] text-pine">Payment</p>
-            <h2 className="mt-1 text-xl font-semibold">Form G-1450</h2>
+            <h2 className="mt-1 text-xl font-semibold">Form G-1450 or G-1650</h2>
+            {paymentOptions?.payment_note ? (
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/65">{paymentOptions.payment_note}</p>
+            ) : null}
             {paymentOptions && !paymentOptions.template_exists ? (
               <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 Local template missing at {paymentOptions.template_pdf}
@@ -841,153 +869,261 @@ export function PacketAssemblyWorkspace() {
               )}
             </div>
 
-            <div className="grid gap-4 rounded-lg border border-ink/10 bg-paper/45 p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="font-semibold">Card and billing details</h3>
-                <p className="text-sm font-semibold text-pine">
-                  {formatCurrency(selectedPaymentTotal.toFixed(2))}
-                </p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
-                  Cardholder name
-                  <input
-                    value={paymentForm.cardholder_name}
-                    onChange={(event) => updatePaymentField("cardholder_name", event.target.value)}
-                    autoComplete="cc-name"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Card type
-                  <select
-                    value={paymentForm.credit_card_type}
-                    onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  >
-                    {CARD_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Card number
-                  <input
-                    value={paymentForm.credit_card_number}
-                    onChange={(event) => updatePaymentField("credit_card_number", event.target.value)}
-                    inputMode="numeric"
-                    autoComplete="cc-number"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <label className="grid gap-2 text-sm font-medium">
-                    Month
-                    <input
-                      value={paymentForm.expiration_month}
-                      onChange={(event) => updatePaymentField("expiration_month", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="cc-exp-month"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    Year
-                    <input
-                      value={paymentForm.expiration_year}
-                      onChange={(event) => updatePaymentField("expiration_year", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="cc-exp-year"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    CVV
-                    <input
-                      value={paymentForm.security_code}
-                      onChange={(event) => updatePaymentField("security_code", event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="cc-csc"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                </div>
-                <label className="grid gap-2 text-sm font-medium">
-                  Phone
-                  <input
-                    value={paymentForm.daytime_phone_number}
-                    onChange={(event) => updatePaymentField("daytime_phone_number", event.target.value)}
-                    autoComplete="tel"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Email
-                  <input
-                    value={paymentForm.email}
-                    onChange={(event) => updatePaymentField("email", event.target.value)}
-                    autoComplete="email"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
-                  Street address
-                  <input
-                    value={paymentForm.billing_address.street_1}
-                    onChange={(event) => updateBillingField("street_1", event.target.value)}
-                    autoComplete="billing street-address"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Apt, suite, or floor
-                  <input
-                    value={paymentForm.billing_address.street_2}
-                    onChange={(event) => updateBillingField("street_2", event.target.value)}
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  City
-                  <input
-                    value={paymentForm.billing_address.city}
-                    onChange={(event) => updateBillingField("city", event.target.value)}
-                    autoComplete="billing address-level2"
-                    className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                  />
-                </label>
-                <div className="grid gap-4 sm:grid-cols-[0.7fr_1fr]">
-                  <label className="grid gap-2 text-sm font-medium">
-                    State
-                    <input
-                      value={paymentForm.billing_address.state}
-                      onChange={(event) => updateBillingField("state", event.target.value)}
-                      autoComplete="billing address-level1"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium">
-                    ZIP code
-                    <input
-                      value={paymentForm.billing_address.postal_code}
-                      onChange={(event) => updateBillingField("postal_code", event.target.value)}
-                      autoComplete="billing postal-code"
-                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
-                    />
-                  </label>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 rounded-lg border border-ink/15 bg-paper p-1 text-sm sm:max-w-md">
+              {[
+                ["card", "Card (G-1450)"],
+                ["ach", "U.S. bank account (G-1650)"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPaymentMethod(value as PaymentMethod)}
+                  className={classNames(
+                    "rounded-md px-3 py-2 font-semibold",
+                    paymentMethod === value ? "bg-ink text-white" : "text-ink/65",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
+
+            {paymentMethod === "card" ? (
+              <div className="grid gap-4 rounded-lg border border-ink/10 bg-paper/45 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="font-semibold">Card and billing details</h3>
+                  <p className="text-sm font-semibold text-pine">
+                    {formatCurrency(selectedPaymentTotal.toFixed(2))}
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-medium">
+                    Cardholder name
+                    <input
+                      value={paymentForm.cardholder_name}
+                      onChange={(event) => updatePaymentField("cardholder_name", event.target.value)}
+                      autoComplete="cc-name"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Card type
+                    <select
+                      value={paymentForm.credit_card_type}
+                      onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    >
+                      {CARD_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Card number
+                    <input
+                      value={paymentForm.credit_card_number}
+                      onChange={(event) => updatePaymentField("credit_card_number", event.target.value)}
+                      inputMode="numeric"
+                      autoComplete="cc-number"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <label className="grid gap-2 text-sm font-medium">
+                      Month
+                      <input
+                        value={paymentForm.expiration_month}
+                        onChange={(event) => updatePaymentField("expiration_month", event.target.value)}
+                        inputMode="numeric"
+                        autoComplete="cc-exp-month"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-medium">
+                      Year
+                      <input
+                        value={paymentForm.expiration_year}
+                        onChange={(event) => updatePaymentField("expiration_year", event.target.value)}
+                        inputMode="numeric"
+                        autoComplete="cc-exp-year"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-medium">
+                      CVV
+                      <input
+                        value={paymentForm.security_code}
+                        onChange={(event) => updatePaymentField("security_code", event.target.value)}
+                        inputMode="numeric"
+                        autoComplete="cc-csc"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                  </div>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Phone
+                    <input
+                      value={paymentForm.daytime_phone_number}
+                      onChange={(event) => updatePaymentField("daytime_phone_number", event.target.value)}
+                      autoComplete="tel"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Email
+                    <input
+                      value={paymentForm.email}
+                      onChange={(event) => updatePaymentField("email", event.target.value)}
+                      autoComplete="email"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-medium">
+                    Street address
+                    <input
+                      value={paymentForm.billing_address.street_1}
+                      onChange={(event) => updateBillingField("street_1", event.target.value)}
+                      autoComplete="billing street-address"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Apt, suite, or floor
+                    <input
+                      value={paymentForm.billing_address.street_2}
+                      onChange={(event) => updateBillingField("street_2", event.target.value)}
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    City
+                    <input
+                      value={paymentForm.billing_address.city}
+                      onChange={(event) => updateBillingField("city", event.target.value)}
+                      autoComplete="billing address-level2"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-[0.7fr_1fr]">
+                    <label className="grid gap-2 text-sm font-medium">
+                      State
+                      <input
+                        value={paymentForm.billing_address.state}
+                        onChange={(event) => updateBillingField("state", event.target.value)}
+                        autoComplete="billing address-level1"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-medium">
+                      ZIP code
+                      <input
+                        value={paymentForm.billing_address.postal_code}
+                        onChange={(event) => updateBillingField("postal_code", event.target.value)}
+                        autoComplete="billing postal-code"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4 rounded-lg border border-ink/10 bg-paper/45 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="font-semibold">Bank account details</h3>
+                  <p className="text-sm font-semibold text-pine">
+                    {formatCurrency(selectedPaymentTotal.toFixed(2))}
+                  </p>
+                </div>
+                <p className="text-sm leading-6 text-ink/65">
+                  The account must be with a U.S. bank, and the account holder signs each printed Form G-1650. Ask the
+                  bank to remove any ACH debit block for the Department of Homeland Security. Lucy keeps these details
+                  out of case records, but they are printed on the generated PDFs in local storage.
+                </p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-medium">
+                    Account ownership
+                    <select
+                      value={bankForm.account_ownership}
+                      onChange={(event) => updateBankField("account_ownership", event.target.value)}
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    >
+                      <option value="personal">Personal</option>
+                      <option value="business">Business</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Account type
+                    <select
+                      value={bankForm.account_type}
+                      onChange={(event) => updateBankField("account_type", event.target.value)}
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    >
+                      <option value="checking">Checking</option>
+                      <option value="savings">Savings</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Account holder name, as on the account
+                    <input
+                      value={bankForm.account_holder_name}
+                      onChange={(event) => updateBankField("account_holder_name", event.target.value)}
+                      autoComplete="off"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  {bankForm.account_ownership === "business" ? (
+                    <label className="grid gap-2 text-sm font-medium">
+                      Business name
+                      <input
+                        value={bankForm.business_name}
+                        onChange={(event) => updateBankField("business_name", event.target.value)}
+                        autoComplete="off"
+                        className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                      />
+                    </label>
+                  ) : null}
+                  <label className="grid gap-2 text-sm font-medium">
+                    Bank name
+                    <input
+                      value={bankForm.bank_name}
+                      onChange={(event) => updateBankField("bank_name", event.target.value)}
+                      autoComplete="off"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Routing number
+                    <input
+                      value={bankForm.routing_number}
+                      onChange={(event) => updateBankField("routing_number", event.target.value)}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Account number
+                    <input
+                      value={bankForm.account_number}
+                      onChange={(event) => updateBankField("account_number", event.target.value)}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 font-normal"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
             <div>
               <label className="grid gap-2 text-sm font-medium">
-                Upload signed Form G-1450 PDF
+                Upload signed Form G-1450 or G-1650 PDF
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
@@ -1024,7 +1160,7 @@ export function PacketAssemblyWorkspace() {
               disabled={isPending || !caseSummary || !paymentUploadFile}
               className="min-h-11 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-55"
             >
-              Upload G-1450
+              Upload payment PDF
             </button>
           </div>
         )}

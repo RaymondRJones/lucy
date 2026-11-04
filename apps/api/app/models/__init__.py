@@ -1,1 +1,1 @@
-
+"""SQLModel entities."""

@@ -1,3 +1,5 @@
+"""Generates an I-485 PDF for a case."""
+
 from __future__ import annotations
 
 import argparse

@@ -9,7 +9,7 @@ Sources:
 - USCIS Form I-485 Instructions PDF: https://www.uscis.gov/sites/default/files/document/forms/i-485instr.pdf
 - Local reference PDF: `MARRIAGE_EVIDENCE/I-485/Sample-Form-I-485.pdf`
 
-The USCIS page listed Form I-485 edition `01/20/25` and provided the current form and instructions download links when checked. The local I-485 PDF is flattened, so its text is useful for extraction heuristics but not as a reliable fillable-field schema.
+The USCIS page listed Form I-485 edition `09/18/26` when checked on 2026-10-30, with no grace period for the `01/20/25` and `09/04/26` editions. `blank-immigration-documents/i-485.pdf` is the 09/18/26 edition and is the template used for draft generation. The `MARRIAGE_EVIDENCE/I-485/Sample-Form-I-485.pdf` fixture, when present, may be an older edition and is flattened, so its text is useful for extraction heuristics but not as a reliable fillable-field schema.
 
 ## Product Boundary
 

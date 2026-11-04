@@ -1,12 +1,13 @@
+"""Question definitions and sources for Form I-485."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, I94_INFO_SOURCE
 
-
-I485_QUESTIONNAIRE_VERSION = "i485-01-20-25-marriage-v1"
-I485_VERIFIED_ON = "2026-05-05"
+I485_QUESTIONNAIRE_VERSION = "i485-09-18-26-marriage-v2"
+I485_VERIFIED_ON = "2026-10-30"
 I485_OFFICIAL_URL = "https://www.uscis.gov/i-485"
 I485_OFFICIAL_PDF_URL = "https://www.uscis.gov/sites/default/files/document/forms/i-485.pdf"
 I485_OFFICIAL_INSTRUCTIONS_URL = "https://www.uscis.gov/sites/default/files/document/forms/i-485instr.pdf"
@@ -17,7 +18,7 @@ I485_SOURCES: list[dict[str, str]] = [
         "label": "USCIS Form I-485 landing page",
         "url": I485_OFFICIAL_URL,
         "verified_on": I485_VERIFIED_ON,
-        "notes": "USCIS page listed edition 01/20/25 and provides the current form and instructions download links when checked.",
+        "notes": "USCIS page listed edition 09/18/26 with no grace period; the 01/20/25 and 09/04/26 editions are rejected if postmarked on or after Sept. 18, 2026.",
     },
     {
         "label": "USCIS Form I-485 PDF",
@@ -367,36 +368,36 @@ I485_HELP_OVERRIDES: dict[str, tuple[str, str]] = {
         "USCIS instructions explain this asks whether the category is exempt, not whether the applicant is likely to become a public charge. Family, employment, and diversity categories are generally subject to the public charge questions.",
     ),
     "household_size": (
-        "Count only the people the I-485 instructions require for the public charge household.",
-        "USCIS instructions warn that this household size may differ from Form I-864. Do not add people just because they are petitioners unless the I-485 instructions say to count them.",
+        "Count the people whose income, assets, and liabilities are included in Items 58-60.",
+        "The I-485 instructions say a household size given in Item 57 should include any individuals whose income, assets, and liabilities are reported in Items 58-60. This count may differ from the Form I-864 household size.",
+    ),
+    "public_charge_family_status": (
+        "Describe the applicant's family status in your own words, such as who is in the household.",
+        "Item 57 is now a written description instead of a number. If this is left blank, Lucy drafts it from the marital status and household size answers so you can review it. Long descriptions continue in Part 14.",
     ),
     "annual_household_income_band": (
-        "Choose the income band that best reflects income available to the applicant's public charge household.",
-        "USCIS guidance notes that available income may include a petitioning sponsor's income even where household-size counting rules differ. Keep the answer consistent with the facts and documents.",
+        "Choose the band for the household's annual income, leaving out any income from means-tested public benefits.",
+        "The I-485 instructions allow income provided to the household from outside sources, such as alimony or child support. They say to exclude means-tested public benefit income and income from illegal activities. Keep the answer consistent with the facts and documents.",
     ),
     "household_assets_band": (
-        "Choose the band for household-owned assets.",
-        "USCIS instructions give examples such as savings, checking accounts, deposits, and real estate, including assets located outside the United States.",
+        "Choose the band for assets owned by members of the household.",
+        "The I-485 instructions give examples such as bank deposits, annuities, stocks, bonds, mutual funds, certificates of deposit, retirement accounts, educational accounts, and real estate. Assets not owned by household members may not be included.",
     ),
     "household_liabilities_band": (
-        "Choose the band for debts owed by people in the public charge household.",
-        "USCIS instructions give examples such as mortgages, loans, credit card debt, student loans, and car loans.",
+        "Choose the band for debts owed by members of the household, both secured and unsecured.",
+        "The I-485 instructions give examples such as mortgages, car loans, unpaid child or spousal support, unpaid taxes, and current credit card balances.",
     ),
     "certifications_licenses_skills": (
-        "List skills, licenses, certifications, education, and work experience that show employability.",
-        "Think of this as a concise employability snapshot, not a full resume. Capture practical skills, licenses, certificates, education, languages, and work experience that apply.",
+        "List each skill on its own line, including workforce skills, training, occupational licenses, foreign languages, and certificates.",
+        "The I-485 instructions ask for all skills in Item 62, including licenses, foreign language skills, and certificates for skilled trades or completed occupational programs. The form has eight rows; Lucy continues any extra lines in Part 14.",
     ),
-    "received_cash_benefits": (
-        "Answer yes only for the listed cash assistance benefits, such as SSI, TANF, or similar income-maintenance cash benefits.",
-        "USCIS instructions say this question is not asking about every public benefit. It specifically calls out that SNAP or Medicaid are not the same as the listed cash-benefit question.",
+    "received_means_tested_public_benefit": (
+        "Answer yes if the applicant has ever received, or is currently receiving, any means-tested public benefit.",
+        "This edition asks about any means-tested public benefit, past or current at filing, not only the cash assistance and long-term care named on the prior edition. An earlier answer to the old question does not carry over. The form instructions do not list the programs, so review the USCIS Policy Manual (Volume 8, Part G) or ask a qualified legal professional if unsure which programs count.",
     ),
-    "received_long_term_institutionalization": (
-        "Answer whether the applicant received long-term institutional care paid by the government.",
-        "If yes, the following detail fields should explain when, how long, and what kind of institutionalization occurred.",
-    ),
-    "public_charge_benefit_details": (
-        "If a public-charge benefit answer is yes, explain the benefit or institutional care details here.",
-        "USCIS instructions separate listed cash assistance and long-term institutional care from other benefits. Capture the program name, dates received, who paid, and any documents that show the details. Leave this blank when the yes/no public-charge benefit questions are all no.",
+    "means_tested_benefit_history": (
+        "For each benefit, give the name, start and end dates, dollar amount if applicable, and the reason it was received.",
+        "The I-485 instructions ask for a detailed explanation of why each benefit was received, such as job loss, long-term illness, or insufficient income. The form has four rows and a narrow Reason column, so Lucy continues long reasons and extra benefits in Part 14.",
     ),
     "unlawful_presence_after_1997": (
         "Answer whether the applicant had unlawful presence after April 1, 1997, including visa overstay.",
@@ -769,6 +770,80 @@ EMPLOYMENT_HISTORY_FIELDS: list[dict[str, Any]] = [
     {"key": "notes", "label": "Review notes", "type": "textarea", "required": False},
 ]
 
+OTHER_NAME_FIELDS: list[dict[str, Any]] = [
+    {"key": "family_name", "label": "Family name (last name)", "type": "text", "required": True},
+    {"key": "given_name", "label": "Given name (first name)", "type": "text"},
+    {"key": "middle_name", "label": "Middle name", "type": "text"},
+]
+
+OTHER_DOB_FIELDS: list[dict[str, Any]] = [
+    {"key": "date_of_birth", "label": "Other date of birth", "type": "date", "required": True},
+]
+
+OTHER_A_NUMBER_FIELDS: list[dict[str, Any]] = [
+    {"key": "a_number", "label": "Other A-Number", "type": "text", "required": True},
+]
+
+PRIOR_SPOUSE_FIELDS: list[dict[str, Any]] = [
+    {"key": "family_name", "label": "Prior spouse family name (before marriage)", "type": "text", "required": True},
+    {"key": "given_name", "label": "Prior spouse given name", "type": "text", "required": True},
+    {"key": "middle_name", "label": "Prior spouse middle name", "type": "text"},
+    {"key": "date_of_birth", "label": "Prior spouse date of birth", "type": "date", "required": True},
+    {"key": "country_of_birth", "label": "Prior spouse country of birth", "type": "country", "required": True},
+    {"key": "citizenship_country", "label": "Prior spouse country of citizenship or nationality", "type": "country", "required": True},
+    {"key": "marriage_date", "label": "Date of marriage", "type": "date", "required": True},
+    {"key": "marriage_city", "label": "Place of marriage: city or town", "type": "text", "required": True},
+    {"key": "marriage_state", "label": "Place of marriage: state or province", "type": "text"},
+    {"key": "marriage_country", "label": "Place of marriage: country", "type": "country", "required": True},
+    {"key": "end_date", "label": "Date marriage legally ended", "type": "date", "required": True},
+    {"key": "end_city", "label": "Place marriage legally ended: city or town", "type": "text", "required": True},
+    {"key": "end_state", "label": "Place marriage legally ended: state or province", "type": "text"},
+    {"key": "end_country", "label": "Place marriage legally ended: country", "type": "country", "required": True},
+    {
+        "key": "how_ended",
+        "label": "How the marriage ended",
+        "type": "select",
+        "required": True,
+        "options": [
+            {"value": "divorced", "label": "Divorced"},
+            {"value": "spouse_deceased", "label": "Spouse deceased"},
+            {"value": "annulled", "label": "Annulled"},
+            {"value": "other", "label": "Other"},
+        ],
+    },
+    {"key": "how_ended_other", "label": "If other, explain how the marriage ended", "type": "text"},
+]
+
+CHILD_FIELDS: list[dict[str, Any]] = [
+    {"key": "family_name", "label": "Child family name", "type": "text", "required": True},
+    {"key": "given_name", "label": "Child given name", "type": "text", "required": True},
+    {"key": "middle_name", "label": "Child middle name", "type": "text"},
+    {"key": "a_number", "label": "Child A-Number, if any", "type": "text"},
+    {"key": "date_of_birth", "label": "Child date of birth", "type": "date", "required": True},
+    {"key": "country_of_birth", "label": "Child country of birth", "type": "country", "required": True},
+    {"key": "relationship", "label": "Relationship to the applicant (for example, biological child, stepchild)", "type": "text", "required": True},
+    {"key": "applying_separately", "label": "Is this child also applying now on a separate Form I-485?", "type": "boolean", "required": True},
+]
+
+ORGANIZATION_FIELDS: list[dict[str, Any]] = [
+    {"key": "name", "label": "Name of organization", "type": "text", "required": True},
+    {"key": "city", "label": "City or town", "type": "text", "required": True},
+    {"key": "state", "label": "State or province", "type": "text"},
+    {"key": "country", "label": "Country", "type": "country", "required": True},
+    {"key": "nature", "label": "Nature of the organization, including its purposes and activities", "type": "text", "required": True},
+    {"key": "involvement", "label": "Nature of involvement, including role or positions held", "type": "text", "required": True},
+    {"key": "date_from", "label": "Membership or involvement from", "type": "date", "required": True},
+    {"key": "date_to", "label": "Membership or involvement to", "type": "date"},
+]
+
+MEANS_TESTED_BENEFIT_FIELDS: list[dict[str, Any]] = [
+    {"key": "benefit_name", "label": "Means-tested public benefit received", "type": "text", "required": True},
+    {"key": "start_date", "label": "Start date", "type": "date", "required": True},
+    {"key": "end_date", "label": "End date (blank if still receiving)", "type": "date"},
+    {"key": "dollar_amount", "label": "Dollar amount (if applicable)", "type": "text"},
+    {"key": "reason", "label": "Reason the benefit was received", "type": "textarea", "required": True},
+]
+
 FOREIGN_EMPLOYMENT_FIELDS: list[dict[str, Any]] = [
     {"key": "name", "label": "Employer, company, or school name", "type": "text", "required": True},
     {"key": "occupation", "label": "Occupation or status", "type": "text", "required": True},
@@ -806,6 +881,23 @@ HAIR_COLOR_OPTIONS = [
     {"value": "white", "label": "White"},
 ]
 
+def part9_items(risk_code: str | None, rows: list[tuple[str, str, str]], conditional: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+    # One question per form item: a combined answer would attest to items the applicant was never asked.
+    return [
+        q(
+            question_id,
+            label,
+            "boolean",
+            required=question_id not in conditional,
+            pdf_ref=f"Part 9, Item {item}",
+            ideal_answer=None if question_id in conditional else False,
+            risk_when=True if risk_code else None,
+            risk_code=risk_code,
+        )
+        for question_id, item, label in rows
+    ]
+
+
 I485_QUESTIONNAIRE: list[dict[str, Any]] = [
     {
         "id": "page_01_identity",
@@ -817,11 +909,13 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Current legal family name", "text", pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Current legal given name", "text", pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Current legal middle name", "text", required=False, pdf_ref="Part 1, Item 1", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_other_names", "All other names ever used", "textarea", required=False, pdf_ref="Part 1, Item 2", db_path="intake.beneficiary_other_names"),
+            q("beneficiary_other_names", "All other names ever used", "entry_list", required=False, pdf_ref="Part 1, Item 2", db_path="intake.beneficiary_other_names", entry_fields=OTHER_NAME_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
             q("beneficiary_date_of_birth", "Date of birth", "date", pdf_ref="Part 1, Item 3", db_path="intake.beneficiary_date_of_birth"),
             q("beneficiary_used_other_dob", "Has the applicant ever used another date of birth?", "boolean", pdf_ref="Part 1, Item 3", ideal_answer=False, risk_when=True, risk_code="identity_inconsistencies"),
+            q("beneficiary_other_dates_of_birth", "Other dates of birth used", "entry_list", required=False, pdf_ref="Part 1, Item 3", entry_fields=OTHER_DOB_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
             q("beneficiary_has_a_number", "Has USCIS ever assigned the applicant an A-Number?", "boolean", required=False, pdf_ref="Part 1, Item 4", db_path="intake.beneficiary_has_a_number"),
             q("beneficiary_has_other_a_numbers", "Has the applicant ever used or been assigned another A-Number?", "boolean", required=False, pdf_ref="Part 1, Item 5", ideal_answer=False, risk_when=True, risk_code="identity_inconsistencies"),
+            q("beneficiary_other_a_numbers", "Other A-Numbers used or assigned", "entry_list", required=False, pdf_ref="Part 1, Item 5", entry_fields=OTHER_A_NUMBER_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
         ],
     },
     {
@@ -936,7 +1030,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
         "pdf_part": "Part 4, Items 7-8",
         "local_pdf_pages": [8, 9],
         "questions": [
-            q("i485_i864_exemption", "Is the applicant requesting an exemption from Form I-864?", "select", pdf_ref="Part 3", ideal_answer="not_requesting_exemption", risk_when="other", risk_code="outside_niche_i864_exemption", options=[{"value": "not_requesting_exemption", "label": "No, Form I-864 is required"}, {"value": "40_quarters", "label": "40 qualifying quarters"}, {"value": "child_citizenship", "label": "Child citizenship exemption"}, {"value": "widow_vawa_or_other", "label": "Widow/VAWA/other statutory exemption"}, {"value": "other", "label": "Other or unsure"}]),
+            q("i485_i864_exemption", "Is the applicant requesting an exemption from Form I-864?", "select", pdf_ref="Part 3", ideal_answer="not_requesting_exemption", risk_when="other", risk_code="outside_niche_i864_exemption", options=[{"value": "not_requesting_exemption", "label": "No, Form I-864 is required"}, {"value": "40_quarters", "label": "40 qualifying quarters"}, {"value": "child_citizenship", "label": "Child citizenship exemption"}, {"value": "widow_i360", "label": "Widow or widower of a U.S. citizen (Form I-360)"}, {"value": "vawa_self_petitioner", "label": "VAWA self-petitioner"}, {"value": "not_required_by_statute", "label": "None apply, and Form I-864 is not required by statute"}]),
             q("prior_immigrant_visa_application", "Has the applicant ever applied for an immigrant visa at a U.S. Embassy or Consulate abroad?", "boolean", pdf_ref="Part 4, Item 1", ideal_answer=False, risk_when=True, risk_code="prior_immigration_history"),
             q("prior_permanent_residence_application", "Has the applicant previously applied for permanent residence while in the United States?", "boolean", pdf_ref="Part 4, Item 5", ideal_answer=False, risk_when=True, risk_code="prior_immigration_history"),
             q("prior_lpr_status_rescinded", "Has the applicant ever held lawful permanent resident status that was later rescinded?", "boolean", pdf_ref="Part 4, Item 6", ideal_answer=False, risk_when=True, risk_code="prior_immigration_history"),
@@ -970,18 +1064,18 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
         "pdf_part": "Part 5",
         "local_pdf_pages": [9, 10],
         "questions": [
-            q("parent1_last_name", "Parent 1 family name", "text", pdf_ref="Part 5, Item 1"),
-            q("parent1_first_name", "Parent 1 given name", "text", pdf_ref="Part 5, Item 1"),
-            q("parent1_middle_name", "Parent 1 middle name", "text", required=False, pdf_ref="Part 5, Item 1"),
+            q("parent1_last_name", "Parent 1 family name", "text", pdf_ref="Part 5, Item 1", db_path="intake.parent1_last_name"),
+            q("parent1_first_name", "Parent 1 given name", "text", pdf_ref="Part 5, Item 1", db_path="intake.parent1_first_name"),
+            q("parent1_middle_name", "Parent 1 middle name", "text", required=False, pdf_ref="Part 5, Item 1", db_path="intake.parent1_middle_name"),
             q("parent1_name_at_birth", "Parent 1 name at birth, if different", "text", required=False, pdf_ref="Part 5, Item 2"),
-            q("parent1_date_of_birth", "Parent 1 date of birth", "date", pdf_ref="Part 5, Item 3"),
-            q("parent1_country_of_birth", "Parent 1 country of birth", "country", pdf_ref="Part 5, Item 4"),
-            q("parent2_last_name", "Parent 2 family name", "text", pdf_ref="Part 5, Item 5"),
-            q("parent2_first_name", "Parent 2 given name", "text", pdf_ref="Part 5, Item 5"),
-            q("parent2_middle_name", "Parent 2 middle name", "text", required=False, pdf_ref="Part 5, Item 5"),
+            q("parent1_date_of_birth", "Parent 1 date of birth", "date", pdf_ref="Part 5, Item 3", db_path="intake.parent1_date_of_birth"),
+            q("parent1_country_of_birth", "Parent 1 country of birth", "country", pdf_ref="Part 5, Item 4", db_path="intake.parent1_country_of_birth"),
+            q("parent2_last_name", "Parent 2 family name", "text", pdf_ref="Part 5, Item 5", db_path="intake.parent2_last_name"),
+            q("parent2_first_name", "Parent 2 given name", "text", pdf_ref="Part 5, Item 5", db_path="intake.parent2_first_name"),
+            q("parent2_middle_name", "Parent 2 middle name", "text", required=False, pdf_ref="Part 5, Item 5", db_path="intake.parent2_middle_name"),
             q("parent2_name_at_birth", "Parent 2 name at birth, if different", "text", required=False, pdf_ref="Part 5, Item 6"),
-            q("parent2_date_of_birth", "Parent 2 date of birth", "date", pdf_ref="Part 5, Item 7"),
-            q("parent2_country_of_birth", "Parent 2 country of birth", "country", pdf_ref="Part 5, Item 8"),
+            q("parent2_date_of_birth", "Parent 2 date of birth", "date", pdf_ref="Part 5, Item 7", db_path="intake.parent2_date_of_birth"),
+            q("parent2_country_of_birth", "Parent 2 country of birth", "country", pdf_ref="Part 5, Item 8", db_path="intake.parent2_country_of_birth"),
         ],
     },
     {
@@ -996,6 +1090,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("petitioner_last_name", "Current spouse family name", "text", pdf_ref="Part 6, Item 4", db_path="intake.petitioner_last_name"),
             q("petitioner_first_name", "Current spouse given name", "text", pdf_ref="Part 6, Item 4", db_path="intake.petitioner_first_name"),
             q("petitioner_middle_name", "Current spouse middle name", "text", required=False, pdf_ref="Part 6, Item 4", db_path="intake.petitioner_middle_name"),
+            q("petitioner_a_number", "Current spouse A-Number, if any", "text", required=False, pdf_ref="Part 6, Item 5"),
             q("petitioner_citizenship_status", "Current spouse immigration/citizenship status", "select", pdf_ref="Part 6 and niche gate", db_path="intake.petitioner_citizenship_status", ideal_answer="us_citizen", risk_when="not_us_citizen", risk_code="outside_niche_spouse_not_us_citizen", options=[{"value": "us_citizen", "label": "U.S. citizen"}, {"value": "lpr", "label": "Lawful permanent resident"}, {"value": "other", "label": "Other or unsure"}]),
             q("petitioner_date_of_birth", "Current spouse date of birth", "date", pdf_ref="Part 6, Item 6", db_path="intake.petitioner_date_of_birth"),
             q("petitioner_country_of_birth", "Current spouse country of birth", "country", pdf_ref="Part 6, Item 7", db_path="intake.petitioner_country_of_birth"),
@@ -1012,7 +1107,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("marriage_place_country", "Place of current marriage: country", "country", pdf_ref="Part 6, Item 9", db_path="intake.marriage_place_country"),
             q("marriage_date", "Date of current marriage", "date", pdf_ref="Part 6, Item 9", db_path="intake.marriage_date"),
             q("current_spouse_applying_with_beneficiary", "Is the current spouse applying with the applicant?", "boolean", required=False, pdf_ref="Part 6, Item 10", ideal_answer=False),
-            q("beneficiary_prior_marriages", "Prior spouse details, if any", "textarea", required=False, pdf_ref="Part 6, Items 11-18", risk_when="present", risk_code="outside_niche_prior_marriage"),
+            q("beneficiary_prior_marriages", "Prior marriages", "entry_list", required=False, pdf_ref="Part 6, Items 11-18", entry_fields=PRIOR_SPOUSE_FIELDS, form_entry_limit=1, overflow_pdf_ref="Part 14, Additional Information", risk_when="present", risk_code="outside_niche_prior_marriage"),
         ],
     },
     {
@@ -1022,7 +1117,7 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
         "local_pdf_pages": [12, 13],
         "questions": [
             q("children_count", "Total number of living children anywhere in the world", "number", pdf_ref="Part 7, Item 1", db_path="intake.children_count", ideal_answer=0, risk_when="greater_than_0", risk_code="outside_niche_children"),
-            q("children_details", "Child details, if any", "textarea", required=False, pdf_ref="Part 7, Items 2-3", db_path="intake.children_details"),
+            q("children_details", "Children", "entry_list", required=False, pdf_ref="Part 7, Items 2-3", entry_fields=CHILD_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
             q("beneficiary_ethnicity", "Ethnicity", "select", pdf_ref="Part 8, Item 1", db_path="intake.beneficiary_ethnicity", options=[{"value": "hispanic_or_latino", "label": "Hispanic or Latino"}, {"value": "not_hispanic_or_latino", "label": "Not Hispanic or Latino"}]),
             q("beneficiary_race", "Race selections", "multi_select", pdf_ref="Part 8, Item 2", db_path="intake.beneficiary_race", options=[{"value": "asian", "label": "Asian"}, {"value": "white", "label": "White"}, {"value": "black", "label": "Black or African American"}, {"value": "american_indian", "label": "American Indian or Alaska Native"}, {"value": "pacific_islander", "label": "Native Hawaiian or Other Pacific Islander"}]),
             q("beneficiary_height_feet", "Height: feet", "number", pdf_ref="Part 8, Item 3", db_path="intake.beneficiary_height_feet"),
@@ -1039,9 +1134,9 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
         "local_pdf_pages": [13, 14],
         "questions": [
             q("organizations_membership", "Has the applicant ever been associated with any organization, association, party, club, society, or similar group?", "boolean", pdf_ref="Part 9, Item 1", ideal_answer=False, risk_when=True, risk_code="organization_history"),
-            q("organizations_details", "Organization details, if any", "textarea", required=False, pdf_ref="Part 9, Items 2-9"),
-            q("visa_denied", "Has the applicant ever been denied a visa to the United States?", "boolean", pdf_ref="Part 9, Item 10", ideal_answer=False, risk_when=True, risk_code="prior_immigration_denials", db_path="intake.prior_immigration_denials"),
-            q("admission_denied", "Has the applicant ever been denied admission to the United States?", "boolean", pdf_ref="Part 9, Item 11", ideal_answer=False, risk_when=True, risk_code="prior_immigration_denials"),
+            q("organizations_details", "Organizations", "entry_list", required=False, pdf_ref="Part 9, Items 2-9", entry_fields=ORGANIZATION_FIELDS, form_entry_limit=2, overflow_pdf_ref="Part 14, Additional Information"),
+            q("visa_denied", "Has the applicant ever been denied a visa to the United States?", "boolean", pdf_ref="Part 9, Item 11", ideal_answer=False, risk_when=True, risk_code="prior_immigration_denials", db_path="intake.prior_immigration_denials"),
+            q("admission_denied", "Has the applicant ever been denied admission to the United States?", "boolean", pdf_ref="Part 9, Item 10", ideal_answer=False, risk_when=True, risk_code="prior_immigration_denials"),
             q("worked_without_authorization", "Has the applicant ever worked in the United States without authorization?", "boolean", pdf_ref="Part 9, Item 12", ideal_answer=False, risk_when=True, risk_code="unauthorized_work"),
             q("violated_nonimmigrant_status", "Has the applicant ever violated the terms of nonimmigrant status?", "boolean", pdf_ref="Part 9, Item 13", ideal_answer=False, risk_when=True, risk_code="status_violation"),
             q("removal_proceedings_history", "Has the applicant ever been in removal, exclusion, rescission, or deportation proceedings?", "boolean", pdf_ref="Part 9, Item 14", ideal_answer=False, risk_when=True, risk_code="removal_history", db_path="intake.removal_history"),
@@ -1050,6 +1145,8 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("voluntary_departure_failed", "Was voluntary departure granted but not completed on time?", "boolean", pdf_ref="Part 9, Item 17", ideal_answer=False, risk_when=True, risk_code="removal_history"),
             q("relief_from_removal", "Has the applicant ever applied for relief or protection from removal?", "boolean", pdf_ref="Part 9, Item 18", ideal_answer=False, risk_when=True, risk_code="removal_history"),
             q("j_exchange_two_year_rule", "Has the applicant ever been subject to the J exchange visitor two-year foreign residence requirement?", "boolean", pdf_ref="Part 9, Item 19", ideal_answer=False, risk_when=True, risk_code="j_waiver_needed"),
+            q("j_foreign_residence_complied", "If yes to Item 19, has the applicant complied with the foreign residence requirement?", "boolean", required=False, pdf_ref="Part 9, Item 20"),
+            q("j_waiver_granted", "If yes to Item 19 and no to Item 20, has the applicant been granted a waiver, or has the Department of State issued a favorable waiver recommendation letter?", "boolean", required=False, pdf_ref="Part 9, Item 21"),
         ],
     },
     {
@@ -1063,10 +1160,36 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("ever_pled_or_convicted", "Has the applicant ever pled guilty to or been convicted of a crime or offense?", "boolean", pdf_ref="Part 9, Item 24", ideal_answer=False, risk_when=True, risk_code="criminal_history"),
             q("ever_punished_by_judge", "Has a judge ever ordered punishment or imposed conditions restraining liberty?", "boolean", pdf_ref="Part 9, Item 25", ideal_answer=False, risk_when=True, risk_code="criminal_history"),
             q("controlled_substance_violation", "Has the applicant ever violated or attempted to violate a controlled substance law?", "boolean", pdf_ref="Part 9, Item 26", ideal_answer=False, risk_when=True, risk_code="controlled_substances"),
-            q("controlled_substance_trafficking", "Has the applicant ever trafficked in or benefited from controlled substance trafficking?", "boolean", pdf_ref="Part 9, Items 27-29", ideal_answer=False, risk_when=True, risk_code="controlled_substances"),
-            q("prostitution_or_commercialized_vice", "Has the applicant ever engaged in prostitution, procurement, proceeds from prostitution, illegal gambling, or commercialized vice?", "boolean", pdf_ref="Part 9, Items 30-34", ideal_answer=False, risk_when=True, risk_code="commercialized_vice"),
-            q("foreign_government_religious_freedom", "Was the applicant a foreign government official responsible for religious freedom violations?", "boolean", pdf_ref="Part 9, Items 35.a-35.b", ideal_answer=False, risk_when=True, risk_code="human_rights"),
-            q("human_trafficking", "Has the applicant ever been involved in sex trafficking, involuntary servitude, peonage, debt bondage, slavery, or related benefits?", "boolean", pdf_ref="Part 9, Items 36-40", ideal_answer=False, risk_when=True, risk_code="trafficking"),
+            *part9_items(
+                "controlled_substances",
+                [
+                    ("controlled_substance_trafficked", "27", "Has the applicant ever trafficked in or benefited from, or knowingly aided, abetted, assisted, conspired or colluded in the illegal trafficking of any controlled substances, such as chemicals, illegal drugs, or narcotics?"),
+                    ("controlled_substance_family_benefit", "28", "Is the applicant the spouse, son, or daughter of a person who illicitly trafficked or aided in the illicit trafficking of a controlled substance, and did the applicant obtain, within the last five years, any financial or other benefit from that activity?"),
+                    ("controlled_substance_family_benefit_knowledge", "29", "If yes to Item 28, did the applicant know or should the applicant have reasonably known that the benefit resulted from this activity of a spouse or parent?")
+                ], conditional=("controlled_substance_family_benefit_knowledge",)
+            ),
+            *part9_items(
+                "commercialized_vice",
+                [
+                    ("prostitution_engaged", "30", "Has the applicant ever engaged in prostitution, or is the applicant coming to the United States to engage in prostitution?"),
+                    ("prostitution_procured", "31", "Has the applicant ever directly or indirectly procured or attempted to procure, or imported prostitutes or persons for the purpose of prostitution?"),
+                    ("prostitution_proceeds", "32", "Has the applicant ever received any proceeds or money from prostitution?"),
+                    ("commercialized_vice_intent", "33", "Does the applicant intend to engage in illegal gambling or any other form of commercialized vice, such as prostitution, bootlegging, or the sale of child pornography, while in the United States?"),
+                    ("exercised_criminal_immunity", "34", "Has the applicant ever exercised immunity (diplomatic or otherwise) to avoid being prosecuted for a criminal offense in the United States?")
+                ],
+            ),
+            q("served_as_foreign_government_official", "Has the applicant ever served as a foreign government official?", "boolean", pdf_ref="Part 9, Item 35.a", ideal_answer=False),
+            q("religious_freedom_violations", "If yes to Item 35.a, has the applicant ever been responsible for, enforced, or directly carried out violations of religious freedoms?", "boolean", required=False, pdf_ref="Part 9, Item 35.b", risk_when=True, risk_code="human_rights"),
+            *part9_items(
+                "trafficking",
+                [
+                    ("sex_trafficking", "36", "Has the applicant ever induced by force, fraud, or coercion (or otherwise been involved in) the trafficking of another person for commercial sex acts?"),
+                    ("labor_trafficking", "37", "Has the applicant ever trafficked a person into involuntary servitude, peonage, debt bondage, or slavery, including recruiting, harboring, transporting, providing, or obtaining a person for labor or services through force, fraud, or coercion?"),
+                    ("aided_trafficking", "38", "Has the applicant ever knowingly aided, abetted, assisted, conspired, or colluded with others in trafficking in persons for commercial sex acts or involuntary servitude, peonage, debt bondage, or slavery?"),
+                    ("trafficking_family_benefit", "39", "Is the applicant the spouse, son, or daughter of a person who engaged in trafficking in persons, and has the applicant received, within the last five years, any financial or other benefit from that activity?"),
+                    ("trafficking_family_benefit_knowledge", "40", "If yes to Item 39, did the applicant know or reasonably should the applicant have known that this benefit resulted from this activity of a spouse or parent?")
+                ], conditional=("trafficking_family_benefit_knowledge",)
+            ),
             q("money_laundering", "Has the applicant ever engaged in or aided money laundering?", "boolean", pdf_ref="Part 9, Item 41", ideal_answer=False, risk_when=True, risk_code="money_laundering"),
             q("criminal_explanations", "Explanations and dispositions for any yes answer in this section", "textarea", required=False, pdf_ref="Part 14"),
         ],
@@ -1077,54 +1200,125 @@ I485_QUESTIONNAIRE: list[dict[str, Any]] = [
         "pdf_part": "Part 9, Items 42-56",
         "local_pdf_pages": [16, 17, 18],
         "questions": [
-            q("espionage_sabotage_export_overthrow", "Does the applicant intend espionage, sabotage, export-control violations, overthrow of the U.S. government, or other unlawful activity?", "boolean", pdf_ref="Part 9, Items 42.a-42.d", ideal_answer=False, risk_when=True, risk_code="security_related"),
-            q("weapons_training_or_violence", "Has the applicant received weapons training or participated in kidnapping, assassination, hijacking, sabotage, explosives, threats, planning, recruitment, or support?", "boolean", pdf_ref="Part 9, Items 43.a-44", ideal_answer=False, risk_when=True, risk_code="security_related"),
+            *part9_items(
+                "security_related",
+                [
+                    ("intends_espionage_sabotage", "42.a", "Does the applicant intend to engage in any activity that violates or evades any law relating to espionage (including spying) or sabotage in the United States?"),
+                    ("intends_export_violation", "42.b", "Does the applicant intend to engage in any activity in the United States that violates or evades any law prohibiting the export from the United States of goods, technology, or sensitive information?"),
+                    ("intends_overthrow", "42.c", "Does the applicant intend to engage in any activity whose purpose includes opposing, controlling, or overthrowing the U.S. Government by force, violence, or other unlawful means while in the United States?"),
+                    ("intends_other_unlawful_activity", "42.d", "Does the applicant intend to engage in any other unlawful activity?")
+                ],
+            ),
+            *part9_items(
+                "security_related",
+                [
+                    ("weapons_training", "43.a", "Has the applicant ever received any weapons training, paramilitary training, or other military-type training?"),
+                    ("kidnapping_or_hijacking", "43.b", "Has the applicant ever committed kidnapping, assassination, or hijacking or sabotage of a conveyance (including an aircraft, vessel, vehicle, or train)?"),
+                    ("used_weapon_or_explosive", "43.c", "Has the applicant ever used a weapon or explosive or any dangerous device with the intent to endanger the safety of another person or people or cause damage to property?"),
+                    ("threatened_or_planned_violence", "43.d", "Has the applicant ever threatened, attempted, conspired, prepared, or planned to do any of the things described in Items 43.b - 43.c?"),
+                    ("incited_violence", "43.e", "Has the applicant ever incited, under circumstances indicating an intention to cause death or serious bodily harm, any of the activities described in Items 43.b - 43.c?"),
+                    ("member_of_violent_group", "43.f", "Has the applicant ever participated in, or been a member of, a group or organization that did any of the activities described in Items 43.b - 43.e?"),
+                    ("recruited_for_violent_group", "43.g", "Has the applicant ever recruited members or asked for money or things of value for a group or organization that did any of the activities described in Items 43.b - 43.e?"),
+                    ("supported_violent_activity", "43.h", "Has the applicant ever provided money, a thing of value, services or labor, or any other assistance or support for any of the activities described in Items 43.b - 43.e?"),
+                    ("supported_violent_group", "43.i", "Has the applicant ever provided money, a thing of value, services or labor, or any other assistance or support for an individual, group, or organization who did any of the activities described in Items 43.b - 43.e?"),
+                    ("intends_violent_activity", "44", "Does the applicant intend to engage in any of the activities listed in any part of Items 43.b - 43.e?")
+                ],
+            ),
             q("endanger_us_security", "Does the applicant intend activity that could endanger the welfare, safety, or security of the United States?", "boolean", pdf_ref="Part 9, Item 45", ideal_answer=False, risk_when=True, risk_code="security_related"),
             q("family_security_activity", "Is the applicant the spouse or child of someone who engaged in listed security activities?", "boolean", pdf_ref="Part 9, Item 46", ideal_answer=False, risk_when=True, risk_code="security_related"),
             q("weapons_sales_or_transport", "Has the applicant sold, provided, transported, or assisted with weapons intended for use against another person?", "boolean", pdf_ref="Part 9, Item 47", ideal_answer=False, risk_when=True, risk_code="security_related"),
             q("detention_or_prison_service", "Has the applicant worked or served where people were detained, or participated in detaining people?", "boolean", pdf_ref="Part 9, Item 48", ideal_answer=False, risk_when=True, risk_code="human_rights"),
-            q("military_police_armed_group", "Has the applicant served in military, police, armed groups, or groups using weapons?", "boolean", pdf_ref="Part 9, Items 49-52", ideal_answer=False, risk_when=True, risk_code="military_or_armed_group"),
-            q("communist_totalitarian_party", "Has the applicant ever been affiliated with the Communist Party or any totalitarian party?", "boolean", pdf_ref="Part 9, Item 50", ideal_answer=False, risk_when=True, risk_code="party_affiliation"),
-            q("persecution_or_child_soldiers", "Has the applicant participated in torture, genocide, killing, severe injury, forced hostilities, or child-soldier recruitment/use?", "boolean", pdf_ref="Part 9, Items 53-55", ideal_answer=False, risk_when=True, risk_code="human_rights"),
+            *part9_items(
+                "military_or_armed_group",
+                [
+                    ("weapon_using_group", "49", "Has the applicant ever been a member of, assisted, or participated in any group, unit, or organization of any kind in which the applicant or other persons used any type of weapon against any person or threatened to do so?"),
+                    ("military_or_police_service", "50", "Has the applicant ever served in, been a member of, assisted, or participated in any military or police unit?"),
+                    ("armed_group_service", "51", "Has the applicant ever served in, been a member of, assisted, or participated in any armed group (a group that carries weapons), for example a paramilitary unit, self-defense unit, vigilante unit, rebel group, or guerrilla group?")
+                ],
+            ),
+            q("communist_totalitarian_party", "Has the applicant ever been affiliated with the Communist Party or any totalitarian party?", "boolean", pdf_ref="Part 9, Item 52", ideal_answer=False, risk_when=True, risk_code="party_affiliation"),
+            *part9_items(
+                "human_rights",
+                [
+                    ("participated_in_torture", "53.a", "Has the applicant ever ordered, incited, called for, committed, assisted, helped with, or otherwise participated in torture?"),
+                    ("participated_in_genocide", "53.b", "Has the applicant ever ordered, incited, called for, committed, assisted, helped with, or otherwise participated in genocide?"),
+                    ("participated_in_killing", "53.c", "Has the applicant ever ordered, incited, called for, committed, assisted, helped with, or otherwise participated in killing, or trying to kill, any person?"),
+                    ("participated_in_severe_injury", "53.d", "Has the applicant ever ordered, incited, called for, committed, assisted, helped with, or otherwise participated in intentionally and severely injuring, or trying to injure, any person?"),
+                    ("child_soldier_recruitment", "54", "Has the applicant ever recruited, enlisted, conscripted, or used any person under 15 years of age to take part in hostilities or to serve in or help an armed force or group, or attempted or worked with others to do so?"),
+                    ("child_soldier_use", "55", "Has the applicant ever used any person under 15 years of age to take part in hostilities, for instance participating in combat or providing services related to combat (such as sabotage or serving as a courier) or providing support services (such as transporting supplies), or attempted or worked with others to do so?")
+                ],
+            ),
             q("public_charge_exempt_category", "Is the applicant selecting a public charge exempt category?", "select", required=False, pdf_ref="Part 9, Item 56", ideal_answer="not_exempt_complete_questions", options=[{"value": "not_exempt_complete_questions", "label": "No exempt category; complete public charge questions"}, {"value": "asylee_refugee_or_other", "label": "Asylee, refugee, VAWA, U/T, SIJ, Cuban Adjustment, or other exemption"}, {"value": "unsure", "label": "Unsure"}], risk_when="asylee_refugee_or_other", risk_code="outside_niche_category"),
         ],
     },
     {
         "id": "page_13_public_charge",
         "title": "Public Charge Household Snapshot",
-        "pdf_part": "Part 9, Items 57-66",
+        "pdf_part": "Part 9, Items 57-64",
         "local_pdf_pages": [19, 20],
         "questions": [
-            q("household_size", "Household size", "number", pdf_ref="Part 9, Item 57", db_path="intake.household_size"),
+            q("household_size", "Household size counted in Items 58-60", "number", pdf_ref="Part 9, Item 57", db_path="intake.household_size"),
+            q("public_charge_family_status", "Family status in your own words", "textarea", required=False, pdf_ref="Part 9, Item 57"),
             q("annual_household_income_band", "Annual household income band", "select", pdf_ref="Part 9, Item 58", db_path="intake.annual_household_income_band", options=[{"value": "0_27000", "label": "$0-$27,000"}, {"value": "27001_52000", "label": "$27,001-$52,000"}, {"value": "52001_85000", "label": "$52,001-$85,000"}, {"value": "85001_141000", "label": "$85,001-$141,000"}, {"value": "over_141000", "label": "Over $141,000"}]),
             q("household_assets_band", "Total household assets band", "select", pdf_ref="Part 9, Item 59", options=[{"value": "0_18400", "label": "$0-$18,400"}, {"value": "18401_136000", "label": "$18,401-$136,000"}, {"value": "136001_321400", "label": "$136,001-$321,400"}, {"value": "321401_707100", "label": "$321,401-$707,100"}, {"value": "over_707100", "label": "Over $707,100"}]),
             q("household_liabilities_band", "Total household liabilities band", "select", pdf_ref="Part 9, Item 60", options=[{"value": "0", "label": "$0"}, {"value": "1_10100", "label": "$1-$10,100"}, {"value": "10101_57700", "label": "$10,101-$57,700"}, {"value": "57701_186800", "label": "$57,701-$186,800"}, {"value": "over_186800", "label": "Over $186,800"}]),
             q("highest_education", "Highest degree or grade completed", "select", pdf_ref="Part 9, Item 61", options=[{"value": "less_than_high_school", "label": "Less than high school"}, {"value": "high_school", "label": "High school/GED"}, {"value": "some_college", "label": "1+ years college, no degree"}, {"value": "associate", "label": "Associate's degree"}, {"value": "bachelor", "label": "Bachelor's degree"}, {"value": "master", "label": "Master's degree"}, {"value": "professional", "label": "Professional degree"}, {"value": "doctorate", "label": "Doctorate"}]),
-            q("certifications_licenses_skills", "Certifications, licenses, skills, and educational certificates", "textarea", required=False, pdf_ref="Part 9, Item 62"),
-            q("received_cash_benefits", "Has the applicant ever received SSI, TANF, or cash benefits for income maintenance?", "boolean", pdf_ref="Part 9, Item 63", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
-            q("received_long_term_institutionalization", "Has the applicant ever received long-term institutionalization at government expense?", "boolean", pdf_ref="Part 9, Item 64", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
-            q("public_charge_benefit_details", "Benefit or institutionalization details, if any", "textarea", required=False, pdf_ref="Part 9, Items 65-66"),
+            q("highest_grade_completed", "If less than a high school diploma, the highest grade completed", "text", required=False, pdf_ref="Part 9, Item 61"),
+            q("certifications_licenses_skills", "Skills, including certifications, licenses, and educational certificates", "textarea", pdf_ref="Part 9, Item 62"),
+            q("received_means_tested_public_benefit", "Has the applicant ever received any means-tested public benefit?", "boolean", pdf_ref="Part 9, Item 63", ideal_answer=False, risk_when=True, risk_code="public_charge_benefits"),
+            q(
+                "means_tested_benefit_history",
+                "Means-tested public benefits received",
+                "benefit_history_list",
+                required=False,
+                pdf_ref="Part 9, Item 64",
+                entry_fields=MEANS_TESTED_BENEFIT_FIELDS,
+                form_entry_limit=4,
+                overflow_pdf_ref="Part 14, Additional Information",
+            ),
         ],
     },
     {
         "id": "page_14_violations_signature",
         "title": "Illegal Entries, Miscellaneous Conduct, and Signature Workflow",
-        "pdf_part": "Part 9, Items 67-86; Parts 10-14",
+        "pdf_part": "Part 9, Items 65-84; Parts 10-14",
         "local_pdf_pages": [20, 21, 22, 23, 24],
         "questions": [
-            q("failed_to_attend_removal", "Has the applicant ever failed or refused to attend a removal proceeding filed on or after April 1, 1997?", "boolean", pdf_ref="Part 9, Item 67", ideal_answer=False, risk_when=True, risk_code="removal_history"),
-            q("fraudulent_documents", "Has the applicant ever submitted altered, fraudulent, or counterfeit documents to obtain an immigration benefit?", "boolean", pdf_ref="Part 9, Item 68", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("lied_for_immigration_benefit", "Has the applicant ever lied, concealed, or misrepresented information for a U.S. immigration benefit?", "boolean", pdf_ref="Part 9, Item 69", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("false_us_citizen_claim", "Has the applicant ever falsely claimed to be a U.S. citizen?", "boolean", pdf_ref="Part 9, Item 70", ideal_answer=False, risk_when=True, risk_code="false_us_citizenship"),
-            q("stowaway", "Has the applicant ever been a stowaway?", "boolean", pdf_ref="Part 9, Item 71", ideal_answer=False, risk_when=True, risk_code="immigration_violation"),
-            q("document_fraud_civil_penalty", "Is the applicant under a final civil penalty order for fraudulent documents?", "boolean", pdf_ref="Part 9, Item 72", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
-            q("alien_smuggling", "Has the applicant ever knowingly encouraged or helped another person enter the United States illegally?", "boolean", pdf_ref="Part 9, Item 73", ideal_answer=False, risk_when=True, risk_code="alien_smuggling"),
-            q("entered_without_inspection", "Has the applicant ever entered the United States without inspection and admission or parole?", "boolean", pdf_ref="Part 9, Item 74", db_path="intake.unlawful_entry", ideal_answer=False, risk_when=True, risk_code="unlawful_entry"),
-            q("deported_removed_or_departed_after_order", "Has the applicant ever been excluded, deported, removed, or departed after such an order?", "boolean", pdf_ref="Part 9, Item 75", ideal_answer=False, risk_when=True, risk_code="removal_history"),
-            q("unlawful_presence_after_1997", "Since April 1, 1997, has the applicant been unlawfully present in the United States?", "boolean", pdf_ref="Part 9, Item 76", ideal_answer=False, risk_when=True, risk_code="unlawful_presence"),
-            q("illegal_reentry_after_unlawful_presence_or_removal", "Has the applicant reentered or attempted to reenter without inspection after unlawful presence over one year or after removal?", "boolean", pdf_ref="Part 9, Items 78.a-78.b", ideal_answer=False, risk_when=True, risk_code="illegal_reentry"),
-            q("polygamy_child_custody_voting_tax_armed_forces", "Any polygamy, child-custody interference, unlawful voting, tax renunciation, alien military exemption/discharge/desertion, or avoiding wartime service?", "boolean", pdf_ref="Part 9, Items 79-86", ideal_answer=False, risk_when=True, risk_code="miscellaneous_inadmissibility"),
+            q("failed_to_attend_removal", "Has the applicant ever failed or refused to attend a removal proceeding filed on or after April 1, 1997?", "boolean", pdf_ref="Part 9, Item 65", ideal_answer=False, risk_when=True, risk_code="removal_history"),
+            q("fraudulent_documents", "Has the applicant ever submitted altered, fraudulent, or counterfeit documents to obtain an immigration benefit?", "boolean", pdf_ref="Part 9, Item 66", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("lied_for_immigration_benefit", "Has the applicant ever lied, concealed, or misrepresented information for a U.S. immigration benefit?", "boolean", pdf_ref="Part 9, Item 67", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("false_us_citizen_claim", "Has the applicant ever falsely claimed to be a U.S. citizen?", "boolean", pdf_ref="Part 9, Item 68", ideal_answer=False, risk_when=True, risk_code="false_us_citizenship"),
+            q("stowaway", "Has the applicant ever been a stowaway?", "boolean", pdf_ref="Part 9, Item 69", ideal_answer=False, risk_when=True, risk_code="immigration_violation"),
+            q("document_fraud_civil_penalty", "Is the applicant under a final civil penalty order for fraudulent documents?", "boolean", pdf_ref="Part 9, Item 71", ideal_answer=False, risk_when=True, risk_code="fraud_or_misrepresentation"),
+            q("alien_smuggling", "Has the applicant ever knowingly encouraged or helped another person enter the United States illegally?", "boolean", pdf_ref="Part 9, Item 70", ideal_answer=False, risk_when=True, risk_code="alien_smuggling"),
+            q("entered_without_inspection", "Has the applicant ever entered the United States without inspection and admission or parole?", "boolean", pdf_ref="Part 9, Item 73", db_path="intake.unlawful_entry", ideal_answer=False, risk_when=True, risk_code="unlawful_entry"),
+            q("deported_removed_or_departed_after_order", "Has the applicant ever been excluded, deported, removed, or departed after such an order?", "boolean", pdf_ref="Part 9, Item 72", ideal_answer=False, risk_when=True, risk_code="removal_history"),
+            q("unlawful_presence_after_1997", "Since April 1, 1997, has the applicant been unlawfully present in the United States?", "boolean", pdf_ref="Part 9, Item 74", ideal_answer=False, risk_when=True, risk_code="unlawful_presence"),
+            q("unlawful_presence_due_to_trafficking", "If yes to Item 74, was a severe form of trafficking in persons at least one central reason for the unlawful presence?", "boolean", required=False, pdf_ref="Part 9, Item 75"),
+            *part9_items(
+                "illegal_reentry",
+                [
+                    ("reentry_after_unlawful_presence", "76.a", "Since April 1, 1997, has the applicant ever reentered or attempted to reenter the United States without being inspected and admitted or paroled after having been unlawfully present for more than one year in the aggregate on or after April 1, 1997?"),
+                    ("reentry_after_removal", "76.b", "Since April 1, 1997, has the applicant ever reentered or attempted to reenter the United States without being inspected and admitted or paroled after having been deported, excluded, or removed from the United States?")
+                ],
+            ),
+            *part9_items(
+                "miscellaneous_inadmissibility",
+                [
+                    ("intends_polygamy", "77", "Does the applicant plan to practice polygamy in the United States?"),
+                    ("accompanying_helpless_person", "78", "Is the applicant accompanying a person who is inadmissible and who has been certified by a medical officer as helpless from sickness, mental or physical disability, or infancy, and who requires the applicant's protection or guardianship, as described in INA section 232(c)?"),
+                    ("withheld_child_custody", "79", "Has the applicant ever assisted in detaining, retaining, or withholding custody of a U.S. citizen child outside the United States from a person who has been granted custody of the child?"),
+                    ("unlawful_voting", "80", "Has the applicant ever voted in violation of any Federal, state, or local constitutional provision, statute, ordinance, or regulation in the United States?"),
+                    ("renounced_citizenship_for_tax", "81", "Has the applicant ever renounced U.S. citizenship to avoid being taxed by the United States?"),
+                    ("armed_forces_exemption", "82.a", "Has the applicant ever applied for exemption or discharge from training or service in the U.S. armed forces or in the U.S. National Security Training Corps on the ground of being an alien?"),
+                    ("armed_forces_discharge", "82.b", "Has the applicant ever been relieved or discharged from such training or service on the ground of being an alien?"),
+                    ("desertion_conviction", "82.c", "Has the applicant ever been convicted of desertion from the U.S. armed forces?"),
+                    ("evaded_wartime_service", "83", "Has the applicant ever left or remained outside the United States to avoid or evade training or service in the U.S. armed forces in time of war or a period declared by the President to be a national emergency?")
+                ],
+            ),
+            q("status_before_evading_service", "If yes to Item 83, the nationality or immigration status immediately before leaving (for example, U.S. citizen or national, lawful permanent resident, nonimmigrant, parolee)", "text", required=False, pdf_ref="Part 9, Item 84"),
             q("beneficiary_phone", "Applicant daytime or mobile phone number", "text", pdf_ref="Part 10, Items 1-2", db_path="intake.beneficiary_phone"),
+            q("beneficiary_mobile_phone", "Applicant mobile phone number, if any", "text", required=False, pdf_ref="Part 10, Item 2"),
             q("beneficiary_email", "Applicant email address", "text", pdf_ref="Part 10, Item 3", db_path="intake.beneficiary_email"),
             q("applicant_reviewed_certification", "Applicant has reviewed the certification and understands signature must be original before filing", "boolean", pdf_ref="Part 10, Item 4", ideal_answer=True, risk_when=False, risk_code="signature_not_confirmed"),
             q("interpreter_used", "Was an interpreter used?", "boolean", required=False, pdf_ref="Part 11"),

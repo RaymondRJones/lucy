@@ -1,9 +1,10 @@
+"""Seeds a complete sample case for local development."""
+
 from __future__ import annotations
 
 import argparse
-import json
 from datetime import UTC, datetime
-from pathlib import Path
+import json
 from typing import Any
 
 from sqlmodel import Session, select
@@ -12,6 +13,7 @@ from app.cli.seed_placeholder_pdf import packet_section_for_checklist_code, writ
 from app.content.i485_questionnaire import I485_QUESTIONNAIRE
 from app.content.i485_sample import build_sample_i485_answers
 from app.content.supplemental_forms import get_supplemental_form_config
+from app.core.config import settings
 from app.db.session import create_db_and_tables, engine
 from app.models.entities import (
     CaseChecklistItem,
@@ -25,18 +27,40 @@ from app.services.form_pdf import DEFAULT_FORM_OUTPUT_DIR, generate_form_pdf
 from app.services.i485 import get_i485_state, save_i485_page_answers
 from app.services.i485_pdf import DEFAULT_I485_OUTPUT_DIR, DEFAULT_I485_TEMPLATE_PATH, generate_i485_pdf
 from app.services.intake import upsert_intake_step
+from app.services.prescreen import save_prescreen_answers
 from app.services.qa import run_qa
-
 
 BASE_SAMPLE: dict[str, Any] = {
     "petitioner_phone": "0000000101",
     "petitioner_email": "jordan.petitioner@example.com",
     "petitioner_city_of_birth": "San Diego",
     "petitioner_social_security_number": "000000001",
+    "petitioner_mobile_phone": "0000000101",
     "beneficiary_mobile_phone": "0000000100",
+    "beneficiary_last_arrival_place": "Miami, FL",
+    "parent1_city_of_birth": "Bogota",
+    "parent1_city_of_residence": "Bogota",
+    "parent1_country_of_residence": "Colombia",
+    "parent2_city_of_birth": "Medellin",
+    "parent2_city_of_residence": "Medellin",
+    "parent2_country_of_residence": "Colombia",
     "employment_status": "employed",
     "annual_income": 95000,
+    "i864_household_income": 95000,
+    "i864_tax_income_1": 95000,
+    "i864_tax_income_2": 91000,
+    "i864_tax_income_3": 87000,
     "petitioner_current_employer": "Sample Robotics Inc.",
+    "sponsor_willing": True,
+    "petitioner_current_address_line1": "123 Sample Street",
+    "petitioner_current_city": "Oakland",
+    "petitioner_current_state": "CA",
+    "petitioner_current_zip": "94612",
+    "beneficiary_mailing_address_line1": "123 Sample Street",
+    "beneficiary_mailing_city": "Oakland",
+    "beneficiary_mailing_state": "CA",
+    "beneficiary_mailing_zip": "94612",
+    "i130_filing_status": "not_filed",
     "wants_i765": True,
     "wants_i131": True,
     "needs_translation": True,
@@ -50,18 +74,64 @@ BASE_SAMPLE: dict[str, Any] = {
     "i131_intended_departure_date": "2026-12-15",
     "i131_travel_purpose": "Short family visit to see beneficiary's parents while adjustment is pending.",
     "i131_countries_to_visit": "Colombia",
-    "i131_expected_trip_length": "14 days",
+    "i131_expected_trip_length": 14,
 }
 
 
 SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
+    "i130": {
+        "petitioner_sex": "male",
+        "petitioner_ethnicity": "not_hispanic_or_latino",
+        "petitioner_race": ["white"],
+        "petitioner_height_feet": 5,
+        "petitioner_height_inches": 10,
+        "petitioner_weight_pounds": 170,
+        "petitioner_eye_color": "brown",
+        "petitioner_hair_color": "black",
+        "petitioner_filed_prior_petition": False,
+        "petitioner_current_employer_address_line1": "200 Robotics Way",
+        "petitioner_current_employer_city": "San Jose",
+        "petitioner_current_employer_state": "CA",
+        "petitioner_current_employer_zip": "95113",
+        "petitioner_current_employment_from": "2023-01-09",
+        "petitioner_parent1_city_of_residence": "San Diego",
+        "petitioner_parent2_city_of_residence": "San Diego",
+        "petitioner_mailing_same_as_physical": True,
+        "petitioner_physical_address_from": "2024-01-01",
+        "petitioner_parent1_last_name": "Sampleparent",
+        "petitioner_parent1_first_name": "Casey",
+        "petitioner_parent1_date_of_birth": "1969-02-03",
+        "petitioner_parent1_sex": "female",
+        "petitioner_parent2_last_name": "Sampleparent",
+        "petitioner_parent2_first_name": "Morgan",
+        "petitioner_parent2_date_of_birth": "1968-03-04",
+        "petitioner_parent2_sex": "male",
+        "beneficiary_prior_petition_filed": "no",
+        "beneficiary_current_country": "United States",
+        "beneficiary_ever_in_united_states": True,
+        "beneficiary_ever_in_immigration_proceedings": False,
+        "beneficiary_immigration_proceedings_type": "",
+        "beneficiary_current_employer_country": "United States",
+        "beneficiary_last_shared_country": "United States",
+        "beneficiary_last_shared_address_from": "2025-04-15",
+        "beneficiary_consular_country": "",
+        "petitioner_prior_employer_country": "",
+        "petitioner_prior_country": "",
+        "beneficiary_foreign_country": "",
+        "beneficiary_native_country": "",
+    },
+    "i130a": {
+        "parent1_sex": "female",
+        "parent2_sex": "male",
+        "beneficiary_current_country": "United States",
+        "beneficiary_current_employer_country": "United States",
+    },
     "i765": {
         "i765_reason_for_applying": "initial_permission",
         "i765_physical_same_as_mailing": True,
         "i765_previously_filed": False,
         "i765_eligibility_category": "c9_pending_i485",
         "i765_arrested_or_convicted": False,
-        "beneficiary_mobile_phone": "0000000100",
         "applicant_reviewed_certification": True,
         "interpreter_used": False,
         "preparer_used": False,
@@ -78,7 +148,6 @@ SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
         "i131_replacement_request": False,
         "i131_processing_location": "domestic_address",
         "i131_trip_count": "one",
-        "beneficiary_mobile_phone": "0000000100",
         "applicant_reviewed_certification": True,
         "interpreter_used": False,
         "preparer_used": False,
@@ -88,8 +157,6 @@ SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
         "i864_sponsor_basis": "petitioner",
         "i864_physical_same_as_mailing": True,
         "petitioner_country_of_domicile": "United States",
-        "petitioner_city_of_birth": "San Diego",
-        "petitioner_social_security_number": "000000001",
         "spouse_us_military": False,
         "i864_only_principal_immigrant": True,
         "i864_sponsoring_family_members": False,
@@ -101,19 +168,12 @@ SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
         "i864_household_members_combining_income_count": 0,
         "employment_status": "employed",
         "petitioner_current_occupation": "Engineer",
-        "petitioner_current_employer": "Sample Robotics Inc.",
-        "annual_income": 95000,
-        "i864_household_income": 95000,
         "i864_filed_recent_tax_return": True,
         "i864_tax_year_1": 2025,
-        "i864_tax_income_1": 95000,
         "i864_tax_year_2": 2024,
-        "i864_tax_income_2": 91000,
         "i864_tax_year_3": 2023,
-        "i864_tax_income_3": 87000,
         "i864_cash_assets": 15000,
         "i864_total_assets": 15000,
-        "petitioner_mobile_phone": "0000000101",
         "sponsor_reviewed_contract": True,
         "interpreter_used": False,
         "preparer_used": False,
@@ -121,6 +181,29 @@ SUPPLEMENTAL_OVERRIDES: dict[str, dict[str, Any]] = {
     },
 }
 
+
+PRESCREEN_ANSWERS: dict[str, Any] = {
+    "case_basis": "usc_spouse",
+    "relationship_spouse": True,
+    "prior_immigration_denials": False,
+    "criminal_history": False,
+    "intent_timing_snapshot": {
+        "married_before_entry": False,
+        "i130_pending_at_entry": False,
+        "days_between_entry_and_filing": 200,
+        "plans_changed_after_arrival": True,
+    },
+    "has_children": False,
+    "bona_fide_evidence_categories": ["joint_lease_mortgage", "joint_bank", "photos_family"],
+    "birth_certificate_available": True,
+    "name_variation_snapshot": {"has_name_variations": False, "name_variations_note": ""},
+    "has_i693": True,
+    "immigration_violations": ["none"],
+    "inadmissibility_review_categories": ["none"],
+    "security_or_military_history": False,
+}
+
+SEEDED_SUPPLEMENTAL_FORMS = ("i130", "i130a", "i765", "i131", "i864")
 
 UPLOADS: list[tuple[str, str, dict[str, Any]]] = [
     ("form_i130", "sample-form-i-130.pdf", {"satisfies_checklist_codes": ["form_i130", "form_i130a"]}),
@@ -132,6 +215,7 @@ UPLOADS: list[tuple[str, str, dict[str, Any]]] = [
     ("petitioner_citizenship_proof", "sample-us-passport.pdf", {}),
     ("beneficiary_passport_bio", "sample-beneficiary-passport.pdf", {}),
     ("beneficiary_passport_photos", "sample-passport-photos.pdf", {}),
+    ("petitioner_passport_photos", "sample-petitioner-passport-photos.pdf", {}),
     ("beneficiary_i94", "sample-i-94.pdf", {}),
     ("beneficiary_visa_or_entry_stamp", "sample-entry-stamp.pdf", {}),
     ("marriage_certificate", "sample-marriage-certificate.pdf", {}),
@@ -157,10 +241,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _sample_answers() -> dict[str, Any]:
+def sample_answers() -> dict[str, Any]:
     answers = build_sample_i485_answers()
     answers.update(BASE_SAMPLE)
-    answers["beneficiary_country_of_birth"] = "CO"
     return answers
 
 
@@ -200,7 +283,7 @@ def _answer_for_question(form_key: str, question: dict[str, Any], sample: dict[s
     if question["answer_type"] == "select":
         return options[0]["value"] if options else ""
     if question["answer_type"] == "country":
-        return "United States" if "petitioner" in question_id else "Colombia"
+        return "United States" if "petitioner" in question_id else ""
     return "Sample response" if question.get("required") else _empty_value(question["answer_type"])
 
 
@@ -218,7 +301,7 @@ def _create_case(session: Session, case_name: str) -> CaseRecord:
     return case
 
 
-def _seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> None:
+def seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> None:
     for page in I485_QUESTIONNAIRE:
         page_answers = {
             question["id"]: sample[question["id"]]
@@ -228,7 +311,7 @@ def _seed_i485(session: Session, case: CaseRecord, sample: dict[str, Any]) -> No
         save_i485_page_answers(session, case.id, page["id"], page_answers)
 
 
-def _seed_supplemental_form(session: Session, case: CaseRecord, form_key: str, sample: dict[str, Any]) -> None:
+def seed_supplemental_form(session: Session, case: CaseRecord, form_key: str, sample: dict[str, Any]) -> None:
     config = get_supplemental_form_config(form_key)
     for page in config["pages"]:
         page_answers = {
@@ -242,10 +325,11 @@ def _seed_base_intake(session: Session, case: CaseRecord, sample: dict[str, Any]
     payload = dict(sample)
     payload.update(BASE_SAMPLE)
     upsert_intake_step(session, case.id, "happy_path_sample", payload)
+    save_prescreen_answers(session, case.id, PRESCREEN_ANSWERS)
 
 
 def _seed_uploads(session: Session, case: CaseRecord) -> None:
-    upload_dir = Path("storage/uploads")
+    upload_dir = settings.upload_dir
     upload_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
 
@@ -307,10 +391,10 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
                 allow_incomplete=False,
             ).output_path
         )
-    except Exception as exc:  # pragma: no cover - dev convenience output
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - dev convenience output
         generated["i485"] = f"skipped: {exc}"
 
-    for form_key in ("i765", "i131", "i864"):
+    for form_key in SEEDED_SUPPLEMENTAL_FORMS:
         try:
             generated[form_key] = str(
                 generate_form_pdf(
@@ -321,7 +405,7 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
                     allow_incomplete=False,
                 ).output_path
             )
-        except Exception as exc:  # pragma: no cover - dev convenience output
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - dev convenience output
             generated[form_key] = f"skipped: {exc}"
     return generated
 
@@ -329,14 +413,14 @@ def _generate_pdfs(session: Session, case: CaseRecord) -> dict[str, str | None]:
 def main() -> None:
     args = build_parser().parse_args()
     create_db_and_tables()
-    sample = _sample_answers()
+    sample = sample_answers()
 
     with Session(engine) as session:
         case = _create_case(session, args.case_name)
         _seed_base_intake(session, case, sample)
-        _seed_i485(session, case, sample)
-        for form_key in ("i765", "i131", "i864"):
-            _seed_supplemental_form(session, case, form_key, sample)
+        seed_i485(session, case, sample)
+        for form_key in SEEDED_SUPPLEMENTAL_FORMS:
+            seed_supplemental_form(session, case, form_key, sample)
         _seed_uploads(session, case)
         session.commit()
 
@@ -349,7 +433,7 @@ def main() -> None:
 
         generated_pdfs = _generate_pdfs(session, case) if args.generate_pdfs else {}
         i485_state = get_i485_state(session, case.id)
-        form_states = {key: get_form_state(session, case.id, key) for key in ("i765", "i131", "i864")}
+        form_states = {key: get_form_state(session, case.id, key) for key in SEEDED_SUPPLEMENTAL_FORMS}
 
     base_url = args.web_base_url.rstrip("/")
     print(
@@ -358,9 +442,10 @@ def main() -> None:
                 "case_id": str(case.id),
                 "case_url": f"{base_url}/?caseId={case.id}",
                 "i485_url": f"{base_url}/i485-ingestion?caseId={case.id}",
-                "i765_url": f"{base_url}/form-ingestion?form=i765&caseId={case.id}",
-                "i131_url": f"{base_url}/form-ingestion?form=i131&caseId={case.id}",
-                "i864_url": f"{base_url}/form-ingestion?form=i864&caseId={case.id}",
+                **{
+                    f"{key}_url": f"{base_url}/form-ingestion?form={key}&caseId={case.id}"
+                    for key in SEEDED_SUPPLEMENTAL_FORMS
+                },
                 "checklist_items": len(checklist_items),
                 "i485_completion_pct": i485_state["evaluation"]["completion_pct"],
                 "form_completion_pct": {

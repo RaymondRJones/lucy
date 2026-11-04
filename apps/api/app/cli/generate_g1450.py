@@ -1,3 +1,5 @@
+"""Generates a G-1450 from a local JSON payload."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,6 +9,7 @@ from uuid import UUID
 
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.db.session import create_db_and_tables, engine
 from app.models.entities import CaseRecord
 from app.services.g1450 import generate_case_g1450_packet, generate_g1450_pdf
@@ -38,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-dir",
-        default="storage/generated",
+        default=str(settings.generated_dir),
         help="Directory for case packet G-1450 PDFs.",
     )
     parser.add_argument(

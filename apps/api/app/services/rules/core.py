@@ -1,8 +1,9 @@
+"""Shared rule engine types."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Generic, Iterable, Protocol, TypeVar
-
 
 ContextT = TypeVar("ContextT")
 OutcomeT = TypeVar("OutcomeT")

@@ -1,10 +1,12 @@
+"""Pydantic models for API requests and responses."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.entities import ChecklistProgressStatus
 
@@ -313,6 +315,16 @@ class G1450CardDetailsWrite(BaseModel):
     email: str = Field(default="", max_length=255)
 
 
+class G1650BankDetailsWrite(BaseModel):
+    account_ownership: str = Field(min_length=1, max_length=16)
+    account_type: str = Field(min_length=1, max_length=16)
+    account_holder_name: str = Field(default="", max_length=160)
+    business_name: str = Field(default="", max_length=160)
+    bank_name: str = Field(min_length=1, max_length=160)
+    routing_number: str = Field(min_length=9, max_length=16)
+    account_number: str = Field(min_length=4, max_length=32)
+
+
 class G1450PaymentOptionRead(BaseModel):
     checklist_code: str
     form_code: str
@@ -329,11 +341,26 @@ class G1450PaymentOptionsRead(BaseModel):
     case_id: UUID
     template_pdf: str
     template_exists: bool
+    g1650_template_exists: bool
     payment_note: str
     options: list[G1450PaymentOptionRead]
 
 
 class G1450GenerateRequest(G1450CardDetailsWrite):
+    selected_checklist_codes: list[str] | None = None
+
+    @field_validator("selected_checklist_codes")
+    @classmethod
+    def validate_selected_checklist_codes(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        cleaned = [item.strip() for item in value if item.strip()]
+        if not cleaned:
+            raise ValueError("Select at least one payment form to generate.")
+        return cleaned
+
+
+class G1650GenerateRequest(G1650BankDetailsWrite):
     selected_checklist_codes: list[str] | None = None
 
     @field_validator("selected_checklist_codes")
@@ -602,7 +629,14 @@ class PacketAssemblyGenerateRequest(BaseModel):
     include_generated_forms: bool = True
     allow_incomplete: bool = True
     g1450_payment: G1450CardDetailsWrite | None = None
+    g1650_payment: G1650BankDetailsWrite | None = None
     g1450_selected_checklist_codes: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_single_payment_method(self) -> "PacketAssemblyGenerateRequest":
+        if self.g1450_payment is not None and self.g1650_payment is not None:
+            raise ValueError("Choose either card (G-1450) or bank account (G-1650) payment for a packet, not both.")
+        return self
 
     @field_validator("g1450_selected_checklist_codes")
     @classmethod

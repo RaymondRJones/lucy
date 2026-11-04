@@ -8,15 +8,15 @@ from pypdf import PdfReader
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.content.i485_questionnaire import I485_VERIFIED_ON
 from app.db.session import get_session
 from app.main import app
 from app.models.entities import CaseRecord, QAIssue, UploadedDocument
-from app.services.filing_validation import validate_case_filings
 from app.services.family_pdf import build_i130_pdf_field_payload, build_i130a_pdf_field_payload
+from app.services.filing_validation import validate_case_filings
 from app.services.form_ingestion import save_form_page_answers
 from app.services.i485 import import_i485_answers_from_upload, save_i485_page_answers
 from app.services.intake import upsert_intake_step
-
 
 I130_TEMPLATE_PATH = Path("blank-immigration-documents/i-130.pdf")
 I130A_TEMPLATE_PATH = Path("blank-immigration-documents/i-130a.pdf")
@@ -188,7 +188,7 @@ def test_filing_validation_reports_missing_i485_required_answers():
 
     assert report["summary"]["status"] == "blocked"
     assert "form_i485_beneficiary_last_name_missing_required" in codes
-    assert report["forms"][0]["source"]["verified_on"] == "2026-05-05"
+    assert report["forms"][0]["source"]["verified_on"] == I485_VERIFIED_ON
 
 
 def test_filing_validation_inspects_default_blank_i485_pdf_fields():
@@ -722,6 +722,14 @@ def test_filing_validation_i130_passes_with_core_facts_and_evidence():
         case.id,
         "baseline",
         {
+            "petitioner_ethnicity": "not_hispanic_or_latino",
+            "petitioner_race": ["white"],
+            "petitioner_height_feet": 5,
+            "petitioner_height_inches": 10,
+            "petitioner_weight_pounds": 170,
+            "petitioner_eye_color": "brown",
+            "petitioner_hair_color": "black",
+            "petitioner_filed_prior_petition": False,
             "petitioner_first_name": "Jordan",
             "petitioner_last_name": "Petitioner",
             "petitioner_date_of_birth": "1990-01-02",
@@ -757,8 +765,8 @@ def test_filing_validation_i130_passes_with_core_facts_and_evidence():
     report = validate_case_filings(session, case.id, form_codes=["form_i130"])
 
     assert report["summary"]["status"] == "passed"
-    assert report["forms"][0]["source"]["questionnaire_version"] == "i130-04-01-24-marriage-v1"
-    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130-04-01-24-marriage-v1"
+    assert report["forms"][0]["source"]["questionnaire_version"] == "i130-04-01-24-marriage-v2"
+    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130-04-01-24-marriage-v2"
     assert report["forms"][0]["metadata"]["mapped_pdf_field_count"] > 0
     assert report["forms"][0]["metadata"]["missing_template_fields"] == []
 
@@ -903,6 +911,14 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
             "beneficiary_current_address": "123 Sample Street, Example City, CA 90000",
             "beneficiary_address_since": "2020-01-01",
             "beneficiary_marriage_count": 1,
+            "parent1_last_name": "Garcia",
+            "parent1_first_name": "Rosa",
+            "parent1_date_of_birth": "1972-03-03",
+            "parent1_country_of_birth": "Colombia",
+            "parent2_last_name": "Garcia",
+            "parent2_first_name": "Carlos",
+            "parent2_date_of_birth": "1970-11-20",
+            "parent2_country_of_birth": "Colombia",
         },
     )
     session.commit()
@@ -910,8 +926,8 @@ def test_filing_validation_i130a_passes_with_core_biographic_facts():
     report = validate_case_filings(session, case.id, form_codes=["form_i130a"])
 
     assert report["summary"]["status"] == "passed"
-    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
-    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v1"
+    assert report["forms"][0]["source"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
+    assert report["forms"][0]["metadata"]["questionnaire_version"] == "i130a-04-01-24-spouse-v2"
     assert report["forms"][0]["metadata"]["mapped_pdf_field_count"] > 0
     assert report["forms"][0]["metadata"]["missing_template_fields"] == []
 
@@ -1085,8 +1101,88 @@ def test_filing_validation_capabilities_route_lists_templates_and_roadmap():
         assert by_code["form_i130"]["status"] == "partial"
         i130_template_path = by_code["form_i130"]["default_template_path"]
         assert i130_template_path is None or i130_template_path.lower().endswith("i-130.pdf")
-        assert by_code["form_i130"]["source"]["questionnaire_version"] == "i130-04-01-24-marriage-v1"
+        assert by_code["form_i130"]["source"]["questionnaire_version"] == "i130-04-01-24-marriage-v2"
         assert by_code["form_i130a"]["source"]["official_pdf_url"].endswith("/i-130a.pdf")
     finally:
         app.dependency_overrides.clear()
         session.close()
+
+
+def test_filing_validation_i130a_finds_parent_facts_only_saved_on_the_i485():
+    session = make_session()
+    case = create_case(session)
+    # Saved before these answers projected to intake, so only the I-485 step holds them.
+    upsert_intake_step(
+        session,
+        case.id,
+        "i485_ingestion:page_parents",
+        {"answers": {"parent1_last_name": "Garcia", "parent1_first_name": "Rosa"}},
+    )
+    session.commit()
+
+    codes = issue_codes(validate_case_filings(session, case.id, form_codes=["form_i130a"]))
+
+    assert "form_i130a_parent1_last_name_missing_required" not in codes
+    assert "form_i130a_parent1_first_name_missing_required" not in codes
+    assert "form_i130a_parent2_last_name_missing_required" in codes
+
+
+def test_filing_validation_i130_flags_a_class_of_admission_the_form_does_not_offer():
+    session = make_session()
+    case = create_case(session)
+    upsert_intake_step(session, case.id, "baseline", {"beneficiary_class_of_admission": "TN"})
+    session.commit()
+
+    report = validate_case_filings(session, case.id, form_codes=["form_i130"])
+
+    assert "form_i130_class_of_admission_not_offered" in issue_codes(report)
+
+
+def test_filing_validation_flags_us_state_with_foreign_country():
+    session = make_session()
+    case = create_case(session)
+    upsert_intake_step(
+        session,
+        case.id,
+        "baseline",
+        {
+            "beneficiary_current_employer_state": "CA",
+            "beneficiary_current_employer_country": "Colombia",
+            "beneficiary_current_state": "CA",
+            "beneficiary_current_country": "United States",
+            "beneficiary_foreign_state": "Cundinamarca",
+            "beneficiary_foreign_country": "Colombia",
+        },
+    )
+    session.commit()
+
+    report = validate_case_filings(
+        session,
+        case.id,
+        form_codes=["form_i130a"],
+        template_paths={"form_i130a": "missing-template.pdf"},
+    )
+
+    mismatches = {code for code in issue_codes(report) if code.endswith("_state_country_mismatch")}
+    assert mismatches == {"form_i130a_beneficiary_current_employer_country_state_country_mismatch"}
+
+
+def test_filing_validation_flags_us_state_with_foreign_country_in_a_history_row():
+    session = make_session()
+    case = create_case(session)
+    save_i485_page_answers(
+        session,
+        case.id,
+        "page_06_i864_employment",
+        {"beneficiary_employment_history": [{"name": "Acme", "state": "TX", "country": "Mexico"}]},
+    )
+    session.commit()
+
+    report = validate_case_filings(
+        session,
+        case.id,
+        form_codes=["form_i485"],
+        template_paths={"form_i485": "missing-template.pdf"},
+    )
+
+    assert "form_i485_beneficiary_employment_history_state_country_mismatch" in issue_codes(report)

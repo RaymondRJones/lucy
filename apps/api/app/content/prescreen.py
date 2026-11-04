@@ -1,7 +1,8 @@
+"""Prescreen questions that scope a case."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 PRESCREEN_VERSION = "marriage-happy-path-prescreen-2026-05-01"
 PRESCREEN_VERIFIED_ON = "2026-05-01"
@@ -684,14 +685,14 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
                 ],
             },
             {"key": "has_health_insurance", "label": "Does the applicant have health insurance?", "type": "boolean", "required": False},
-            {"key": "received_listed_public_benefits", "label": "Has the applicant received listed cash benefits or long-term institutional care?", "type": "boolean", "required": False},
+            {"key": "received_means_tested_public_benefit", "label": "Has the applicant ever received any means-tested public benefit?", "type": "boolean", "required": False},
             {"key": "benefit_details", "label": "Benefit details, if any", "type": "textarea", "required": False},
         ],
         field_mappings={
             "exempt_category": "intake.public_charge_exempt_category",
             "highest_education": "intake.highest_education",
             "has_health_insurance": "intake.has_health_insurance",
-            "received_listed_public_benefits": "intake.received_listed_public_benefits",
+            "received_means_tested_public_benefit": "intake.received_means_tested_public_benefit",
             "benefit_details": "intake.public_charge_benefit_details",
         },
         flag_rules=[
@@ -704,7 +705,7 @@ PRESCREEN_QUESTIONS: list[dict[str, Any]] = [
                 "description": "The public charge section should not be left uncertain before final review or export.",
             },
             {
-                "when": {"field_equals": {"key": "received_listed_public_benefits", "value": True}},
+                "when": {"field_equals": {"key": "received_means_tested_public_benefit", "value": True}},
                 "code": "public_charge_benefits_review",
                 "severity": "important",
                 "category": "review_suggested",

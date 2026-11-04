@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfReader
+import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -21,7 +21,6 @@ from app.services.g1450 import (
     get_case_g1450_payment_options,
 )
 from app.services.intake import upsert_intake_step
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 G1450_TEMPLATE = REPO_ROOT / "blank-immigration-documents" / "g-1450.pdf"
@@ -145,7 +144,7 @@ def test_generate_g1450_pdf_from_card_json(tmp_path: Path):
     assert _page_field_value(reader, "MiddleName[0]") == "Q"
     assert _page_field_value(reader, "CCHolderGivenName[0]") == "Jane"
     assert _page_field_value(reader, "CreditCardNumber_1[0]") == "4111"
-    assert _page_field_value(reader, "AuthorizedPaymentAmt[0]") == "675.00"
+    assert _page_field_value(reader, "AuthorizedPaymentAmt[0]") == "675"
     assert _page_field_value(reader, "SignatureOfApplicant[0]") in {None, ""}
 
 

@@ -117,7 +117,18 @@ I-485 packet payments first when present, then the generated cover letter/table 
 I-485 evidence, I-864 evidence, I-693, I-765, and I-131. Payment PDFs can be generated from the G-1450 service during packet assembly, or supplied as confirmed `payment_g1450` uploads when the user
 brings their own signed Form G-1450. I-130 and I-130A petition materials are skipped for the
 pending-I-130 path and reported in the manifest instead of being silently merged.
-Previously generated G-1450 PDFs are not auto-merged because stale payment PDFs can contain outdated
+When `i130_filing_status` is `not_filed`, the packet is a concurrent filing: it adds the Form I-130 fee to the payment
+set and ends with an I-130 section holding Forms I-130 and I-130A, petitioner and beneficiary photos, citizenship proof,
+the marriage certificate, prior-marriage records, and the single copy of bona fide marriage evidence. USCIS sets no
+order between Forms I-130 and I-485, so section placement follows `i-485-complete-package-req.md`. Photos and civil
+documents repeat because each filing needs its own copy. A blank status keeps the I-485-only packet and adds a warning.
+Mailing guidance carries `LOCKBOX_ADDRESS_CAVEAT` (checked 2026-11-01): USCIS's Oct. 7, 2026 alert does not say whether
+family-based filings moved, so filers are told to confirm the address until that is settled. `npm run check:uscis` compares
+the family-based chart's states and addresses with the stored table on every run, so a change under an unchanged date is caught.
+A freshly generated payment form replaces any uploaded payment PDF, which is reported as skipped so fees are not paid twice.
+Bank-account payment uses the same flow through Form G-1650, with one payment form per payable filing and one payment
+method per packet (verified 2026-10-30, https://www.uscis.gov/g-1650). The `payment_g1450` checklist code is kept for
+stored cases and now covers either form. Previously generated G-1450 and G-1650 PDFs are not auto-merged because stale payment PDFs can contain outdated
 applicant/requestor data.
 When packet assembly is run with `include_supporting_evidence=false`, uploaded supporting evidence is
 excluded from the merged PDF so the user can print a forms/payment-only draft while preserving the
@@ -167,6 +178,56 @@ It is intentionally separate from persisted packet QA:
 - The I-485 question map models repeatable prior-address and five-year employment/school/unemployment history
   as structured entry lists with on-form capacity metadata and Part 14 overflow review guidance; the PDF draft
   maps the first employment-history entry to Part 4 Item 7 and continuation entries to Part 14 draft fields.
+- The I-485 question map follows the 09/18/26 edition (verified 2026-10-30, https://www.uscis.gov/i-485). Item 57 is a
+  written family status, drafted from marital status and household size when left blank. Item 63 asks about any
+  means-tested public benefit, and a yes makes the Item 64 benefit table required. Answers saved to the prior
+  `received_cash_benefits`, `received_long_term_institutionalization`, and `public_charge_benefit_details` questions
+  are retained but never carried over, so existing cases show Item 63 as missing until it is answered. Text too long
+  for a form field moves to Part 14, and text that does not fit in Part 14 is reported as an unmapped answer.
+- Each Part 9 yes/no question answers exactly one form item (`apps/api/tests/test_i485_form_mapping.py` matches every
+  question's item number against the template's own field wording). Answers saved to the earlier combined questions, such
+  as `human_trafficking` or `weapons_training_or_violence`, are retained but never carried over, because a combined "no"
+  would attest to items the applicant was not asked. Existing cases show the individual items as missing until answered.
+- The form's follow-ups are required only when they apply: Items 29, 35.b, 40, 20, 21, 75 and 84, other dates of birth and
+  A-Numbers, grade completed, children, prior marriages, and organizations.
+- Part 3 ticks one box from `i485_i864_exemption`. Other names, other dates of birth, other A-Numbers, prior marriages,
+  children, and organizations are structured `entry_list` answers that fill their form rows. An entry that is extra or too
+  long moves whole to Part 14, and free text saved before these were structured is copied to Part 14 unchanged.
+  `criminal_explanations` is filed in Part 14 against Items 22-41.
+- If Part 14 cannot hold prior addresses, employment history, or these lists, the answer is reported as unmapped instead of
+  being dropped. Text fields too long for their box are named in the generation warnings on I-485, I-130, I-130A, I-765,
+  I-131, I-864, and G-1145.
+- I-765 Items 2-4 and I-131 Part 2 Item 2 take other names as "Family name, Given name Middle name", one per line. Lines
+  without a comma go to the additional information section as written, since the family name cannot be identified.
+- I-130A employment history fills Employer 1 and 2 when structured and otherwise goes to Part 7. The more specific current
+  employer answers win over the history's first row.
+- A critical prescreen flag, such as a denied Form I-130, is a blocking QA issue and is named in packet warnings, and the I-485 and
+  I-130 validators report it as blocking, so a case cannot read as ready while prescreen is blocked. Saving a blocked prescreen reruns QA so the stored label updates at once.
+- Missing required I-485 answers are a blocking QA issue, so a case with a started I-485 cannot read as ready to print. The
+  stored readiness label updates the next time QA runs.
+- Other names entered on the I-485 are shared through intake and proposed to the I-765 and I-131 as one name per line.
+- `value_is_answered` in `apps/api/app/services/case_facts.py` is the one definition of an answered value. False and 0 are
+  answers. Blank strings and lists or dicts holding only blanks are not, so a cleared form control does not block a proposal.
+- Free text saved on a list entry before it was structured is shown on the entry and prints in Part 14, on every I-485 list.
+  It does not keep the entry's structured fields off the form, and it does not put "See Part 14" in the next row, because only
+  a whole entry moved to Part 14 gets that pointer. If Part 14 cannot hold the note, the row still prints and the question is
+  reported as unmapped.
+- I-485 Part 1 Items 12 and 14 print the class label for a recognized class, including spaced forms such as `B 2`. A description
+  too long for the 20-character box collapses to its class. A shorter answer such as `F-1 OPT` keeps its wording.
+- I-130 Part 4 Item 21.a is a dropdown that accepts only the codes in `I130_CLASS_OF_ADMISSION_CODES`, read from the blank form.
+  An answer with no matching option, such as `TN` (the form offers `TN1` and `TN2`), is left blank with a generation warning and
+  a `form_i130_class_of_admission_not_offered` validation issue. Lucy does not guess the option.
+- A history entry supplies current-employer details only when it names the current employer. With no current employer answer,
+  it supplies them only when it is the single open entry, and then it supplies the name too. On the I-130A the current employer
+  takes the first row, other jobs keep their rows or continue in Part 7, and an answered unit is not replaced by the history's.
+- The I-130A, I-765, and I-131 validators read facts from saved I-485 answers when intake lacks them, as import and generation
+  do. Facts already in intake are kept, so cross-form mismatch checks still compare them with the I-485.
+- The I-130, I-130A, I-131, and I-485 validators add an `important` issue when an answer pairs a U.S. state with a foreign
+  country. It asks for review rather than blocking, since a foreign province can share a state's abbreviation.
+- I-130A Part 3 prints the I-485's most recent foreign employer or school. I-130 Part 3 biographics and Part 5, Item 1 are
+  required answers on the I-130. Language statements on the I-130, I-130A, I-765, and I-864 stay blank for each signer to
+  tick by hand, and packet warnings say so.
+- Not yet on the generated forms: I-485 Parts 11-12 interpreter and preparer details.
 - `form_i130` is supported as a partial validator for petitioner citizenship, core relationship facts,
   first-marriage scope, adjustment-of-status path selection, tracked citizenship/marriage supporting evidence,
   and source-dated core question metadata; blank I-130 PDFs are auto-detected from `blank-immigration-documents/`
@@ -204,6 +265,7 @@ The score is intentionally conservative and non-legal:
 - starts from required completion percentage
 - subtracts weighted penalties for blocking, important, and recommended issues
 - maps to `Not ready`, `Almost ready`, `Ready for final review`, or `Ready to print and assemble`
+- reaches `Ready to print and assemble` only with no open issues; one `important` issue caps it at `Ready for final review`
 
 ## Production follow-ups
 

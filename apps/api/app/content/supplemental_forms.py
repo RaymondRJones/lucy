@@ -1,3 +1,5 @@
+"""Question definitions for supplemental forms."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -6,20 +8,20 @@ from app.content.admission_classes import CLASS_OF_ADMISSION_OPTIONS, I94_INFO_S
 from app.content.family_questionnaires import (
     FAMILY_FORM_SOURCES,
     FAMILY_FORMS_VERIFIED_ON,
-    I130A_OFFICIAL_PDF_URL,
-    I130A_QUESTIONNAIRE,
-    I130A_QUESTIONNAIRE_VERSION,
     I130_OFFICIAL_PDF_URL,
     I130_OFFICIAL_URL,
     I130_QUESTIONNAIRE,
     I130_QUESTIONNAIRE_VERSION,
+    I130A_OFFICIAL_PDF_URL,
+    I130A_QUESTIONNAIRE,
+    I130A_QUESTIONNAIRE_VERSION,
 )
-
 
 SUPPLEMENTAL_FORMS_VERIFIED_ON = "2026-04-28"
 I765_VERIFIED_ON = "2026-05-09"
 I131_VERIFIED_ON = "2026-04-29"
 I864_HOUSEHOLD_HELP_VERIFIED_ON = "2026-05-02"
+I864_EDITION_VERIFIED_ON = "2026-10-30"
 
 FORM_TEACHING_SOURCES: dict[str, dict[str, str]] = {
     "i131": {
@@ -383,7 +385,7 @@ I765_QUESTIONNAIRE: list[dict[str, Any]] = [
                     {"value": "renewal", "label": "Renewal of permission to accept employment"},
                 ],
             ),
-            q("beneficiary_other_names", "Other names ever used, if any", "textarea", required=False, pdf_ref="Part 2, Items 2-4", db_path="intake.beneficiary_other_names"),
+            q("beneficiary_other_names", "Other names ever used, if any (one per line: Family name, Given name Middle name)", "textarea", required=False, pdf_ref="Part 2, Items 2-4", db_path="intake.beneficiary_other_names"),
         ],
     },
     {
@@ -524,7 +526,7 @@ I131_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Applicant family name", "text", pdf_ref="Part 2, Item 1.a", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Applicant given name", "text", pdf_ref="Part 2, Item 1.b", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Applicant middle name", "text", required=False, pdf_ref="Part 2, Item 1.c", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_other_names", "Other names ever used, if any", "textarea", required=False, pdf_ref="Part 2, Item 2", db_path="intake.beneficiary_other_names"),
+            q("beneficiary_other_names", "Other names ever used, if any (one per line: Family name, Given name Middle name)", "textarea", required=False, pdf_ref="Part 2, Item 2", db_path="intake.beneficiary_other_names"),
         ],
     },
     {
@@ -731,7 +733,7 @@ I864_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("i864_physical_same_as_mailing", "Is the sponsor's physical address the same as mailing address?", "boolean", pdf_ref="Part 2, Item 3", ideal_answer=True),
             q("petitioner_country_of_domicile", "Sponsor country of domicile", "country", pdf_ref="Part 2, Item 5", db_path="intake.petitioner_country_of_domicile", ideal_answer="United States", risk_when="not_united_states", risk_code="i864_domicile_review"),
             q("petitioner_date_of_birth", "Sponsor date of birth", "date", pdf_ref="Part 2, Item 6", db_path="intake.petitioner_date_of_birth"),
-            q("petitioner_city_of_birth", "Sponsor city or town of birth", "text", pdf_ref="Part 2, Item 7", db_path="intake.petitioner_city_of_birth"),
+            q("petitioner_country_of_birth", "Sponsor country of birth", "country", pdf_ref="Part 2, Item 7", db_path="intake.petitioner_country_of_birth"),
             q("petitioner_social_security_number", "Sponsor Social Security number", "text", pdf_ref="Part 2, Item 10", db_path="intake.petitioner_social_security_number"),
             q(
                 "petitioner_citizenship_status",
@@ -760,10 +762,11 @@ I864_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("beneficiary_last_name", "Principal immigrant family name", "text", pdf_ref="Part 3, Item 1.a", db_path="intake.beneficiary_last_name"),
             q("beneficiary_first_name", "Principal immigrant given name", "text", pdf_ref="Part 3, Item 1.b", db_path="intake.beneficiary_first_name"),
             q("beneficiary_middle_name", "Principal immigrant middle name", "text", required=False, pdf_ref="Part 3, Item 1.c", db_path="intake.beneficiary_middle_name"),
-            q("beneficiary_mailing_address_line1", "Principal immigrant mailing street number and name", "text", pdf_ref="Part 3, Item 2"),
-            q("beneficiary_mailing_city", "Principal immigrant mailing city or town", "text", pdf_ref="Part 3, Item 2"),
-            q("beneficiary_mailing_state", "Principal immigrant mailing state", "text", pdf_ref="Part 3, Item 2"),
-            q("beneficiary_mailing_zip", "Principal immigrant mailing ZIP code", "text", pdf_ref="Part 3, Item 2"),
+            q("beneficiary_mailing_address_line1", "Principal immigrant mailing street number and name", "text", pdf_ref="Part 3, Item 2", db_path="intake.beneficiary_mailing_address_line1"),
+            q("beneficiary_mailing_address_line2", "Principal immigrant mailing apartment, suite, or floor", "text", required=False, pdf_ref="Part 3, Item 2", db_path="intake.beneficiary_mailing_address_line2"),
+            q("beneficiary_mailing_city", "Principal immigrant mailing city or town", "text", pdf_ref="Part 3, Item 2", db_path="intake.beneficiary_mailing_city"),
+            q("beneficiary_mailing_state", "Principal immigrant mailing state", "text", pdf_ref="Part 3, Item 2", db_path="intake.beneficiary_mailing_state"),
+            q("beneficiary_mailing_zip", "Principal immigrant mailing ZIP code", "text", pdf_ref="Part 3, Item 2", db_path="intake.beneficiary_mailing_zip"),
             q("beneficiary_country_of_citizenship", "Principal immigrant country of citizenship", "country", pdf_ref="Part 3, Item 3", db_path="intake.beneficiary_country_of_citizenship"),
             q("beneficiary_date_of_birth", "Principal immigrant date of birth", "date", pdf_ref="Part 3, Item 4", db_path="intake.beneficiary_date_of_birth"),
             q("beneficiary_a_number", "Principal immigrant A-Number, if any", "text", required=False, pdf_ref="Part 3, Item 5", db_path="intake.beneficiary_a_number"),
@@ -833,7 +836,7 @@ I864_QUESTIONNAIRE: list[dict[str, Any]] = [
             q("petitioner_phone", "Sponsor daytime phone number", "text", pdf_ref="Part 8, Item 3", db_path="intake.petitioner_phone"),
             q("petitioner_mobile_phone", "Sponsor mobile phone number", "text", required=False, pdf_ref="Part 8, Item 4", db_path="intake.petitioner_mobile_phone"),
             q("petitioner_email", "Sponsor email address", "text", pdf_ref="Part 8, Item 5", db_path="intake.petitioner_email"),
-            q("sponsor_reviewed_contract", "Sponsor has reviewed the contract and understands the form must be signed", "boolean", pdf_ref="Part 8", ideal_answer=True, risk_when=False, risk_code="unsigned_form_risk"),
+            q("sponsor_reviewed_contract", "Sponsor has reviewed the contract, including the consumer report authorization, and understands the form must be signed", "boolean", pdf_ref="Part 8", ideal_answer=True, risk_when=False, risk_code="unsigned_form_risk"),
             q("interpreter_used", "Was an interpreter used?", "boolean", required=False, pdf_ref="Part 9", ideal_answer=False),
             q("preparer_used", "Was a preparer used?", "boolean", required=False, pdf_ref="Part 10", ideal_answer=False),
             q("additional_information_needed", "Is additional information needed on the continuation page?", "boolean", required=False, pdf_ref="Part 11", ideal_answer=False),
@@ -954,8 +957,8 @@ SUPPLEMENTAL_FORM_CONFIGS: dict[str, dict[str, Any]] = {
             {
                 "label": "USCIS Form I-864 landing page",
                 "url": "https://www.uscis.gov/i-864",
-                "verified_on": SUPPLEMENTAL_FORMS_VERIFIED_ON,
-                "notes": "USCIS page listed edition 10/17/24 when checked.",
+                "verified_on": I864_EDITION_VERIFIED_ON,
+                "notes": "USCIS page listed edition 08/24/26, the only edition it accepts beginning Oct. 1, 2026.",
             },
             {
                 "label": "USCIS Form I-864 instructions",
@@ -966,7 +969,7 @@ SUPPLEMENTAL_FORM_CONFIGS: dict[str, dict[str, Any]] = {
             {
                 "label": "Local blank I-864 PDF",
                 "url": "blank-immigration-documents/i-864.pdf",
-                "verified_on": SUPPLEMENTAL_FORMS_VERIFIED_ON,
+                "verified_on": I864_EDITION_VERIFIED_ON,
                 "notes": "Local editable template used for development PDF field mapping.",
             },
         ],
@@ -1045,9 +1048,10 @@ def _default_supplemental_help(
             f"Answer for the {subject}, not the petitioner or sponsor unless this question says otherwise. {required_note} {context}",
         )
     if question_id.startswith("petitioner_"):
+        subject = "sponsor" if form_key == "i864" else "petitioner"
         return (
-            _person_question_prompt(label, "sponsor", ("sponsor ",)),
-            f"Answer for the person signing Form {form_code} as sponsor. {required_note} Keep sponsor identity, address, income, and tax facts consistent with evidence.",
+            _person_question_prompt(label, subject, (f"{subject} ",)),
+            f"Answer for the person signing Form {form_code} as {subject}. {required_note} Keep {subject} identity, address, income, and tax facts consistent with evidence.",
         )
     if risk_code:
         return (

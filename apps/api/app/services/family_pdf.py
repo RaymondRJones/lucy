@@ -1,7 +1,8 @@
+"""Builds and generates Forms I-130, I-130A, and G-1145."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -9,16 +10,28 @@ from uuid import UUID
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject
 
-from app.services.i485_pdf import (
-    _add_unit_fields,
-    _set_checkbox_values,
-    _set_need_appearances,
-    _set_text_values,
-    _template_field_names,
+from app.content.admission_classes import i130_class_of_admission_code
+from app.core.config import settings
+from app.services.case_facts import value_is_answered
+from app.services.pdf_fields import (
+    OVERLONG_WARNING,
+    add_unit_fields,
+    as_pdf_date,
+    employment_continuation_line,
+    entry_has_content,
+    field_length_warning,
+    fill_continuation_slots,
+    normalize_us_state,
+    overlong_field_names,
+    set_checkbox_values,
+    set_text_values,
+    template_field_names,
+    unprintable_character_warning,
+    use_saved_appearances,
+    without_notes,
 )
 
-
-DEFAULT_FAMILY_OUTPUT_DIR = Path("storage/generated")
+DEFAULT_FAMILY_OUTPUT_DIR = settings.generated_dir
 DEFAULT_FAMILY_TEMPLATE_PATHS = {
     "g1145": Path("blank-immigration-documents/g-1145.pdf"),
     "i130": Path("blank-immigration-documents/i-130.pdf"),
@@ -56,7 +69,8 @@ I130_DATE_FIELD_KEYS = {
 }
 
 I130A_DATE_FIELD_KEYS = {
-    "beneficiary_date_of_birth",
+    "parent1_date_of_birth",
+    "parent2_date_of_birth",
     "beneficiary_address_since",
     "beneficiary_current_address_since",
     "beneficiary_current_employment_from",
@@ -64,6 +78,8 @@ I130A_DATE_FIELD_KEYS = {
 }
 
 I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
+    "petitioner_height_feet": ("Pt3Line3_HeightFeet[0]",),
+    "petitioner_height_inches": ("Pt3Line3_HeightInches[0]",),
     "petitioner_a_number": ("Pt2Line1_AlienNumber[0]",),
     "petitioner_uscis_online_account_number": ("Pt2Line2_USCISOnlineActNumber[0]",),
     "petitioner_last_name": ("Pt2Line4a_FamilyName[0]",),
@@ -107,6 +123,8 @@ I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "petitioner_email": ("Pt6Line5_Email[0]",),
     "petitioner_marriage_count": ("Pt2Line16_NumberofMarriages[0]",),
     "marriage_date": ("Pt2Line18_DateOfMarriage[0]", "Pt4Line19_DateOfMarriage[0]"),
+    # USCIS names this template field without the "2" used by the rest of Part 2.
+    "petitioner_spouse1_last_name": ("PtLine20a_FamilyName[0]",),
     "petitioner_spouse1_first_name": ("Pt2Line20b_GivenName[0]",),
     "petitioner_spouse1_middle_name": ("Pt2Line20c_MiddleName[0]",),
     "petitioner_spouse1_marriage_ended": ("Pt2Line21_DateMarriageEnded[0]",),
@@ -249,7 +267,46 @@ I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "prior_i130_result": ("Pt5Line5_Result[0]",),
 }
 
+I130_RACE_CHECKBOXES = {
+    "white": ("Pt3Line2_Race_White[0]", "/W"),
+    "asian": ("Pt3Line2_Race_Asian[0]", "/A"),
+    "black": ("Pt3Line2_Race_Black[0]", "/B"),
+    "american_indian": ("Pt3Line2_Race_AmericanIndianAlaskaNative[0]", "/AA"),
+    "pacific_islander": ("Pt3Line2_Race_NativeHawaiianOtherPacificIslander[0]", "/N"),
+}
+I130_WEIGHT_FIELDS = ("Pt3Line4_Pound1[0]", "Pt3Line4_Pound2[0]", "Pt3Line4_Pound3[0]")
+
 I130_CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
+    "petitioner_ethnicity": {
+        "hispanic_or_latino": ("Pt3Line1_Ethnicity[1]", "/H"),
+        "not_hispanic_or_latino": ("Pt3Line1_Ethnicity[0]", "/NH"),
+    },
+    "petitioner_eye_color": {
+        "black": ("Pt3Line5_EyeColor[7]", "/BLK"),
+        "blue": ("Pt3Line5_EyeColor[0]", "/BLU"),
+        "brown": ("Pt3Line5_EyeColor[1]", "/BRN"),
+        "gray": ("Pt3Line5_EyeColor[6]", "/GRAY"),
+        "green": ("Pt3Line5_EyeColor[5]", "/GRN"),
+        "hazel": ("Pt3Line5_EyeColor[2]", "/HZL"),
+        "maroon": ("Pt3Line5_EyeColor[4]", "/MRN"),
+        "pink": ("Pt3Line5_EyeColor[3]", "/PNK"),
+        "unknown_other": ("Pt3Line5_EyeColor[8]", "/OTH"),
+    },
+    "petitioner_hair_color": {
+        "bald": ("Pt3Line6_HairColor[0]", "/BLD"),
+        "black": ("Pt3Line6_HairColor[1]", "/BLK"),
+        "blond": ("Pt3Line6_HairColor[2]", "/BND"),
+        "brown": ("Pt3Line6_HairColor[3]", "/BRN"),
+        "gray": ("Pt3Line6_HairColor[4]", "/GRY"),
+        "red": ("Pt3Line6_HairColor[5]", "/RED"),
+        "sandy": ("Pt3Line6_HairColor[6]", "/SDY"),
+        "white": ("Pt3Line6_HairColor[7]", "/WHT"),
+        "unknown_other": ("Pt3Line6_HairColor[8]", "/OTH"),
+    },
+    "petitioner_filed_prior_petition": {
+        True: ("Part4Line1_Yes[0]", "/Y"),
+        False: ("Part4Line1_No[0]", "/N"),
+    },
     "relationship_spouse": {
         True: ("Pt1Line1_Spouse[0]", "/Y"),
         "spouse": ("Pt1Line1_Spouse[0]", "/Y"),
@@ -416,11 +473,23 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_last_name": ("Pt1Line3a_FamilyName[0]",),
     "beneficiary_first_name": ("Pt1Line3b_GivenName[0]",),
     "beneficiary_middle_name": ("Pt1Line3c_MiddleName[0]",),
-    "beneficiary_date_of_birth": ("Pt1Line11_DateofBirth[0]",),
-    "beneficiary_city_of_birth": ("Pt1Line12CityTownOfBirth[0]",),
-    "beneficiary_country_of_birth": ("Pt1Line13_CountryofBirth[0]",),
-    "beneficiary_country_of_citizenship": ("Pt1Line14_CountryofBirth[0]",),
-    "beneficiary_country_of_residence": ("Pt1Line15_CountryofResidence[0]",),
+    # Items 10-23 of edition 04/01/24 describe the beneficiary's parents, despite the template's field names.
+    "parent1_last_name": ("Pt1Line10_FamilyName[0]",),
+    "parent1_first_name": ("Pt1Line10_GivenName[0]",),
+    "parent1_middle_name": ("Pt1Line10_MiddleName[0]",),
+    "parent1_date_of_birth": ("Pt1Line11_DateofBirth[0]",),
+    "parent1_city_of_birth": ("Pt1Line12CityTownOfBirth[0]",),
+    "parent1_country_of_birth": ("Pt1Line13_CountryofBirth[0]",),
+    "parent1_city_of_residence": ("Pt1Line14_CountryofBirth[0]",),
+    "parent1_country_of_residence": ("Pt1Line15_CountryofResidence[0]",),
+    "parent2_last_name": ("Pt1Line16_FamilyName[0]",),
+    "parent2_first_name": ("Pt1Line16_GivenName[0]",),
+    "parent2_middle_name": ("Pt1Line16_MiddleName[0]",),
+    "parent2_date_of_birth": ("Pt1Line17_DateofBirth[0]",),
+    "parent2_city_of_birth": ("Pt1Line18_CityTownOfBirth[0]",),
+    "parent2_country_of_birth": ("Pt1Line19_CountryofBirth[0]",),
+    "parent2_city_of_residence": ("Pt1Line20_CityTownVillageofRes[0]",),
+    "parent2_country_of_residence": ("Pt1Line21_CountryofResidence[0]",),
     "beneficiary_current_address_line1": ("Pt1Line4a_StreetNumberName[0]",),
     "beneficiary_current_city": ("Pt1Line4c_CityOrTown[0]",),
     "beneficiary_current_state": ("Pt1Line4d_State[0]",),
@@ -429,6 +498,11 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_address_since": ("Pt1Line5a_DateFrom[0]",),
     "beneficiary_current_address_since": ("Pt1Line5a_DateFrom[0]",),
     "beneficiary_current_employer_or_school": ("Pt2Line1_EmployerOrCompName[0]",),
+    "beneficiary_current_employer_address_line1": ("Pt2Line2a_StreetNumberName[0]",),
+    "beneficiary_current_employer_city": ("Pt2Line2c_CityOrTown[0]",),
+    "beneficiary_current_employer_state": ("Pt2Line2d_State[0]",),
+    "beneficiary_current_employer_zip": ("Pt2Line2e_ZipCode[0]",),
+    "beneficiary_current_employer_country": ("Pt2Line2h_Country[0]",),
     "beneficiary_current_occupation": ("Pt2Line3_Occupation[0]",),
     "beneficiary_current_employment_from": ("Pt2Line4a_DateFrom[0]",),
     "beneficiary_current_employment_to": ("Pt2Line4b_DateTo[0]",),
@@ -438,9 +512,13 @@ I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
 }
 
 I130A_CHECKBOX_FIELD_MAP: dict[str, dict[Any, tuple[str, str]]] = {
-    "beneficiary_sex": {
+    "parent1_sex": {
         "male": ("Pt1Line12_Male[0]", "/Y"),
         "female": ("Pt1Line12_Female[0]", "/Y"),
+    },
+    "parent2_sex": {
+        "male": ("Pt1Line19_Male[0]", "/Y"),
+        "female": ("Pt1Line19_Female[0]", "/Y"),
     },
 }
 
@@ -450,6 +528,12 @@ I130A_UNIT_FIELD_MAP: dict[str, tuple[str, str, str, str]] = {
         "Pt1Line4b_Unit[1]",
         "Pt1Line4b_Unit[2]",
         "Pt1Line4b_AptSteFlrNumber[0]",
+    ),
+    "beneficiary_current_employer_address_line2": (
+        "Pt2Line2b_Unit[0]",
+        "Pt2Line2b_Unit[1]",
+        "Pt2Line2b_Unit[2]",
+        "Pt2Line2b_AptSteFlrNumber[0]",
     ),
 }
 
@@ -463,6 +547,17 @@ I130A_PRIOR_ADDRESS_FIELD_MAP = {
     "country": "Pt1Line6h_Country[0]",
     "from": "Pt1Line7a_DateFrom[0]",
     "to": "Pt1Line7b_DateTo[0]",
+}
+
+# Items 8 and 9 of edition 04/01/24: last address outside the United States of more than one year.
+I130A_FOREIGN_ADDRESS_FIELD_MAP = {
+    "line1": "Pt1Line8a_StreetNumberName[0]",
+    "city": "Pt1Line8c_CityOrTown[0]",
+    "province": "Pt1Line8d_Province[0]",
+    "postal_code": "Pt1Line8e_PostalCode[0]",
+    "country": "Pt1Line8f_Country[0]",
+    "from": "Pt1Line9a_DateFrom[0]",
+    "to": "Pt1Line9b_DateTo[0]",
 }
 
 G1145_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
@@ -504,37 +599,18 @@ class GeneratedFamilyPdf:
     warnings: list[str]
 
 
-def _value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return True
-
-
 def _normalize_choice(value: Any) -> Any:
     if isinstance(value, str):
         return " ".join(value.strip().lower().replace("-", " ").split())
     return value
 
 
-def _as_pdf_date(value: Any) -> str:
-    raw = str(value).strip()
-    if not raw:
-        return ""
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
-        try:
-            return datetime.strptime(raw, fmt).strftime("%m/%d/%Y")
-        except ValueError:
-            continue
-    return raw
-
-
 def _as_pdf_value(field_key: str, value: Any, date_field_keys: set[str]) -> str:
     if field_key in date_field_keys:
-        return _as_pdf_date(value)
+        return as_pdf_date(value)
+    # State fields on these forms are dropdowns of two-letter codes.
+    if field_key.endswith("_state"):
+        return normalize_us_state(value)
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
@@ -546,16 +622,44 @@ def _first_marriage_count() -> str:
     return "1"
 
 
-def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
+def without_zip_postal_aliases(values: dict[str, Any]) -> dict[str, Any]:
+    """Returns values without postal codes that only repeat the ZIP code."""
+    # Case-fact aliases copy a ZIP code into the postal code key, but the forms keep Postal Code for foreign addresses.
     normalized = dict(values)
+    for prefix in ("beneficiary_current", "petitioner_current"):
+        postal_key = f"{prefix}_postal_code"
+        if value_is_answered(normalized.get(postal_key)) and normalized.get(postal_key) == normalized.get(f"{prefix}_zip"):
+            normalized.pop(postal_key)
+    return normalized
+
+
+I130_CLASS_NOT_OFFERED_WARNING = (
+    "Part 4, Item 21.a was left blank because the class of admission answer does not match an option on the form. "
+    "Choose the matching option by hand before filing."
+)
+
+
+def i130_class_of_admission_not_offered(values: dict[str, Any]) -> bool:
+    """Returns whether an answer has no matching I-130 Item 21.a option."""
+    answer = values.get("beneficiary_class_of_admission")
+    return value_is_answered(answer) and not i130_class_of_admission_code(answer)
+
+
+def _normalized_i130_values(values: dict[str, Any]) -> dict[str, Any]:
+    normalized = without_zip_postal_aliases(values)
+    # Item 21.a is a dropdown that accepts only its USCIS options, for example B2.
+    if value_is_answered(normalized.get("beneficiary_class_of_admission")):
+        normalized["beneficiary_class_of_admission"] = i130_class_of_admission_code(
+            normalized["beneficiary_class_of_admission"]
+        )
     if normalized.get("first_marriage_for_both") is True:
         normalized.setdefault("petitioner_marriage_count", _first_marriage_count())
         normalized.setdefault("beneficiary_marriage_count", _first_marriage_count())
-    if _value_is_answered(normalized.get("marriage_date")):
+    if value_is_answered(normalized.get("marriage_date")):
         normalized.setdefault("relationship_spouse", True)
         normalized.setdefault("petitioner_current_marital_status", "married")
         normalized.setdefault("beneficiary_current_marital_status", "married")
-    if _value_is_answered(normalized.get("beneficiary_location")):
+    if value_is_answered(normalized.get("beneficiary_location")):
         beneficiary_location = _normalize_choice(normalized.get("beneficiary_location"))
         if beneficiary_location in {"usa", "us", "u s", "united states", "united states of america"}:
             normalized.setdefault("beneficiary_adjustment_city", normalized.get("beneficiary_current_city"))
@@ -573,7 +677,7 @@ def _field_values_for_text_map(
 ) -> None:
     for field_key, field_names in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         pdf_value = _as_pdf_value(field_key, value, date_field_keys)
         for field_name in field_names:
@@ -595,7 +699,7 @@ def _field_values_for_checkbox_map(
 ) -> None:
     for field_key, choices in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         selected = choices.get(_normalize_choice(value))
         if not selected:
@@ -620,10 +724,10 @@ def _field_values_for_unit_map(
 ) -> None:
     for field_key, unit_fields in field_map.items():
         value = values.get(field_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
         before = set(text_values) | set(checkbox_values)
-        _add_unit_fields(
+        add_unit_fields(
             text_values=text_values,
             checkbox_values=checkbox_values,
             value=value,
@@ -666,7 +770,7 @@ def _add_i130a_prior_address(
         return
     address = raw[0]
     before = set(text_values) | set(checkbox_values)
-    _add_unit_fields(
+    add_unit_fields(
         text_values=text_values,
         checkbox_values=checkbox_values,
         value=address.get("line2"),
@@ -678,9 +782,9 @@ def _add_i130a_prior_address(
     used_fields: list[str] = []
     for source_key, field_name in I130A_PRIOR_ADDRESS_FIELD_MAP.items():
         value = address.get(source_key)
-        if not _value_is_answered(value):
+        if not value_is_answered(value):
             continue
-        text_values[field_name] = _as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+        text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
         used_fields.append(field_name)
     used_fields.extend(sorted((set(text_values) | set(checkbox_values)) - before))
     if used_fields:
@@ -692,10 +796,191 @@ def _add_i130a_prior_address(
         )
 
 
+def _add_i130a_foreign_address(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    address = values.get("beneficiary_recent_foreign_address")
+    if not isinstance(address, dict):
+        return
+    before = set(text_values) | set(checkbox_values)
+    add_unit_fields(
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        value=address.get("line2"),
+        apt_field="Pt1Line8b_Unit[0]",
+        ste_field="Pt1Line8b_Unit[1]",
+        flr_field="Pt1Line8b_Unit[2]",
+        number_field="Pt1Line8b_AptSteFlrNumber[0]",
+    )
+    for source_key, field_name in I130A_FOREIGN_ADDRESS_FIELD_MAP.items():
+        value = address.get(source_key)
+        if value_is_answered(value):
+            text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+    used_fields = sorted((set(text_values) | set(checkbox_values)) - before)
+    if used_fields:
+        mapped_fields.append({"field_key": "beneficiary_recent_foreign_address", "pdf_fields": used_fields})
+
+
+I130A_EMPLOYER_ROWS = (
+    {
+        "name": "Pt2Line1_EmployerOrCompName[0]",
+        "line1": "Pt2Line2a_StreetNumberName[0]",
+        "city": "Pt2Line2c_CityOrTown[0]",
+        "state": "Pt2Line2d_State[0]",
+        "zip": "Pt2Line2e_ZipCode[0]",
+        "province": "Pt2Line2f_Province[0]",
+        "postal_code": "Pt2Line2g_PostalCode[0]",
+        "country": "Pt2Line2h_Country[0]",
+        "occupation": "Pt2Line3_Occupation[0]",
+        "from": "Pt2Line4a_DateFrom[0]",
+        "to": "Pt2Line4b_DateTo[0]",
+    },
+    {
+        "name": "Pt2Line5_EmployerOrCompName[0]",
+        "line1": "Pt2Line6_StreetNumberName[0]",
+        "city": "Pt2Line6_CityOrTown[0]",
+        "state": "Pt2Line6_State[0]",
+        "zip": "Pt2Line6_ZipCode[0]",
+        "province": "Pt2Line6_Province[0]",
+        "postal_code": "Pt2Line6_PostalCode[0]",
+        "country": "Pt2Line6_Country[0]",
+        "occupation": "Pt2Line7_Occupation[0]",
+        "from": "Pt2Line8a_DateFrom[0]",
+        "to": "Pt2Line8b_DateTo[0]",
+    },
+)
+I130A_EMPLOYER_UNIT_ROWS = (
+    ("Pt2Line2b_Unit[0]", "Pt2Line2b_Unit[1]", "Pt2Line2b_Unit[2]", "Pt2Line2b_AptSteFlrNumber[0]"),
+    ("Pt2Line6_Unit[0]", "Pt2Line6_Unit[1]", "Pt2Line6_Unit[2]", "Pt2Line6_AptSteFlrNumber[0]"),
+)
+I130A_PART7_SLOTS = tuple(
+    (f"Pt7Line{line}a_PageNumber[0]", f"Pt7Line{line}b_PartNumber[0]", f"Pt7Line{line}c_ItemNumber[0]", f"Pt7Line{line}d_AdditionalInfo[0]")
+    for line in range(3, 8)
+)
+# 10pt Courier in a 234 x 180 point box.
+I130A_PART7_WRAP_WIDTH = 38
+I130A_PART7_MAX_LINES = 14
+
+
+I130A_FOREIGN_EMPLOYER_ROW = {
+    "name": "Pt3Line1_EmployerOrCompName[0]",
+    "line1": "Pt3Line2a_StreetNumberName[0]",
+    "city": "Pt3Line2c_CityOrTown[0]",
+    "province": "Pt3Line2f_Province[0]",
+    "postal_code": "Pt3Line2g_PostalCode[0]",
+    "country": "Pt3Line2h_Country[0]",
+    "occupation": "Pt3Line3_Occupation[0]",
+    "from": "Pt3Line4a_DateFrom[0]",
+    "to": "Pt3Line4b_DateTo[0]",
+}
+
+
+def _add_i130a_foreign_employer(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    raw = values.get("beneficiary_foreign_employer_or_school")
+    entry = raw[0] if isinstance(raw, list) and raw else raw
+    if isinstance(entry, str):
+        entry = {"name": entry}
+    if not isinstance(entry, dict):
+        return
+    used_fields = []
+    for source_key, field_name in I130A_FOREIGN_EMPLOYER_ROW.items():
+        value = entry.get(source_key)
+        if value_is_answered(value):
+            text_values[field_name] = as_pdf_date(value) if source_key in {"from", "to"} else str(value).strip()
+            used_fields.append(field_name)
+    if used_fields:
+        mapped_fields.append({"field_key": "beneficiary_foreign_employer_or_school", "pdf_fields": used_fields})
+
+
+def _same_employer(entry: dict[str, Any], name: str) -> bool:
+    return str(entry.get("name") or "").strip().casefold() == name.strip().casefold()
+
+
+def _add_i130a_employment_history(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    raw = values.get("beneficiary_employment_history")
+    if isinstance(raw, list):
+        answered = [entry for entry in raw if isinstance(entry, dict) and value_is_answered(entry)]
+        # Free text saved before the list was structured has no row, so it continues in Part 7.
+        note_only = [entry for entry in answered if not entry_has_content(without_notes(entry))]
+        entries = [entry for entry in answered if entry_has_content(without_notes(entry))]
+        # The questions about the current employer are more specific, so they take the first row and
+        # the history's entry for that employer only fills its gaps. Every other job keeps a place.
+        current_name = text_values.get(I130A_EMPLOYER_ROWS[0]["name"], "")
+        if current_name:
+            matching = [entry for entry in entries if _same_employer(entry, current_name)]
+            first = matching[0] if matching else {}
+            entries = [first, *[entry for entry in entries if entry is not first]]
+        continuation = "\n".join(
+            employment_continuation_line(entry) for entry in [*entries[len(I130A_EMPLOYER_ROWS) :], *note_only]
+        )
+    else:
+        entries = []
+        continuation = str(raw or "").strip()
+    if not entries and not continuation:
+        return
+    # Left unmapped when it does not fit, so the review screen reports the history that did not make it onto the form.
+    continuation_fields = fill_continuation_slots(
+        text_values=text_values,
+        slots=I130A_PART7_SLOTS,
+        page_number="2",
+        part_number="2",
+        item_number="1",
+        text=continuation,
+        wrap_width=I130A_PART7_WRAP_WIDTH,
+        max_lines=I130A_PART7_MAX_LINES,
+    )
+    if continuation_fields is None:
+        return
+    used_fields = list(continuation_fields)
+    for entry, row, unit_row in zip(entries, I130A_EMPLOYER_ROWS, I130A_EMPLOYER_UNIT_ROWS, strict=False):
+        for source_key, field_name in row.items():
+            value = entry.get(source_key)
+            if not value_is_answered(value) or field_name in text_values:
+                continue
+            if source_key in {"from", "to"}:
+                text_values[field_name] = as_pdf_date(value)
+            elif source_key == "state":
+                text_values[field_name] = normalize_us_state(value)
+            else:
+                text_values[field_name] = str(value).strip()
+            used_fields.append(field_name)
+        # An answered current-employer unit already chose a box and number. A second call would check another box.
+        if unit_row[3] in text_values:
+            continue
+        before = set(text_values) | set(checkbox_values)
+        add_unit_fields(
+            text_values=text_values,
+            checkbox_values=checkbox_values,
+            value=entry.get("line2"),
+            apt_field=unit_row[0],
+            ste_field=unit_row[1],
+            flr_field=unit_row[2],
+            number_field=unit_row[3],
+        )
+        used_fields.extend(sorted((set(text_values) | set(checkbox_values)) - before))
+    mapped_fields.append({"field_key": "beneficiary_employment_history", "pdf_fields": sorted(used_fields)})
+
+
 def build_i130_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    """Returns the PDF field values and mapping report for an I-130."""
     normalized = _normalized_i130_values(values)
     text_values: dict[str, str] = {}
     checkbox_values: dict[str, str] = {}
@@ -721,6 +1006,12 @@ def build_i130_pdf_field_payload(
         values=normalized,
         field_map=I130_UNIT_FIELD_MAP,
     )
+    _add_i130_biographics(
+        values=normalized,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
 
     return FamilyPdfFieldPayload(
         form_code="form_i130",
@@ -735,10 +1026,30 @@ def build_i130_pdf_field_payload(
     )
 
 
+def _add_i130_biographics(
+    *,
+    values: dict[str, Any],
+    text_values: dict[str, str],
+    checkbox_values: dict[str, str],
+    mapped_fields: list[dict[str, Any]],
+) -> None:
+    races = values.get("petitioner_race")
+    selected = [I130_RACE_CHECKBOXES[race] for race in races if race in I130_RACE_CHECKBOXES] if isinstance(races, list) else []
+    checkbox_values.update(selected)
+    if selected:
+        mapped_fields.append({"field_key": "petitioner_race", "pdf_fields": [name for name, _state in selected]})
+    digits = str(values.get("petitioner_weight_pounds") or "").strip()
+    if digits.isdigit() and len(digits) <= len(I130_WEIGHT_FIELDS):
+        text_values.update(zip(I130_WEIGHT_FIELDS, digits.zfill(len(I130_WEIGHT_FIELDS)), strict=True))
+        mapped_fields.append({"field_key": "petitioner_weight_pounds", "pdf_fields": list(I130_WEIGHT_FIELDS)})
+
+
 def build_i130a_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    """Returns the PDF field values and mapping report for an I-130A."""
+    values = without_zip_postal_aliases(values)
     text_values: dict[str, str] = {}
     checkbox_values: dict[str, str] = {}
     mapped_fields: list[dict[str, Any]] = []
@@ -769,6 +1080,19 @@ def build_i130a_pdf_field_payload(
         checkbox_values=checkbox_values,
         mapped_fields=mapped_fields,
     )
+    _add_i130a_foreign_address(
+        values=values,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
+    _add_i130a_employment_history(
+        values=values,
+        text_values=text_values,
+        checkbox_values=checkbox_values,
+        mapped_fields=mapped_fields,
+    )
+    _add_i130a_foreign_employer(values=values, text_values=text_values, mapped_fields=mapped_fields)
 
     return FamilyPdfFieldPayload(
         form_code="form_i130a",
@@ -787,6 +1111,7 @@ def build_g1145_pdf_field_payload(
     values: dict[str, Any],
     available_fields: set[str] | None = None,
 ) -> FamilyPdfFieldPayload:
+    """Returns the PDF field values and mapping report for a G-1145."""
     text_values: dict[str, str] = {}
     mapped_fields: list[dict[str, Any]] = []
 
@@ -838,15 +1163,16 @@ def _generate_family_pdf_from_payload(
     template_path: Path,
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
+    extra_warnings: tuple[str, ...] = (),
 ) -> GeneratedFamilyPdf:
     if not template_path.exists():
         raise ValueError(f"{payload.form_code} PDF template not found: {template_path}")
 
     reader = PdfReader(template_path)
     writer = _pdf_writer_from_reader(reader)
-    _set_need_appearances(writer)
-    _set_text_values(writer, payload.text_values)
-    _set_checkbox_values(writer, payload.checkbox_values)
+    use_saved_appearances(writer)
+    set_text_values(writer, payload.text_values)
+    set_checkbox_values(writer, payload.checkbox_values)
 
     final_output_path = output_path or output_dir / f"{case_id}-{form_key}.pdf"
     final_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -859,6 +1185,12 @@ def _generate_family_pdf_from_payload(
     ]
     if payload.missing_template_fields:
         warnings.append("Some mapped PDF fields were not present in the selected template.")
+    warnings.extend(field_length_warning(reader, payload.text_values))
+    warnings.extend(unprintable_character_warning(writer))
+    overflowing = overlong_field_names(reader, payload.text_values)
+    if overflowing:
+        warnings.append(OVERLONG_WARNING + ", ".join(overflowing))
+    warnings.extend(extra_warnings)
 
     return GeneratedFamilyPdf(
         case_id=case_id,
@@ -883,11 +1215,12 @@ def generate_i130_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes an I-130 PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["i130"]
     if not final_template_path.exists():
         raise ValueError(f"form_i130 PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_i130_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_i130_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="i130",
@@ -895,6 +1228,7 @@ def generate_i130_pdf(
         template_path=final_template_path,
         output_path=output_path,
         output_dir=output_dir,
+        extra_warnings=(I130_CLASS_NOT_OFFERED_WARNING,) if i130_class_of_admission_not_offered(values) else (),
     )
 
 
@@ -906,11 +1240,12 @@ def generate_i130a_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes an I-130A PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["i130a"]
     if not final_template_path.exists():
         raise ValueError(f"form_i130a PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_i130a_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_i130a_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="i130a",
@@ -929,11 +1264,12 @@ def generate_g1145_pdf(
     output_path: Path | None = None,
     output_dir: Path = DEFAULT_FAMILY_OUTPUT_DIR,
 ) -> GeneratedFamilyPdf:
+    """Writes a G-1145 PDF."""
     final_template_path = template_path or DEFAULT_FAMILY_TEMPLATE_PATHS["g1145"]
     if not final_template_path.exists():
         raise ValueError(f"form_g1145 PDF template not found: {final_template_path}")
     reader = PdfReader(final_template_path)
-    payload = build_g1145_pdf_field_payload(values, _template_field_names(reader))
+    payload = build_g1145_pdf_field_payload(values, template_field_names(reader))
     return _generate_family_pdf_from_payload(
         case_id=case_id,
         form_key="g1145",

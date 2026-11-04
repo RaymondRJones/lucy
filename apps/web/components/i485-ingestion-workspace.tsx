@@ -107,7 +107,7 @@ function hasMeaningfulEntryValue(value: unknown) {
 }
 
 function cleanQuestionAnswer(question: I485Question, value: unknown) {
-  if (["address_list", "employment_history_list"].includes(question.answer_type)) {
+  if (["address_list", "employment_history_list", "benefit_history_list", "entry_list"].includes(question.answer_type)) {
     const entries = repeatableEntries(question, value).filter((entry) => Object.values(entry).some(hasMeaningfulEntryValue));
     return entries.length ? entries : undefined;
   }
@@ -240,6 +240,21 @@ function RepeatableHistoryControl({
                 </button>
               ) : null}
             </div>
+            {typeof entry.notes === "string" && entry.notes.trim() && !fields.some((field) => field.key === "notes") ? (
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <p>
+                  <span className="font-semibold">Saved earlier as free text, and prints in {question.overflow_pdf_ref ?? "additional information"}:</span>{" "}
+                  {entry.notes}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => updateEntry(index, "notes", "")}
+                  className="shrink-0 rounded-lg border border-amber-300 px-3 py-1 font-semibold"
+                >
+                  Remove note
+                </button>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
               {fields.map((field) => {
                 const fieldLabel = `${field.label}${field.required ? " *" : ""}`;
@@ -315,7 +330,7 @@ function RepeatableHistoryControl({
   );
 }
 
-function StructuredAddressControl({
+export function StructuredAddressControl({
   question,
   value,
   onChange,
@@ -396,7 +411,7 @@ function QuestionControl({
     return <StructuredAddressControl question={question} value={value} onChange={onChange} />;
   }
 
-  if (["address_list", "employment_history_list"].includes(question.answer_type) && question.entry_fields?.length) {
+  if (["address_list", "employment_history_list", "benefit_history_list", "entry_list"].includes(question.answer_type) && question.entry_fields?.length) {
     return <RepeatableHistoryControl question={question} value={value} onChange={onChange} />;
   }
 
@@ -666,7 +681,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
       return false;
     }
     const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
-    return pageMissingCount === 0 && requiredQuestions.every((question) => hasMeaningfulEntryValue(answers[question.id]));
+    return pageMissingCount === 0 && requiredQuestions.every((question) => answers[question.id] === false || hasMeaningfulEntryValue(answers[question.id]));
   }
 
   function pageAnswersForSave(page: I485QuestionnairePage) {

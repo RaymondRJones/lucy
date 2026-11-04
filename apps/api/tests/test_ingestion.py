@@ -7,14 +7,13 @@ from uuid import UUID
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models.entities import OCRStatus, UploadedDocument, UploadStatus
-from app.core.config import settings
 from app.content.uscis_requirements import USCIS_REQUIREMENT_BY_CHECKLIST_CODE
-from app.services.i485 import get_i485_state
+from app.core.config import settings
+from app.models.entities import OCRStatus, UploadedDocument, UploadStatus
 from app.services import ingestion as ingestion_service
+from app.services.i485 import get_i485_state
 from app.services.ingestion import InferredDocument, ingest_evidence_directory, scan_document
 from app.services.intake import get_merged_case_intake
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PRIVATE_EVIDENCE_DIR = REPO_ROOT / "MARRIAGE_EVIDENCE"

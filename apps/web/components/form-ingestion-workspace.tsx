@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { CaseSelector } from "@/components/case-selector";
+import { StructuredAddressControl } from "@/components/i485-ingestion-workspace";
 import {
   apiUrl,
   generateFormPdf,
@@ -427,6 +428,10 @@ function QuestionControl({
     );
   }
 
+  if (question.answer_type === "address" && question.entry_fields?.length) {
+    return <StructuredAddressControl question={question} value={value} onChange={onChange} />;
+  }
+
   if (["textarea", "address", "address_list"].includes(question.answer_type)) {
     return (
       <textarea
@@ -622,7 +627,7 @@ export function FormIngestionWorkspace({
       return false;
     }
     const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
-    return pageMissingCount === 0 && requiredQuestions.every((question) => hasMeaningfulValue(answers[question.id]));
+    return pageMissingCount === 0 && requiredQuestions.every((question) => answers[question.id] === false || hasMeaningfulValue(answers[question.id]));
   }
 
   function pageAnswersForSave(page: FormQuestionnairePage) {

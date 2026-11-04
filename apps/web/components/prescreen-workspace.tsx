@@ -664,6 +664,9 @@ export function PrescreenWorkspace() {
             <p className="text-xs uppercase tracking-[0.2em] text-pine/80">Prescreen status</p>
             <h2 className="font-display text-2xl text-ink">{formatStatus(prescreen.evaluation.status)}</h2>
             <p className="mt-1 text-sm leading-6 text-ink/65">Questionnaire version {prescreen.evaluation.version}</p>
+            <p className="mt-1 text-sm leading-6 text-ink/65">
+              Covers whether this case fits the standard path. Packet readiness is tracked separately.
+            </p>
           </div>
           {[
             ["Completion", `${prescreen.evaluation.completion_pct}%`],

@@ -1,32 +1,16 @@
+"""Rules that evaluate prescreen answers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from app.content.prescreen import PRESCREEN_QUESTIONS, PRESCREEN_SOURCES, PRESCREEN_VERIFIED_ON, PRESCREEN_VERSION
+from app.models.entities import utcnow
+from app.services.case_facts import value_is_answered
 from app.services.rules.core import RuleEngine, RuleResult
 
-
 I130_ALREADY_FILED_STATUSES = {"pending", "approved", "filed"}
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def value_is_answered(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, list):
-        return any(value_is_answered(entry) for entry in value)
-    if isinstance(value, dict):
-        return any(value_is_answered(entry) for entry in value.values())
-    return True
 
 
 class PrescreenConditionMatcher:
@@ -331,5 +315,5 @@ class PrescreenRuleEngine:
             "included_forms": branch_state.included_forms,
             "eliminated_forms": branch_state.eliminated_forms,
             "next_steps": branch_state.next_steps,
-            "generated_at": _utcnow().isoformat(),
+            "generated_at": utcnow().isoformat(),
         }

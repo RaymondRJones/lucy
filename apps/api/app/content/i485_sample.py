@@ -1,16 +1,16 @@
+"""Sample I-485 answers for seeds and tests."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from app.content.i485_questionnaire import all_i485_questions
 
-
 SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "beneficiary_a_number": "",
     "beneficiary_last_name": "Sample",
     "beneficiary_first_name": "Avery",
     "beneficiary_middle_name": "Maria",
-    "beneficiary_other_names": "",
     "beneficiary_date_of_birth": "1998-06-14",
     "beneficiary_used_other_dob": False,
     "beneficiary_has_a_number": False,
@@ -95,7 +95,17 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
             "to": "",
         }
     ],
-    "beneficiary_foreign_employer_or_school": "Universidad de Ejemplo",
+    "beneficiary_foreign_employer_or_school": [
+        {
+            "name": "Universidad de Ejemplo",
+            "occupation": "Student",
+            "line1": "12 Avenida Central",
+            "city": "Bogota",
+            "country": "Colombia",
+            "from": "2018-02-01",
+            "to": "2022-12-15",
+        }
+    ],
     "parent1_last_name": "Sample",
     "parent1_first_name": "Rosa",
     "parent1_middle_name": "Elena",
@@ -132,7 +142,6 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "current_spouse_applying_with_beneficiary": False,
     "beneficiary_prior_marriages": "",
     "children_count": 0,
-    "children_details": "",
     "beneficiary_ethnicity": "hispanic_or_latino",
     "beneficiary_race": ["white"],
     "beneficiary_height_feet": 5,
@@ -141,7 +150,6 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "beneficiary_eye_color": "brown",
     "beneficiary_hair_color": "brown",
     "organizations_membership": False,
-    "organizations_details": "",
     "visa_denied": False,
     "admission_denied": False,
     "worked_without_authorization": False,
@@ -157,31 +165,21 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "ever_pled_or_convicted": False,
     "ever_punished_by_judge": False,
     "controlled_substance_violation": False,
-    "controlled_substance_trafficking": False,
-    "prostitution_or_commercialized_vice": False,
-    "foreign_government_religious_freedom": False,
-    "human_trafficking": False,
     "money_laundering": False,
     "criminal_explanations": "",
-    "espionage_sabotage_export_overthrow": False,
-    "weapons_training_or_violence": False,
     "endanger_us_security": False,
     "family_security_activity": False,
     "weapons_sales_or_transport": False,
     "detention_or_prison_service": False,
-    "military_police_armed_group": False,
     "communist_totalitarian_party": False,
-    "persecution_or_child_soldiers": False,
     "public_charge_exempt_category": "not_exempt_complete_questions",
     "household_size": 2,
     "annual_household_income_band": "85001_141000",
     "household_assets_band": "18401_136000",
     "household_liabilities_band": "1_10100",
     "highest_education": "bachelor",
-    "certifications_licenses_skills": "Bachelor's degree; English and Spanish fluency",
-    "received_cash_benefits": False,
-    "received_long_term_institutionalization": False,
-    "public_charge_benefit_details": "",
+    "certifications_licenses_skills": "Bachelor's degree\nEnglish and Spanish fluency",
+    "received_means_tested_public_benefit": False,
     "failed_to_attend_removal": False,
     "fraudulent_documents": False,
     "lied_for_immigration_benefit": False,
@@ -192,8 +190,6 @@ SAMPLE_I485_ANSWERS: dict[str, Any] = {
     "entered_without_inspection": False,
     "deported_removed_or_departed_after_order": False,
     "unlawful_presence_after_1997": False,
-    "illegal_reentry_after_unlawful_presence_or_removal": False,
-    "polygamy_child_custody_voting_tax_armed_forces": False,
     "beneficiary_phone": "0000000100",
     "beneficiary_email": "avery.sample@example.com",
     "applicant_reviewed_certification": True,

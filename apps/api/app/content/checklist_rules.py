@@ -1,3 +1,5 @@
+"""Checklist rule tables."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -55,14 +57,14 @@ CHECKLIST_TEMPLATES = [
     ChecklistTemplate(
         code="payment_g1450",
         category="payments",
-        label="Form G-1450 credit card authorization",
+        label="Filing fee payment authorization (Form G-1450 or G-1650)",
         owner_role="shared",
-        description="Credit card authorization PDF for USCIS lockbox payment.",
-        why_needed="Use this when paying USCIS filing fees by credit card.",
-        what_to_save_now="Generate the payment PDF in Lucy or upload your signed Form G-1450 PDF.",
+        description="Card (Form G-1450) or U.S. bank account (Form G-1650) authorization PDF for USCIS lockbox payment.",
+        why_needed="USCIS takes mailed filing fees by Form G-1450 or Form G-1650 unless a Form G-1651 exemption applies.",
+        what_to_save_now="Generate the payment PDF in Lucy or upload your signed Form G-1450 or G-1650 PDF.",
         default_applicability="recommended",
         when_all=("concurrent_filing_eligible",),
-        conditional_reason="Only used when paying USCIS filing fees by credit card.",
+        conditional_reason="Used when paying USCIS filing fees by card or U.S. bank account.",
     ),
     ChecklistTemplate(
         code="form_i485",
@@ -161,6 +163,17 @@ CHECKLIST_TEMPLATES = [
         why_needed="USCIS initial-evidence instructions commonly require passport-style photos for paper-filed adjustment and advance parole packets.",
         what_to_save_now="Keep a scanned reference copy plus the final printed photos you plan to include.",
         when_all=("concurrent_filing_eligible",),
+    ),
+    ChecklistTemplate(
+        code="petitioner_passport_photos",
+        category="identity_documents",
+        label="Petitioner passport-style photos",
+        owner_role="petitioner",
+        description="Recent passport-style photographs of the U.S. citizen spouse for Form I-130.",
+        why_needed="The USCIS Form I-130 checklist lists passport-style photographs for spouse petitions (verified 2026-10-30, https://www.uscis.gov/i-130).",
+        what_to_save_now="Keep a scanned reference copy plus the final printed photos you plan to include.",
+        when_all=("petitioner_is_us_citizen",),
+        when_not=("i130_already_filed", "i130_needs_review"),
     ),
     ChecklistTemplate(
         code="beneficiary_i94",

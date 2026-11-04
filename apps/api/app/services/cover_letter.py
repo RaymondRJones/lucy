@@ -1,3 +1,5 @@
+"""Generates packet cover letters and section index pages."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,9 +20,11 @@ SECTION_TITLES = {
     "I-693 medical section": "Form I-693 (Medical Examination)",
     "I-765 section": "Form I-765 (Application for Work Authorization)",
     "I-131 section": "Form I-131 (Application for Advance Parole)",
+    "I-130 section": "Forms I-130 and I-130A (Petition for Alien Relative)",
 }
 
 SIGNATURE_LINE = "X________________________________"
+PENDING_I130_STATUSES = {"pending", "filed"}
 
 
 @dataclass(frozen=True)
@@ -219,9 +223,24 @@ def build_cover_letter_lines(
     lockbox_address_lines: list[str] | None = None,
     generated_on: date | None = None,
 ) -> list[str]:
+    """Returns the text of a packet's cover letter."""
     beneficiary_name = _person_name(values, "beneficiary")
     petitioner_name = _person_name(values, "petitioner")
-    receipt_number = _clean_text(values.get("i130_receipt_number"), "[insert pending Form I-130 receipt number]")
+    i130_status = str(values.get("i130_filing_status") or "").strip().lower()
+    concurrent_i130 = i130_status in {"not_filed", "none"}
+    approved_i130 = i130_status == "approved"
+    pending_i130 = i130_status in PENDING_I130_STATUSES
+    receipt_number = _clean_text(
+        values.get("i130_receipt_number"),
+        "[insert pending Form I-130 receipt number]" if pending_i130 else "[insert Form I-130 receipt number]",
+    )
+    i130_status_sentence = (
+        "has been approved by USCIS."
+        if approved_i130
+        else "is currently pending with USCIS."
+        if pending_i130
+        else "[state the current status of the Form I-130 before filing]."
+    )
     generated_date = generated_on or date.today()
 
     lines = [
@@ -233,17 +252,25 @@ def build_cover_letter_lines(
         "U.S. Citizenship and Immigration Services",
         *_lockbox_address_lines(lockbox_address_lines),
         "",
-        "RE: Form I-485 Adjustment of Status (Marriage-Based)",
+        (
+            "RE: Concurrent Forms I-130 and I-485 (Marriage-Based)"
+            if concurrent_i130
+            else "RE: Form I-485 Adjustment of Status (Marriage-Based)"
+        ),
         f"Applicant (Beneficiary): {beneficiary_name}",
         f"Petitioner (U.S. Citizen Spouse): {petitioner_name}",
-        f"I-130 Receipt Number: {receipt_number}",
+        *([] if concurrent_i130 else [f"I-130 Receipt Number: {receipt_number}"]),
         "",
         "Dear Sir or Madam,",
         "",
         (
             "Please find enclosed my Form I-485 Application to Register Permanent Residence or "
-            "Adjust Status, based on my marriage to a U.S. citizen. My Form I-130 petition is "
-            "currently pending with USCIS."
+            "Adjust Status, based on my marriage to a U.S. citizen, filed concurrently with the "
+            "Form I-130 Petition for Alien Relative and Form I-130A filed on my behalf."
+            if concurrent_i130
+            else "Please find enclosed my Form I-485 Application to Register Permanent Residence or "
+            "Adjust Status, based on my marriage to a U.S. citizen. My Form I-130 petition "
+            + i130_status_sentence
         ),
         "",
         "I am concurrently submitting supporting forms and documentation as outlined below.",
@@ -269,6 +296,7 @@ def generate_cover_letter_pdf(
     output_dir: Path,
     lockbox_address_lines: list[str] | None = None,
 ) -> GeneratedCoverLetter:
+    """Writes a packet's cover letter."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{case_id}-cover-letter.pdf"
     writer = PdfWriter()
@@ -305,7 +333,11 @@ def generate_cover_letter_pdf(
     return GeneratedCoverLetter(
         output_path=output_path,
         warnings=[
-            "Cover letter: confirm the pending Form I-130 receipt number and hand-sign if you use the draft.",
+            (
+                "Cover letter: hand-sign if you use the draft."
+                if str(values.get("i130_filing_status") or "").strip().lower() in {"not_filed", "none"}
+                else "Cover letter: confirm the Form I-130 status and receipt number, and hand-sign if you use the draft."
+            ),
         ],
     )
 
@@ -321,6 +353,7 @@ def build_section_index_lines(
     purpose: str,
     items: list[str],
 ) -> list[str]:
+    """Returns the text of a section index page."""
     title = SECTION_TITLES.get(section_label, section_label)
     lines = [
         "Section Index Page",
@@ -357,6 +390,7 @@ def generate_section_index_pdf(
     items: list[str],
     output_dir: Path,
 ) -> GeneratedCoverLetter:
+    """Writes a section index page."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{case_id}-{_slug(section_label)}-index.pdf"
     writer = PdfWriter()

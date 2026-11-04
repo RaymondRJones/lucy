@@ -1,1 +1,1 @@
-
+"""Lucy API application package."""

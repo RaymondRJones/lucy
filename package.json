@@ -15,13 +15,15 @@
     "generate:g1450": "./.venv313/bin/python -m app.cli.generate_g1450",
     "generate:i485": "./.venv313/bin/python -m app.cli.generate_i485",
     "seed:i485-sample": "./.venv313/bin/python -m app.cli.seed_i485_sample",
+    "check:uscis": "./.venv313/bin/python -m app.cli.check_uscis_updates",
     "test:api": "./.venv313/bin/pytest apps/api/tests",
-    "test:postman": "newman run test-postman-collection.json --working-dir .",
+    "lint:api": "./.venv313/bin/ruff check apps/api",
+    "test:postman": "npx --yes newman@6 run test-postman-collection.json --working-dir .",
     "build:web": "npm run build --workspace web",
     "lint:web": "npm run lint --workspace web",
     "typecheck:web": "npm run typecheck --workspace web"
   },
-  "devDependencies": {
-    "newman": "^6.2.2"
+  "overrides": {
+    "postcss": "^8.5.32"
   }
 }

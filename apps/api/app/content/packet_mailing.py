@@ -1,18 +1,42 @@
+"""USCIS lockbox mailing guidance for packets."""
+
 from __future__ import annotations
 
 from typing import Any
 
-
-PACKET_MAILING_VERIFIED_ON = "2026-04-30"
+PACKET_MAILING_VERIFIED_ON = "2026-11-01"
 PACKET_MAILING_SOURCE_LAST_REVIEWED = "2024-10-11"
 PACKET_MAILING_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
     "uscis-lockbox-filing-locations-chart-for-certain-family-based-forms"
 )
+I130_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-130-addresses"
+I765_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-765-addresses"
+I131_FILING_ADDRESS_SOURCE_URL = "https://www.uscis.gov/i-131-addresses"
 I485_FILING_ADDRESS_SOURCE_URL = (
     "https://www.uscis.gov/forms/all-forms/"
     "direct-filing-addresses-for-form-i-485-application-to-register-permanent-residence-or-adjust-status"
 )
+# Checked 2026-11-01 at PACKET_MAILING_SOURCE_URL, I485_FILING_ADDRESS_SOURCE_URL, and
+# https://www.uscis.gov/uscis-lockbox-filing-locations-chart. The stored table has matched the family-based chart since
+# 2026-04-30 and USCIS's updates list has no family-chart entry since Sept. 2024, but the I-485 alert does not exclude
+# family-based filings, and https://www.uscis.gov/i-130 names only Chicago and Phoenix for U.S. residents while the chart
+# also routes to Dallas and Elgin. Remove this once USCIS settles the question.
+LOCKBOX_ADDRESS_CAVEAT = (
+    "USCIS changed the filing locations for Forms I-130 and I-485 on Oct. 7, 2026, without saying whether family-based "
+    "filings moved. Its notice appears on the non-family-based chart but not on the family-based chart used here, which "
+    "still shows a last review of Oct. 11, 2024. Confirm this address on the live USCIS pages or with the USCIS Contact "
+    "Center before mailing."
+)
+
+# "Last Reviewed/Updated" on each address page, verified 2026-10-30. A change means addresses need rechecking.
+ADDRESS_SOURCES_LAST_REVIEWED = {
+    PACKET_MAILING_SOURCE_URL: PACKET_MAILING_SOURCE_LAST_REVIEWED,
+    I130_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I765_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I131_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+    I485_FILING_ADDRESS_SOURCE_URL: "2026-10-07",
+}
 
 LOCATION_LABELS = {
     "AL": "Alabama",
@@ -245,12 +269,19 @@ def mailing_recommendation_for_location(value: str | None, carrier: str = "usps"
         "usps_address_lines": lockbox["usps_address_lines"],
         "private_carrier_address_lines": lockbox["private_carrier_address_lines"],
         "source_url": PACKET_MAILING_SOURCE_URL,
-        "related_source_urls": [I485_FILING_ADDRESS_SOURCE_URL],
+        "related_source_urls": [
+            I485_FILING_ADDRESS_SOURCE_URL,
+            I130_FILING_ADDRESS_SOURCE_URL,
+            I765_FILING_ADDRESS_SOURCE_URL,
+            I131_FILING_ADDRESS_SOURCE_URL,
+        ],
         "source_last_reviewed": PACKET_MAILING_SOURCE_LAST_REVIEWED,
         "verified_on": PACKET_MAILING_VERIFIED_ON,
         "note": (
             "For family-based Forms I-130, I-131, I-485, I-765, I-824, or I-864, "
             "USCIS routes the packet by where the filer lives and the delivery method. "
-            "Verify the live USCIS page again before mailing."
+            "The USCIS address pages for Forms I-130, I-485, I-765, and I-131 send these family-based filings to this "
+            "lockbox chart, checked 2026-11-01. The separate addresses USCIS lists for Form I-130 filed alone do not "
+            f"apply to this packet. {LOCKBOX_ADDRESS_CAVEAT}"
         ),
     }

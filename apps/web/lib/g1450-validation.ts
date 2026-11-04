@@ -38,6 +38,26 @@ export function getG1450PaymentFieldIssues(form: G1450CardValidationPayload) {
   ].filter((value): value is string => Boolean(value));
 }
 
+export function getG1650PaymentFieldIssues(form: {
+  account_ownership: string;
+  account_holder_name: string;
+  business_name: string;
+  bank_name: string;
+  routing_number: string;
+  account_number: string;
+}) {
+  const routingDigits = form.routing_number.replace(/\D/g, "");
+  const accountDigits = form.account_number.replace(/\D/g, "");
+  return [
+    form.account_ownership === "business"
+      ? fieldIssue("business name", form.business_name, 1)
+      : fieldIssue("account holder name", form.account_holder_name, 1),
+    fieldIssue("bank name", form.bank_name, 1),
+    routingDigits.length !== 9 ? "routing number (9 digits)" : null,
+    accountDigits.length < 4 ? "account number (4+ digits)" : null,
+  ].filter((value): value is string => Boolean(value));
+}
+
 export function formatFieldList(values: string[]) {
   if (values.length <= 1) {
     return values.join("");

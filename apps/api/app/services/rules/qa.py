@@ -1,3 +1,5 @@
+"""Rules that produce QA issues."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +12,6 @@ from sqlmodel import Session
 from app.content.uscis_requirements import USCIS_REQUIREMENT_BY_CHECKLIST_CODE
 from app.models.entities import CaseChecklistItem, ChecklistProgressStatus, QAIssue, UploadedDocument
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 REFERENCE_REVIEW_CODES = {"review_current_fees", "review_form_editions"}
 
@@ -27,6 +28,7 @@ class QARuleDependencies:
     intake_to_document_issues: Callable[[UUID, dict[str, Any], list[UploadedDocument]], list[QAIssue]]
     intake_address_history_issues: Callable[[UUID, dict[str, Any], list[UploadedDocument]], list[QAIssue]]
     i485_ingestion_issues: Callable[[Session, UUID], list[QAIssue]]
+    prescreen_critical_issues: Callable[[Session, UUID], list[QAIssue]]
 
 
 @dataclass
@@ -191,6 +193,16 @@ class I485IngestionFlagRule:
         )
 
 
+class PrescreenCriticalFlagRule:
+    rule_id = "qa:prescreen_critical_flags"
+
+    def evaluate(self, context: QARuleContext) -> RuleResult[list[QAIssue]]:
+        return RuleResult(
+            self.rule_id,
+            context.dependencies.prescreen_critical_issues(context.session, context.case_id),
+        )
+
+
 class PerUploadQualityRule:
     rule_id = "qa:per_upload_quality"
 
@@ -288,6 +300,7 @@ class QARuleEngine:
                 IntakeDocumentConsistencyRule(),
                 IntakeAddressHistoryRule(),
                 I485IngestionFlagRule(),
+                PrescreenCriticalFlagRule(),
                 PerUploadQualityRule(),
             ]
         )

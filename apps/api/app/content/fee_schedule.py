@@ -1,9 +1,15 @@
+"""USCIS fee schedule used for payment forms."""
+
 from __future__ import annotations
 
-FEE_SCHEDULE_VERIFIED_ON = "2026-04-28"
-FEE_SCHEDULE_EDITION = "04/23/26"
+FEE_SCHEDULE_VERIFIED_ON = "2026-10-30"
+# Current editions listed at https://www.uscis.gov/g-1450 and https://www.uscis.gov/g-1650, verified 2026-10-30.
+G1450_FORM_EDITION = "02/06/26"
+G1650_FORM_EDITION = "06/03/25"
+FEE_SCHEDULE_EDITION = "10/26/26"
 FEE_SCHEDULE_SOURCE_URL = "https://www.uscis.gov/sites/default/files/document/forms/g-1055.pdf"
 FILING_FEES_SOURCE_URL = "https://www.uscis.gov/forms/filing-fees"
+FILING_FEES_SOURCE_LAST_REVIEWED = "2026-02-12"
 
 G1450_FORM_FEES = {
     "form_i130": {
@@ -81,6 +87,8 @@ G1450_FORM_FEES = {
 }
 
 G1450_PAYMENT_NOTE = (
-    "USCIS filing-fee guidance says to pay each filing fee separately when submitting multiple forms. "
-    "This generator creates separate G-1450 PDFs for payable forms."
+    "USCIS says mailed forms are paid by card with Form G-1450 or by U.S. bank account with Form G-1650; "
+    "paper payment requires a Form G-1651 exemption. USCIS recommends paying each filing fee separately, "
+    "so Lucy creates a separate payment PDF for each payable form. Sources verified 2026-10-30: "
+    "https://www.uscis.gov/g-1650 and https://www.uscis.gov/forms/filing-guidance/tips-for-filing-forms-by-mail."
 )

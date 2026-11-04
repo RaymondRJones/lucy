@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
 from pypdf import PdfReader
+import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.content.supplemental_forms import (
@@ -160,7 +160,7 @@ def sample_i864_answers() -> dict[str, object]:
         "i864_physical_same_as_mailing": True,
         "petitioner_country_of_domicile": "United States",
         "petitioner_date_of_birth": "1996-09-04",
-        "petitioner_city_of_birth": "San Jose",
+        "petitioner_country_of_birth": "United States",
         "petitioner_social_security_number": "000000000",
         "petitioner_citizenship_status": "us_citizen",
         "spouse_us_military": False,
@@ -211,6 +211,14 @@ def sample_i864_answers() -> dict[str, object]:
 def sample_i130_answers() -> dict[str, object]:
     return {
         "relationship_spouse": True,
+        "petitioner_ethnicity": "not_hispanic_or_latino",
+        "petitioner_race": ["white", "asian"],
+        "petitioner_height_feet": 5,
+        "petitioner_height_inches": 10,
+        "petitioner_weight_pounds": 170,
+        "petitioner_eye_color": "brown",
+        "petitioner_hair_color": "black",
+        "petitioner_filed_prior_petition": False,
         "first_marriage_for_both": True,
         "petitioner_a_number": "ANUMBER_SAMPLE_1",
         "petitioner_uscis_online_account_number": "123456789012",
@@ -362,12 +370,24 @@ def sample_i130a_answers() -> dict[str, object]:
         "beneficiary_last_name": "Sample",
         "beneficiary_first_name": "Avery",
         "beneficiary_middle_name": "Maria",
-        "beneficiary_date_of_birth": "1998-06-14",
-        "beneficiary_sex": "female",
-        "beneficiary_city_of_birth": "Bogota",
-        "beneficiary_country_of_birth": "Colombia",
-        "beneficiary_country_of_citizenship": "Colombia",
-        "beneficiary_country_of_residence": "United States",
+        "parent1_last_name": "Sample",
+        "parent1_first_name": "Rosa",
+        "parent1_middle_name": "Elena",
+        "parent1_date_of_birth": "1972-03-03",
+        "parent1_sex": "female",
+        "parent1_city_of_birth": "Bogota",
+        "parent1_country_of_birth": "Colombia",
+        "parent1_city_of_residence": "Medellin",
+        "parent1_country_of_residence": "Colombia",
+        "parent2_last_name": "Sample",
+        "parent2_first_name": "Carlos",
+        "parent2_middle_name": "Luis",
+        "parent2_date_of_birth": "1970-11-20",
+        "parent2_sex": "male",
+        "parent2_city_of_birth": "Cali",
+        "parent2_country_of_birth": "Colombia",
+        "parent2_city_of_residence": "Cartagena",
+        "parent2_country_of_residence": "Colombia",
         "beneficiary_current_address_line1": "123 Sample Street",
         "beneficiary_current_address_line2": "Apt 4B",
         "beneficiary_current_city": "Oakland",
@@ -908,11 +928,9 @@ def test_supplemental_import_from_case_data_prefills_i130a_spouse_fields():
             "beneficiary_last_name": "Sample",
             "beneficiary_middle_name": "Maria",
             "relationship_spouse": True,
-            "beneficiary_date_of_birth": "1998-06-14",
-            "beneficiary_sex": "female",
-            "beneficiary_city_of_birth": "Bogota",
-            "beneficiary_country_of_birth": "Colombia",
-            "beneficiary_country_of_citizenship": "Colombia",
+            "parent1_first_name": "Rosa",
+            "parent1_date_of_birth": "1972-03-03",
+            "parent2_country_of_birth": "Colombia",
             "beneficiary_location": "usa",
             "beneficiary_current_address": {
                 "line1": "123 Sample Street",
@@ -946,10 +964,9 @@ def test_supplemental_import_from_case_data_prefills_i130a_spouse_fields():
 
     answers = result["state"]["answers"]
     assert answers["beneficiary_first_name"] == "Avery"
-    assert answers["beneficiary_sex"] == "female"
-    assert answers["beneficiary_city_of_birth"] == "Bogota"
-    assert answers["beneficiary_country_of_citizenship"] == "Colombia"
-    assert answers["beneficiary_country_of_residence"] == "United States"
+    assert answers["parent1_first_name"] == "Rosa"
+    assert answers["parent1_date_of_birth"] == "1972-03-03"
+    assert answers["parent2_country_of_birth"] == "Colombia"
     assert answers["beneficiary_current_address_line1"] == "123 Sample Street"
     assert answers["beneficiary_current_address_line2"] == "Apt 4B"
     assert answers["beneficiary_current_city"] == "Oakland"
@@ -1106,9 +1123,9 @@ def test_supplemental_pdf_payload_maps_known_answers():
     assert i130_payload.checkbox_values["Pt4Line28_No[0]"] == "/Y"
     assert i130_payload.text_values["Pt2Line10_AptSteFlrNumber[0]"] == "9"
     assert i130a_payload.text_values["Pt1Line3b_GivenName[0]"] == "Avery"
-    assert i130a_payload.text_values["Pt1Line11_DateofBirth[0]"] == "06/14/1998"
+    assert i130a_payload.text_values["Pt1Line11_DateofBirth[0]"] == "03/03/1972"
     assert i130a_payload.text_values["Pt1Line12CityTownOfBirth[0]"] == "Bogota"
-    assert i130a_payload.text_values["Pt1Line15_CountryofResidence[0]"] == "United States"
+    assert i130a_payload.text_values["Pt1Line15_CountryofResidence[0]"] == "Colombia"
     assert i130a_payload.text_values["Pt2Line1_EmployerOrCompName[0]"] == "Laney College"
     assert i130a_payload.checkbox_values["Pt1Line12_Female[0]"] == "/Y"
 

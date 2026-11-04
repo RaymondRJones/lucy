@@ -1,3 +1,5 @@
+"""Saves, evaluates, and imports Form I-485 answers."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,11 +13,10 @@ from sqlmodel import Session, select
 from app.content.admission_classes import normalize_class_of_admission
 from app.content.i485_questionnaire import I485_QUESTIONNAIRE, I485_QUESTIONNAIRE_VERSION, all_i485_questions
 from app.core.config import settings
-from app.models.entities import IntakeResponse, OCRStatus, UploadedDocument
-from app.services.case_facts import enrich_case_fact_aliases
+from app.models.entities import IntakeResponse, OCRStatus, UploadedDocument, utcnow
+from app.services.case_facts import enrich_case_fact_aliases, value_is_answered
 from app.services.intake import apply_case_projection, get_merged_case_intake, upsert_intake_step
 from app.services.rules.questionnaire import QuestionnaireEvaluationConfig, QuestionnaireRuleEngine
-
 
 I485_STEP_PREFIX = "i485_ingestion:"
 I485_PROJECTION_STEP = "i485_projection"
@@ -106,15 +107,13 @@ I485_EXTRACTED_FIELD_TO_QUESTION_ID = {
 LOW_CONFIDENCE_THRESHOLD = 0.85
 
 
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
 def i485_step_key(page_id: str) -> str:
+    """Returns the intake step key for an I-485 page."""
     return f"{I485_STEP_PREFIX}{page_id}"
 
 
 def get_i485_steps(session: Session, case_id: UUID) -> list[IntakeResponse]:
+    """Returns a case's saved I-485 pages, oldest first."""
     return list(
         session.exec(
             select(IntakeResponse)
@@ -131,6 +130,7 @@ def _datetime_sort_key(value: datetime) -> float:
 
 
 def merge_i485_answers(steps: list[IntakeResponse]) -> dict[str, Any]:
+    """Returns answers from saved pages, with later saves winning."""
     answers: dict[str, Any] = {}
     for step in sorted(steps, key=lambda item: _datetime_sort_key(item.updated_at)):
         payload_answers = step.payload.get("answers", {})
@@ -151,6 +151,7 @@ def _normalize_i485_answer(question_id: str, value: Any) -> Any:
 
 
 def merge_i485_answer_sources(steps: list[IntakeResponse]) -> dict[str, Any]:
+    """Returns where each answer came from, with later saves winning."""
     answer_sources: dict[str, Any] = {}
     for step in sorted(steps, key=lambda item: _datetime_sort_key(item.updated_at)):
         payload_sources = step.payload.get("answer_sources", {})
@@ -160,6 +161,7 @@ def merge_i485_answer_sources(steps: list[IntakeResponse]) -> dict[str, Any]:
 
 
 def merge_i485_manual_flags(steps: list[IntakeResponse]) -> dict[str, Any]:
+    """Returns the manual review flags from saved pages."""
     manual_flags: dict[str, Any] = {}
     for step in sorted(steps, key=lambda item: _datetime_sort_key(item.updated_at)):
         payload_flags = step.payload.get("manual_flags", {})
@@ -175,6 +177,7 @@ def save_i485_page_answers(
     answers: dict[str, Any],
     manual_flags: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Saves one I-485 page and updates the case facts it projects to."""
     page_by_id = {page["id"]: page for page in I485_QUESTIONNAIRE}
     page_ids = set(page_by_id)
     if page_id not in page_ids:
@@ -193,7 +196,7 @@ def save_i485_page_answers(
         **{
             question_id: {
                 "source_type": "user",
-                "updated_at": _utcnow().isoformat(),
+                "updated_at": utcnow().isoformat(),
             }
             for question_id, value in answers.items()
             if value not in (None, "", [], {})
@@ -213,7 +216,7 @@ def save_i485_page_answers(
     }
     if step:
         step.payload = payload
-        step.updated_at = _utcnow()
+        step.updated_at = utcnow()
     else:
         session.add(IntakeResponse(case_id=case_id, step_key=step_key, payload=payload))
     session.flush()
@@ -226,6 +229,7 @@ def save_i485_page_answers(
 
 
 def build_i485_intake_projection(answers: dict[str, Any]) -> dict[str, Any]:
+    """Returns the case facts implied by I-485 answers."""
     projection: dict[str, Any] = {}
     for question_id, value in answers.items():
         question = QUESTION_BY_ID.get(question_id)
@@ -253,14 +257,6 @@ def build_i485_intake_projection(answers: dict[str, Any]) -> dict[str, Any]:
     return enrich_case_fact_aliases(projection)
 
 
-def _value_is_answered(value: Any) -> bool:
-    if isinstance(value, list):
-        return any(_value_is_answered(entry) for entry in value)
-    if isinstance(value, dict):
-        return any(_value_is_answered(entry_value) for entry_value in value.values())
-    return value not in (None, "", [], {})
-
-
 US_COUNTRY_NAMES = {
     "united states",
     "united states of america",
@@ -283,6 +279,13 @@ def _is_non_us_address(value: Any) -> bool:
     return bool(country and country not in US_COUNTRY_NAMES)
 
 
+def _count_above(value: Any, minimum: int) -> bool:
+    try:
+        return int(value) > minimum
+    except (TypeError, ValueError):
+        return False
+
+
 def _conditional_required_question_ids(answers: dict[str, Any]) -> set[str]:
     required_ids: set[str] = set()
     if answers.get("beneficiary_mailing_same_as_physical") is False:
@@ -291,12 +294,37 @@ def _conditional_required_question_ids(answers: dict[str, Any]) -> set[str]:
         required_ids.add("beneficiary_ssn")
     prior_addresses = answers.get("beneficiary_prior_address_history")
     first_prior = prior_addresses[0] if isinstance(prior_addresses, list) and prior_addresses else None
-    if isinstance(first_prior, dict) and _value_is_answered(first_prior) and not _is_non_us_address(first_prior):
+    if isinstance(first_prior, dict) and value_is_answered(first_prior) and not _is_non_us_address(first_prior):
         required_ids.add("beneficiary_recent_foreign_address")
+    if answers.get("received_means_tested_public_benefit") is True:
+        required_ids.add("means_tested_benefit_history")
+    # The form's "if you answered Yes to Item N" follow-ups, and the details a Yes or count points to.
+    for question_id, follow_up in (
+        ("controlled_substance_family_benefit", "controlled_substance_family_benefit_knowledge"),
+        ("served_as_foreign_government_official", "religious_freedom_violations"),
+        ("trafficking_family_benefit", "trafficking_family_benefit_knowledge"),
+        ("j_exchange_two_year_rule", "j_foreign_residence_complied"),
+        ("unlawful_presence_after_1997", "unlawful_presence_due_to_trafficking"),
+        ("evaded_wartime_service", "status_before_evading_service"),
+        ("beneficiary_used_other_dob", "beneficiary_other_dates_of_birth"),
+        ("beneficiary_has_other_a_numbers", "beneficiary_other_a_numbers"),
+        ("organizations_membership", "organizations_details"),
+    ):
+        if answers.get(question_id) is True:
+            required_ids.add(follow_up)
+    if answers.get("j_exchange_two_year_rule") is True and answers.get("j_foreign_residence_complied") is False:
+        required_ids.add("j_waiver_granted")
+    if answers.get("highest_education") == "less_than_high_school":
+        required_ids.add("highest_grade_completed")
+    if _count_above(answers.get("children_count"), 0):
+        required_ids.add("children_details")
+    if _count_above(answers.get("beneficiary_marriage_count"), 1):
+        required_ids.add("beneficiary_prior_marriages")
     return required_ids
 
 
 def conditional_required_i485_question_ids(answers: dict[str, Any]) -> set[str]:
+    """Returns the questions that earlier answers make required."""
     return _conditional_required_question_ids(answers)
 
 
@@ -304,23 +332,23 @@ def _risk_matches(value: Any, risk_when: Any) -> bool:
     if risk_when is None:
         return False
     if risk_when == "present":
-        return _value_is_answered(value)
+        return value_is_answered(value)
     if risk_when == "not_1":
         try:
             return int(value) != 1
         except (TypeError, ValueError):
-            return _value_is_answered(value)
+            return value_is_answered(value)
     if risk_when == "greater_than_0":
         try:
             return int(value) > 0
         except (TypeError, ValueError):
             return False
     if risk_when == "not_married":
-        return _value_is_answered(value) and value != "married"
+        return value_is_answered(value) and value != "married"
     if risk_when == "not_us_citizen":
-        return _value_is_answered(value) and value != "us_citizen"
+        return value_is_answered(value) and value != "us_citizen"
     if risk_when == "other":
-        return _value_is_answered(value) and value not in {
+        return value_is_answered(value) and value not in {
             "spouse_us_citizen",
             "not_requesting_exemption",
             "not_exempt_complete_questions",
@@ -329,6 +357,7 @@ def _risk_matches(value: Any, risk_when: Any) -> bool:
 
 
 def evaluate_i485_answers(answers: dict[str, Any]) -> dict[str, Any]:
+    """Returns the I-485's completeness status and review flags."""
     config = QuestionnaireEvaluationConfig(
         form_key="i485",
         ready_readiness="ready_for_standard_i485_review",
@@ -336,7 +365,7 @@ def evaluate_i485_answers(answers: dict[str, Any]) -> dict[str, Any]:
         pages=I485_QUESTIONNAIRE,
         blocking_risk_codes=BLOCKING_RISK_CODES,
         outside_niche_risk_codes=OUTSIDE_NICHE_RISK_CODES,
-        value_is_answered=_value_is_answered,
+        value_is_answered=value_is_answered,
         risk_matches=_risk_matches,
         risk_title=lambda question: "Answer needs review before using the standard I-485 flow",
         risk_description=lambda question: (
@@ -349,6 +378,7 @@ def evaluate_i485_answers(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_i485_state(session: Session, case_id: UUID) -> dict[str, Any]:
+    """Returns the I-485's answers, sources, flags, and evaluation."""
     steps = get_i485_steps(session, case_id)
     answers = merge_i485_answers(steps)
     return {
@@ -386,6 +416,7 @@ def _proposal(
 
 
 def build_i485_answer_proposals_from_upload(upload: UploadedDocument) -> list[dict[str, Any]]:
+    """Returns answers extracted from an uploaded I-485."""
     fields = upload.extracted_fields or {}
     confidence = upload.extraction_confidence or 0.0
     proposals: list[dict[str, Any]] = []
@@ -429,7 +460,7 @@ def build_i485_answer_proposals_from_upload(upload: UploadedDocument) -> list[di
 
 
 def _case_data_proposal(question_id: str, value: Any, source_field: str) -> dict[str, Any] | None:
-    if question_id not in QUESTION_BY_ID or not _value_is_answered(value):
+    if question_id not in QUESTION_BY_ID or not value_is_answered(value):
         return None
     question = QUESTION_BY_ID[question_id]
     return {
@@ -444,6 +475,7 @@ def _case_data_proposal(question_id: str, value: Any, source_field: str) -> dict
 
 
 def build_i485_answer_proposals_from_case_data(merged: dict[str, Any]) -> list[dict[str, Any]]:
+    """Returns answers the I-485 can prefill from case facts."""
     merged = enrich_case_fact_aliases(merged)
     proposals: list[dict[str, Any]] = []
 
@@ -526,7 +558,7 @@ def _refresh_upload_extraction_if_needed(upload: UploadedDocument) -> None:
     upload.document_language = inferred.document_language
     upload.requires_translation = inferred.requires_translation
     upload.has_translation = inferred.has_translation
-    upload.updated_at = _utcnow()
+    upload.updated_at = utcnow()
 
 
 def _store_i485_imported_answers(
@@ -545,7 +577,7 @@ def _store_i485_imported_answers(
     page_sources: dict[str, dict[str, Any]] = {}
     for proposal in proposals:
         question_id = proposal["question_id"]
-        if not overwrite and _value_is_answered(answers.get(question_id)):
+        if not overwrite and value_is_answered(answers.get(question_id)):
             skipped_question_ids.add(question_id)
             continue
         answers[question_id] = proposal["value"]
@@ -580,7 +612,7 @@ def _store_i485_imported_answers(
         }
         if step:
             step.payload = payload
-            step.updated_at = _utcnow()
+            step.updated_at = utcnow()
         else:
             session.add(IntakeResponse(case_id=case_id, step_key=step_key, payload=payload))
     session.flush()
@@ -599,6 +631,7 @@ def import_i485_answers_from_upload(
     upload_id: UUID | None = None,
     overwrite: bool = False,
 ) -> dict[str, Any]:
+    """Imports answers extracted from an uploaded I-485."""
     upload = _latest_i485_upload(session, case_id, upload_id)
     _refresh_upload_extraction_if_needed(upload)
     session.add(upload)
@@ -615,7 +648,7 @@ def import_i485_answers_from_upload(
             "filename": proposal["source_filename"],
             "source_field": proposal["source_field"],
             "confidence": proposal["confidence"],
-            "updated_at": _utcnow().isoformat(),
+            "updated_at": utcnow().isoformat(),
         },
         overwrite,
     )
@@ -634,6 +667,7 @@ def import_i485_answers_from_case_data(
     case_id: UUID,
     overwrite: bool = False,
 ) -> dict[str, Any]:
+    """Fills the I-485 from case facts."""
     proposals = build_i485_answer_proposals_from_case_data(get_merged_case_intake(session, case_id))
     state, imported_question_ids, skipped_question_ids = _store_i485_imported_answers(
         session,
@@ -643,7 +677,7 @@ def import_i485_answers_from_case_data(
             "source_type": "case_intake",
             "source_field": proposal["source_field"],
             "confidence": proposal["confidence"],
-            "updated_at": _utcnow().isoformat(),
+            "updated_at": utcnow().isoformat(),
         },
         overwrite,
     )
@@ -656,6 +690,7 @@ def import_i485_answers_from_case_data(
 
 
 def build_i485_form_fill_preview(session: Session, case_id: UUID) -> dict[str, Any]:
+    """Returns what is missing or needs review before the I-485 can be generated."""
     state = get_i485_state(session, case_id)
     answers = state["answers"]
     answer_sources = state["answer_sources"]
@@ -669,7 +704,7 @@ def build_i485_form_fill_preview(session: Session, case_id: UUID) -> dict[str, A
         for question in page["questions"]:
             question_id = question["id"]
             value = answers.get(question_id)
-            if not _value_is_answered(value):
+            if not value_is_answered(value):
                 if question.get("required") or question_id in conditional_required_ids:
                     missing_required.append(
                         {

@@ -45,7 +45,7 @@
 
 - `GET /content/i485-questionnaire`
   - return the source-backed, versioned 14-page I-485 question map, including PDF references, DB mapping metadata,
-    and plain-language help fields backed by official USCIS Form I-485 source metadata verified on `2026-05-05`
+    and plain-language help fields backed by official USCIS Form I-485 source metadata verified on `2026-10-30`
 - `GET /cases/{case_id}/i485-ingestion`
   - return saved I-485 page answers, completion summaries, mapped fields, and risk/outside-niche flags
 - `POST /cases/{case_id}/i485-ingestion/page`
@@ -82,6 +82,7 @@
 
 - `POST /cases/{case_id}/packet-assembly/generate`
   - generate available form review-draft PDFs, merge them with confirmed uploaded PDFs, write `storage/generated/{case_id}-full-packet.pdf`, and save `storage/generated/{case_id}-full-packet-manifest.json`
+  - form fields are flattened into the packet's pages so answers and barcodes print in every PDF viewer, which makes the packet non-editable; generate standalone form PDFs for editing
   - request body:
     - `state_code`: optional U.S. state or territory code used for family-based USCIS lockbox routing
     - `carrier`: `usps` or `private`; private maps to FedEx/UPS/DHL delivery addresses
@@ -90,10 +91,12 @@
     - `include_generated_forms`: defaults to `true`
     - `allow_incomplete`: defaults to `true` so draft form PDFs can be generated for review
     - `g1450_payment`: optional one-request card payload for generating I-485 packet payment PDFs during assembly; card details are not saved
+    - `g1650_payment`: optional one-request bank payload that generates Form G-1650 payment PDFs instead; a request with both `g1450_payment` and `g1650_payment` is rejected
     - `g1450_selected_checklist_codes`: optional payment checklist-code allowlist for the I-485 packet payment set
   - generated packet PDFs follow scanner-friendly USCIS mail guidance: I-485-centered payment PDFs appear first when available or generated, then the generated cover letter/table of contents, then G-1145, the I-485 section, the I-864 section, the I-693 medical section, I-765 when applicable, and I-131 when applicable; I-130 and I-130A can now be prepared as review-draft PDFs through form ingestion, but this packet compiler remains I-485-centered and does not yet merge those petition drafts into the assembly output
   - generated packets add plain letter-size section index pages for major form/evidence segments such as I-485, I-864, I-765, and I-131, rather than relying on physical tabs, binders, folders, sticky notes, or other scanner-hostile separators
-  - payment PDF inclusion is limited to the I-485 packet payment set (`form_i485`, `form_i765`, and `form_i131` when applicable/payable); G-1450 payment PDFs are generated only when fresh card details are included in the packet assembly request, and a confirmed uploaded `payment_g1450` PDF is accepted as the Payment section when the user brings their own signed Form G-1450; stale previously generated payment PDFs are not auto-merged
+  - when `i130_filing_status` is `not_filed`, the packet also includes an I-130 section and the `form_i130` payment
+  - payment PDF inclusion is limited to the I-485 packet payment set (`form_i485`, `form_i765`, and `form_i131` when applicable/payable, plus `form_i130` for a concurrent filing); G-1450 payment PDFs are generated only when fresh card details are included in the packet assembly request, and a confirmed uploaded `payment_g1450` PDF is accepted as the Payment section when the user brings their own signed Form G-1450; stale previously generated payment PDFs are not auto-merged
   - uploaded files are merged only when they are confirmed, part of the I-485 packet document order from `i-485-complete-package-req.md`, stored as PDFs, and readable by `pypdf` or the local PDF normalization fallback; when generated forms are included, uploaded copies of generated forms such as I-485/I-864/I-765/I-131/G-1145 are skipped to avoid duplicate forms; shared identity/I-94/photo uploads are included once in the packet rather than repeated under I-765/I-131; unreadable, non-PDF, incomplete, unmapped, and I-130/I-130A petition uploads are returned in `skipped_documents`
   - response includes the PDF download URL, manifest JSON download URL, total page count, included/skipped document lists, warnings, and a mailing recommendation when `state_code` matches the USCIS family-based lockbox chart
   - manifest JSON includes generated date, selected location/carrier, total pages, included/skipped document metadata, warnings, mailing recommendation, USCIS lockbox source last-reviewed date, scanner-friendly printing guidance, app verification date, and USCIS mail-assembly guidance sources verified on `2026-05-09`
@@ -157,6 +160,12 @@
 - `GET /cases/{case_id}/g1450/payment-options`
   - return applicable checklist-backed Form G-1450 payment options, including paper-fee amount, source URL,
     source edition, verification date, whether the fee is payable, and whether the local G-1450 template exists
+- `POST /cases/{case_id}/g1650/generate`
+  - generate one local Form G-1650 PDF for each selected applicable payable checklist form using one-request bank
+    details (`account_ownership`, `account_type`, `account_holder_name`, `business_name`, `bank_name`, `routing_number`,
+    `account_number`). Amounts are whole dollars because the form preprints `.00`, the signature stays blank, and
+    invalid routing numbers return 400. Bank details are not stored in case records or audit logs, but they are printed
+    on the generated PDFs in `storage/generated/`. Source verified 2026-10-30: https://www.uscis.gov/g-1650
 - `POST /cases/{case_id}/g1450/generate`
   - generate one local Form G-1450 PDF for each selected applicable payable checklist form using a one-request
     credit-card payload rather than a saved JSON file

@@ -4,19 +4,27 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import pytest
+from pdf_form_assertions import assert_pdf_field_values, template_field_names
 from pypdf import PdfReader
+import pytest
+from test_supplemental_forms import (
+    sample_i130_answers,
+    sample_i130a_answers,
+    sample_i131_answers,
+    sample_i765_answers,
+    sample_i864_answers,
+)
 
 from app.content.i485_sample import build_sample_i485_answers
 from app.services.family_pdf import (
     G1145_TEXT_FIELD_MAP,
+    I130_CHECKBOX_FIELD_MAP,
+    I130_TEXT_FIELD_MAP,
+    I130_UNIT_FIELD_MAP,
     I130A_CHECKBOX_FIELD_MAP,
     I130A_PRIOR_ADDRESS_FIELD_MAP,
     I130A_TEXT_FIELD_MAP,
     I130A_UNIT_FIELD_MAP,
-    I130_CHECKBOX_FIELD_MAP,
-    I130_TEXT_FIELD_MAP,
-    I130_UNIT_FIELD_MAP,
     build_g1145_pdf_field_payload,
     generate_g1145_pdf,
 )
@@ -31,23 +39,20 @@ from app.services.form_pdf import (
 from app.services.g1450 import CARD_TYPE_APPEARANCES, generate_g1450_pdf_from_payload
 from app.services.i485_pdf import (
     AUTO_BOOLEAN_FIELD_MAP,
-    CHECKBOX_FIELD_MAP as I485_CHECKBOX_FIELD_MAP,
     MULTI_CHECKBOX_FIELD_MAP,
-    PART14_ADDITIONAL_INFO_DA,
-    TEXT_FIELD_MAP as I485_TEXT_FIELD_MAP,
     _template_button_choices,
     build_i485_pdf_field_payload,
     generate_i485_pdf_from_answers,
 )
-from pdf_form_assertions import assert_pdf_field_values, template_field_names
-from test_supplemental_forms import (
-    sample_i130_answers,
-    sample_i130a_answers,
-    sample_i131_answers,
-    sample_i765_answers,
-    sample_i864_answers,
+from app.services.i485_pdf import (
+    CHECKBOX_FIELD_MAP as I485_CHECKBOX_FIELD_MAP,
 )
-
+from app.services.i485_pdf import (
+    TEXT_FIELD_MAP as I485_TEXT_FIELD_MAP,
+)
+from app.services.pdf_fields import (
+    PART14_ADDITIONAL_INFO_DA,
+)
 
 TEMPLATE_DIR = Path("blank-immigration-documents")
 READY_PREVIEW = {
@@ -273,7 +278,7 @@ def test_i485_generation_normalizes_reported_foreign_address_and_visitor_status(
     assert payload.text_values["Pt1Line18_RecentCountry[0]"] == "Colombia"
     assert payload.text_values["Pt1Line18_RecentProvince[0]"] == "Caldas"
     assert payload.text_values["Pt1Line18_RecentNumber[0]"] == "1101"
-    assert payload.checkbox_values["Pt1Line18_RecentUnit[0]"] == "/APT"
+    assert payload.checkbox_values["Pt1Line18_RecentUnit[0]"] == "/ APT "
     assert "Pt1Line18_RecentState[0]" not in payload.text_values
     assert payload.text_values["P4Line7_City[0]"] == "Manizales"
     assert payload.text_values["P4Line7_Province[0]"] == "Caldas"
@@ -492,7 +497,7 @@ def test_g1450_generation_writes_all_payment_fields_and_checkboxes(tmp_path: Pat
             "CreditCardNumber_4[1]": "321",
             "ExpirationDate[0]": "08/2028",
             "SignatureOfApplicant[0]": "",
-            "AuthorizedPaymentAmt[0]": "1440.00",
+            "AuthorizedPaymentAmt[0]": "1440",
         },
         checkbox_values={
             "CreditCardTypeChBx[1]": "/MC",

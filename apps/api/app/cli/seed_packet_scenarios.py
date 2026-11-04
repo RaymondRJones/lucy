@@ -1,17 +1,19 @@
+"""Seeds sample cases that cover packet assembly scenarios."""
+
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+import json
 from typing import Any
 
 from pypdf import PdfReader
 from sqlmodel import Session, select
 
-from app.cli.seed_happy_path import _sample_answers, _seed_i485, _seed_supplemental_form
+from app.cli.seed_happy_path import PRESCREEN_ANSWERS, sample_answers, seed_i485, seed_supplemental_form
 from app.cli.seed_placeholder_pdf import packet_section_for_checklist_code, write_seed_placeholder_pdf
+from app.core.config import settings
 from app.db.session import create_db_and_tables, engine
 from app.models.entities import (
     CaseChecklistItem,
@@ -22,6 +24,7 @@ from app.models.entities import (
 from app.services.checklist import generate_checklist
 from app.services.intake import upsert_intake_step
 from app.services.packet_assembly import assemble_packet_pdf
+from app.services.prescreen import save_prescreen_answers
 from app.services.qa import run_qa
 
 
@@ -44,6 +47,7 @@ class PacketScenario:
     needs_translation: bool
     first_marriage_for_both: bool = True
     annual_income: int = 95000
+    i130_filing_status: str = "not_filed"
     extra_answers: dict[str, Any] = field(default_factory=dict)
 
 
@@ -128,11 +132,115 @@ SCENARIOS = [
         annual_income=86000,
         extra_answers={
             "beneficiary_marriage_count": 2,
-            "beneficiary_prior_marriages": "One prior marriage ended by final divorce decree in 2021.",
+            "beneficiary_prior_marriages": [
+                {
+                    "family_name": "Example",
+                    "given_name": "Former",
+                    "marriage_date": "2015-06-01",
+                    "end_date": "2021-03-15",
+                    "how_ended": "divorced",
+                }
+            ],
             "beneficiary_prior_marriage_termination_date": "2021-08-20",
             "i131_travel_purpose": "Short family visit for a parent's scheduled medical procedure.",
             "i131_countries_to_visit": "Mexico",
-            "i131_expected_trip_length": "10 days",
+            "i131_expected_trip_length": 10,
+        },
+    ),
+    PacketScenario(
+        slug="co-pending-i130",
+        case_name="Packet scenario - Colorado I-485 after I-130 already pending",
+        state_code="CO",
+        carrier="usps",
+        petitioner_first_name="Robin",
+        petitioner_last_name="Hayes",
+        beneficiary_first_name="Quinn",
+        beneficiary_last_name="Hayes",
+        beneficiary_country="Kenya",
+        city="Denver",
+        state="CO",
+        zip_code="80202",
+        wants_i765=True,
+        wants_i131=False,
+        needs_translation=False,
+        annual_income=79000,
+        i130_filing_status="pending",
+        extra_answers={"i130_receipt_number": "IOE0000000000", "i130_filing_date": "2026-03-02"},
+    ),
+    PacketScenario(
+        slug="wa-public-benefit-history",
+        case_name="Packet scenario - Washington means-tested benefit on 09/18/26 I-485",
+        state_code="WA",
+        carrier="usps",
+        petitioner_first_name="Morgan",
+        petitioner_last_name="Lee",
+        beneficiary_first_name="Dana",
+        beneficiary_last_name="Lee",
+        beneficiary_country="Philippines",
+        city="Seattle",
+        state="WA",
+        zip_code="98101",
+        wants_i765=True,
+        wants_i131=False,
+        needs_translation=False,
+        annual_income=64000,
+        extra_answers={
+            "public_charge_family_status": "Married; 2 people in household",
+            "certifications_licenses_skills": "Licensed practical nurse\nTagalog and English fluency",
+            "received_means_tested_public_benefit": True,
+            "means_tested_benefit_history": [
+                {
+                    "benefit_name": "Sample cash aid",
+                    "start_date": "2024-02-01",
+                    "end_date": "2024-07-31",
+                    "dollar_amount": "1800",
+                    "reason": "Job loss",
+                },
+                {
+                    "benefit_name": "Sample rental assistance program",
+                    "start_date": "2025-01-15",
+                    "end_date": "",
+                    "dollar_amount": "",
+                    "reason": "Income dropped during a long-term illness and treatment.",
+                },
+            ],
+        },
+    ),
+    PacketScenario(
+        slug="il-long-public-charge-answers",
+        case_name="Packet scenario - Illinois long public charge answers using Part 14",
+        state_code="IL",
+        carrier="private",
+        petitioner_first_name="Alex",
+        petitioner_last_name="Novak",
+        beneficiary_first_name="Jamie",
+        beneficiary_last_name="Novak",
+        beneficiary_country="Poland",
+        city="Chicago",
+        state="IL",
+        zip_code="60601",
+        wants_i765=False,
+        wants_i131=False,
+        needs_translation=True,
+        annual_income=58000,
+        extra_answers={
+            "household_size": 4,
+            "public_charge_family_status": (
+                "Married and living with my spouse, my spouse's two minor children from a prior relationship, "
+                "and no other relatives."
+            ),
+            "certifications_licenses_skills": "\n".join(f"Sample skill or license {index}" for index in range(1, 11)),
+            "received_means_tested_public_benefit": True,
+            "means_tested_benefit_history": [
+                {
+                    "benefit_name": f"Sample benefit program {index}",
+                    "start_date": f"202{index}-01-01",
+                    "end_date": f"202{index}-06-30",
+                    "dollar_amount": str(index * 100),
+                    "reason": "Income loss",
+                }
+                for index in range(1, 7)
+            ],
         },
     ),
 ]
@@ -144,20 +252,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--web-base-url", default="http://localhost:3000")
     parser.add_argument("--no-generate-packets", action="store_true")
+    parser.add_argument("--only", nargs="+", metavar="SLUG", help="Seed only these scenario slugs.")
     return parser
+
+
+BIRTH_CITY_BY_COUNTRY = {
+    "Canada": "Toronto",
+    "Colombia": "Bogota",
+    "Kenya": "Nairobi",
+    "Mexico": "Guadalajara",
+    "Philippines": "Manila",
+    "Poland": "Warsaw",
+    "United Kingdom": "London",
+}
 
 
 def _safe_email(name: str, slug: str) -> str:
     local = name.lower().replace(" ", ".")
-    return f"{local}.{slug.replace('-', '.')}@example.com"
+    # I-485, I-765, I-130, and I-130A email fields hold 38 characters.
+    return f"{local}.{slug.split('-')[0]}@example.com"
 
 
 def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
-    answers = _sample_answers()
+    answers = sample_answers()
     beneficiary_email = _safe_email(scenario.beneficiary_first_name, scenario.slug)
     petitioner_email = _safe_email(scenario.petitioner_first_name, scenario.slug)
+    birth_city = BIRTH_CITY_BY_COUNTRY[scenario.beneficiary_country]
     address = {
-        "line1": f"100 {scenario.case_name.split(' - ')[-1][:24]} Avenue",
+        "line1": f"100 {scenario.city} Avenue",
         "line2": "Apt 2",
         "city": scenario.city,
         "state": scenario.state,
@@ -187,6 +309,31 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
             "beneficiary_mobile_phone": "0000002000",
             "beneficiary_country_of_birth": scenario.beneficiary_country,
             "beneficiary_country_of_citizenship": scenario.beneficiary_country,
+            "beneficiary_passport_country": scenario.beneficiary_country,
+            "beneficiary_city_of_birth": birth_city,
+            "beneficiary_recent_foreign_address": {
+                **answers["beneficiary_recent_foreign_address"],
+                "city": birth_city,
+                "country": scenario.beneficiary_country,
+            },
+            "beneficiary_foreign_employer_or_school": [
+                {
+                    **answers["beneficiary_foreign_employer_or_school"][0],
+                    "city": birth_city,
+                    "country": scenario.beneficiary_country,
+                }
+            ],
+            "parent1_last_name": scenario.beneficiary_last_name,
+            "parent1_country_of_birth": scenario.beneficiary_country,
+            "parent1_city_of_birth": birth_city,
+            "parent1_city_of_residence": birth_city,
+            "parent1_country_of_residence": scenario.beneficiary_country,
+            "parent2_last_name": scenario.beneficiary_last_name,
+            "parent2_country_of_birth": scenario.beneficiary_country,
+            "parent2_city_of_birth": birth_city,
+            "parent2_city_of_residence": birth_city,
+            "parent2_country_of_residence": scenario.beneficiary_country,
+            "i131_countries_to_visit": scenario.beneficiary_country,
             "beneficiary_current_address_line1": address["line1"],
             "beneficiary_current_address_line2": address["line2"],
             "beneficiary_current_city": address["city"],
@@ -203,6 +350,28 @@ def _scenario_answers(scenario: PacketScenario) -> dict[str, Any]:
             "wants_i765": scenario.wants_i765,
             "wants_i131": scenario.wants_i131,
             "needs_translation": scenario.needs_translation,
+            "i130_filing_status": scenario.i130_filing_status,
+            "petitioner_physical_address_line1": address["line1"],
+            "petitioner_physical_address_line2": address["line2"],
+            "petitioner_physical_city": address["city"],
+            "petitioner_physical_state": address["state"],
+            "petitioner_physical_zip": address["zip"],
+            "beneficiary_intended_us_address_line1": address["line1"],
+            "beneficiary_intended_us_address_line2": address["line2"],
+            "beneficiary_intended_us_city": address["city"],
+            "beneficiary_intended_us_state": address["state"],
+            "beneficiary_intended_us_zip": address["zip"],
+            "beneficiary_last_shared_address_line1": address["line1"],
+            "beneficiary_last_shared_address_line2": address["line2"],
+            "beneficiary_last_shared_city": address["city"],
+            "beneficiary_last_shared_state": address["state"],
+            "beneficiary_last_shared_zip": address["zip"],
+            "beneficiary_adjustment_city": address["city"],
+            "beneficiary_adjustment_state": address["state"],
+            "petitioner_spouse1_last_name": scenario.beneficiary_last_name,
+            "petitioner_spouse1_first_name": scenario.beneficiary_first_name,
+            "beneficiary_spouse1_last_name": scenario.petitioner_last_name,
+            "beneficiary_spouse1_first_name": scenario.petitioner_first_name,
             "annual_income": scenario.annual_income,
             "i864_household_income": scenario.annual_income,
             "i864_tax_income_1": scenario.annual_income,
@@ -236,7 +405,7 @@ def _create_case(session: Session, scenario: PacketScenario, answers: dict[str, 
 
 
 def _seed_valid_uploads(session: Session, case: CaseRecord, scenario: PacketScenario) -> int:
-    upload_dir = Path("storage/uploads")
+    upload_dir = settings.upload_dir
     upload_dir.mkdir(parents=True, exist_ok=True)
     items = list(
         session.exec(
@@ -301,12 +470,16 @@ def _seed_scenario(session: Session, scenario: PacketScenario, generate_packets:
     answers = _scenario_answers(scenario)
     case = _create_case(session, scenario, answers)
     upsert_intake_step(session, case.id, f"packet_scenario:{scenario.slug}", answers)
-    _seed_i485(session, case, answers)
-    _seed_supplemental_form(session, case, "i864", answers)
+    save_prescreen_answers(session, case.id, PRESCREEN_ANSWERS)
+    seed_i485(session, case, answers)
+    seed_supplemental_form(session, case, "i864", answers)
     if scenario.wants_i765:
-        _seed_supplemental_form(session, case, "i765", answers)
+        seed_supplemental_form(session, case, "i765", answers)
     if scenario.wants_i131:
-        _seed_supplemental_form(session, case, "i131", answers)
+        seed_supplemental_form(session, case, "i131", answers)
+    if scenario.i130_filing_status == "not_filed":
+        seed_supplemental_form(session, case, "i130", answers)
+        seed_supplemental_form(session, case, "i130a", answers)
     session.commit()
 
     checklist_items, facts = generate_checklist(session, case.id)
@@ -371,9 +544,10 @@ def main() -> None:
     args = build_parser().parse_args()
     create_db_and_tables()
     generate_packets = not args.no_generate_packets
+    scenarios = [scenario for scenario in SCENARIOS if not args.only or scenario.slug in args.only]
 
     with Session(engine) as session:
-        results = [_seed_scenario(session, scenario, generate_packets) for scenario in SCENARIOS]
+        results = [_seed_scenario(session, scenario, generate_packets) for scenario in scenarios]
 
     base_url = args.web_base_url.rstrip("/")
     payload = {

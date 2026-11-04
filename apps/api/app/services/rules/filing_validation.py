@@ -1,3 +1,5 @@
+"""Rule engine that runs filing validators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +10,6 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 FormValidator = Callable[[Session, UUID, Path | None], dict[str, Any]]
 DefaultTemplateResolver = Callable[[str], Path | None]

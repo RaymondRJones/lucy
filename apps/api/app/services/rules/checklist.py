@@ -1,3 +1,5 @@
+"""Rules that select checklist items."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,7 +9,6 @@ from app.content.checklist_rules import CHECKLIST_TEMPLATES, ChecklistTemplate
 from app.content.uscis_requirements import FORM_CODES_BY_CHECKLIST_CODE, USCIS_REQUIREMENT_BY_CHECKLIST_CODE
 from app.models.entities import ChecklistProgressStatus
 from app.services.rules.core import RuleEngine, RuleResult
-
 
 PENDING_I130_STATUSES = {"pending", "filed"}
 PENDING_I130_I485_RELATIONSHIP_EVIDENCE_CODES = {

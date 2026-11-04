@@ -1,7 +1,8 @@
+"""Derives equivalent case fields and defines when a value counts as answered."""
+
 from __future__ import annotations
 
 from typing import Any
-
 
 LEGAL_ENTRY_TO_ARRIVAL_TYPE = {
     "visa_admitted": "admitted",
@@ -12,6 +13,18 @@ LEGAL_ENTRY_TO_ARRIVAL_TYPE = {
 
 
 def value_is_answered(value: Any) -> bool:
+    """Returns whether a value holds an answer.
+
+    This is the one definition of "answered" for the whole app. False and 0 are answers. None, blank
+    strings, and lists or dicts holding only those are not, so a form control left blank never
+    counts as a response.
+
+    Args:
+        value: Any saved answer or case fact.
+
+    Returns:
+        True if the value holds at least one real answer.
+    """
     if value is None:
         return False
     if isinstance(value, bool):
@@ -149,6 +162,7 @@ def _derive_happy_path_fields(values: dict[str, Any]) -> None:
             ("beneficiary_spouse1_last_name", "petitioner_last_name"),
             ("beneficiary_spouse1_first_name", "petitioner_first_name"),
             ("beneficiary_spouse1_middle_name", "petitioner_middle_name"),
+            ("petitioner_spouse1_last_name", "beneficiary_last_name"),
             ("petitioner_spouse1_first_name", "beneficiary_first_name"),
             ("petitioner_spouse1_middle_name", "beneficiary_middle_name"),
         ):
@@ -174,6 +188,40 @@ def _derive_happy_path_fields(values: dict[str, Any]) -> None:
             values["beneficiary_country_of_residence"] = "United States"
 
 
+def _copy_current_employment_entry(values: dict[str, Any]) -> None:
+    history = values.get("beneficiary_employment_history")
+    if not isinstance(history, list):
+        return
+    # The I-485 history marks the current activity with a blank end date, but that date is optional on past jobs too.
+    # So the entry must name the current employer, or be the only open entry when no current employer was given.
+    open_entries = [
+        entry
+        for entry in history
+        if isinstance(entry, dict) and value_is_answered(entry.get("name")) and not value_is_answered(entry.get("to"))
+    ]
+    current_name = values.get("beneficiary_current_employer_or_school")
+    if value_is_answered(current_name):
+        wanted = str(current_name).strip().casefold()
+        current = next((entry for entry in open_entries if str(entry["name"]).strip().casefold() == wanted), None)
+    else:
+        current = open_entries[0] if len(open_entries) == 1 else None
+    if current is None:
+        return
+    if not value_is_answered(current_name):
+        values["beneficiary_current_employer_or_school"] = current["name"]
+    for target, source_key in {
+        "beneficiary_current_employer_address_line1": "line1",
+        "beneficiary_current_employer_address_line2": "line2",
+        "beneficiary_current_employer_city": "city",
+        "beneficiary_current_employer_state": "state",
+        "beneficiary_current_employer_zip": "zip",
+        "beneficiary_current_employer_country": "country",
+        "beneficiary_current_employment_from": "from",
+    }.items():
+        if not value_is_answered(values.get(target)) and value_is_answered(current.get(source_key)):
+            values[target] = current[source_key]
+
+
 def enrich_case_fact_aliases(values: dict[str, Any]) -> dict[str, Any]:
     """Return a copy with semantically equivalent case-field variants populated."""
     enriched = dict(values)
@@ -195,6 +243,8 @@ def enrich_case_fact_aliases(values: dict[str, Any]) -> dict[str, Any]:
         ("petitioner_current_country", "petitioner_current_address_country"),
     ):
         _mirror_pair(enriched, first, second)
+
+    _copy_current_employment_entry(enriched)
 
     recent_foreign_address = enriched.get("beneficiary_recent_foreign_address")
     if isinstance(recent_foreign_address, dict) and not value_is_answered(enriched.get("beneficiary_state_province_of_birth")):

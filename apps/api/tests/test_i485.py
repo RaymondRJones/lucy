@@ -7,13 +7,12 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
+from app.content.i485_questionnaire import I485_PART_GUIDANCE, I485_QUESTIONNAIRE, I485_VERIFIED_ON, all_i485_questions
 from app.content.i485_sample import build_sample_i485_answers
-from app.content.i485_questionnaire import I485_PART_GUIDANCE, I485_QUESTIONNAIRE, all_i485_questions
-
 from app.models.entities import CaseRecord, IntakeResponse, UploadedDocument
 from app.services.i485 import (
-    build_i485_form_fill_preview,
     build_i485_answer_proposals_from_case_data,
+    build_i485_form_fill_preview,
     build_i485_intake_projection,
     evaluate_i485_answers,
     import_i485_answers_from_case_data,
@@ -49,7 +48,7 @@ def test_i485_questionnaire_has_fourteen_pages_and_source_mappings():
     assert all(question["deep_explanation"] for question in all_i485_questions())
     assert all(question["teaching_source"]["label"] == "USCIS Form I-485 instructions" for question in all_i485_questions())
     assert all(question["teaching_source"]["url"].startswith("https://www.uscis.gov/") for question in all_i485_questions())
-    assert all(question["teaching_source"]["fetched_on"] == "2026-05-05" for question in all_i485_questions())
+    assert all(question["teaching_source"]["fetched_on"] == I485_VERIFIED_ON for question in all_i485_questions())
     assert set(I485_PART_GUIDANCE) == {f"Part {part_number}" for part_number in range(1, 15)}
     assert all(
         I485_PART_GUIDANCE[question["pdf_ref"].split(",", 1)[0]] in question["deep_explanation"]
@@ -308,12 +307,14 @@ def test_i485_pdf_payload_maps_known_questionnaire_answers():
     assert payload.text_values["P1Line12_FamilyName[0]"] == "Sample"
     assert payload.text_values["P1Line13_GivenName[0]"] == "Avery"
     assert payload.text_values["P1Line12_I94[0]"] == "987654321A1"
-    assert payload.text_values["Pt2Line2_FamilyName[0]"] == "Sample"
-    assert payload.text_values["Pt2Line2_GivenName[0]"] == "Avery"
-    assert payload.text_values["Pt2Line2_MiddleName[0]"] == "Marie"
-    assert payload.text_values["Pt2Line2_AlienNumber[0]"] == "000000000"
     assert payload.text_values["Pt1Line3_DOB[0]"] == "11/23/2001"
-    assert payload.text_values["Pt1Line2_DOB[0]"] == "11/23/2001"
+    assert not {
+        "Pt2Line2_FamilyName[0]",
+        "Pt2Line2_GivenName[0]",
+        "Pt2Line2_MiddleName[0]",
+        "Pt2Line2_AlienNumber[0]",
+        "Pt1Line2_DOB[0]",
+    } & set(payload.text_values)
     assert payload.text_values["Pt1Line10_State[0]"] == "CA"
     assert payload.text_values["Pt1Line18_State[0]"] == "CA"
     assert payload.text_values["Pt1Line18US_AptSteFlrNumber[0]"] == "3103"
@@ -340,7 +341,7 @@ def test_i485_pdf_payload_maps_known_questionnaire_answers():
     assert payload.text_values["Part6Line8_StreetName[0]"] == "222 Spouse Street"
     assert payload.text_values["P6Line8_State[0]"] == "CA"
     assert payload.text_values["P6Line8_Number[0]"] == "9"
-    assert payload.checkbox_values["P6Line8_Unit[0]"] == "/APT"
+    assert payload.checkbox_values["P6Line8_Unit[0]"] == "/ APT "
     assert payload.checkbox_values["Pt7Line5_Eyecolor[2]"] == "/BN"
     assert payload.checkbox_values["Pt7Line6_Haircolor[1]"] == "/BL"
     assert any(entry["question_id"] == "ever_committed_crime" for entry in payload.unmapped_answered_questions)

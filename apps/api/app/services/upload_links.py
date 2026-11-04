@@ -1,3 +1,5 @@
+"""Links uploads to the checklist items they satisfy."""
+
 from __future__ import annotations
 
 from typing import Any, Iterable
@@ -22,6 +24,7 @@ def infer_satisfied_checklist_codes(
     *,
     has_translation: bool = False,
 ) -> list[str]:
+    """Returns the checklist items a document satisfies."""
     raw_codes = (extracted_fields or {}).get("satisfies_checklist_codes", [])
     extra_codes = [
         str(code).strip()
@@ -36,6 +39,7 @@ def infer_satisfied_checklist_codes(
 
 
 def satisfied_checklist_codes_for_upload(upload: UploadedDocument) -> list[str]:
+    """Returns the checklist items an upload satisfies."""
     return infer_satisfied_checklist_codes(
         upload.checklist_item_code,
         upload.extracted_fields or {},

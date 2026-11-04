@@ -1,0 +1,45 @@
+name: USCIS updates
+
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r apps/api/requirements-dev.lock
+      - name: Compare stored values with USCIS
+        id: compare
+        working-directory: apps/api
+        run: |
+          set +e
+          python -m app.cli.check_uscis_updates --report "$RUNNER_TEMP/report.md"
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      - name: Open or update the tracking issue
+        if: steps.compare.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: USCIS forms, fees, or addresses changed
+        run: |
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh issue create --title "$TITLE" --body-file "$RUNNER_TEMP/report.md"
+          fi
+      # A blocked or redesigned page must fail visibly, or the check would silently stop protecting anything.
+      - name: Fail if USCIS could not be checked
+        if: steps.compare.outputs.status != '0' && steps.compare.outputs.status != '1'
+        run: |
+          cat "$RUNNER_TEMP/report.md" || true
+          exit 1
