@@ -13,6 +13,8 @@ from app.content.i485_questionnaire import all_i485_questions
 from app.services.case_facts import value_is_answered
 from app.services.filing_validators.shared import (
     I485_QUESTION_BY_ID,
+    append_prescreen_critical_issues,
+    append_state_country_mismatch_issues,
     build_issue,
     form_result,
     inspect_template_fields,
@@ -233,6 +235,10 @@ class I485FilingValidator:
         _check_i485_field_mapping(answers=answers, issues=issues, payload=payload)
 
         _check_i485_address_history(answers=answers, issues=issues, merged=merged)
+
+        append_state_country_mismatch_issues(issues=issues, form_code="form_i485", answers=answers)
+
+        append_prescreen_critical_issues(session=session, case_id=case_id, issues=issues, form_code="form_i485")
 
         _check_i485_answers_match_intake(answers=answers, issues=issues, merged=merged)
 

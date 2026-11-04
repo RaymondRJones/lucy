@@ -20,6 +20,7 @@ from app.models.entities import (
 )
 from app.services.i485 import build_i485_form_fill_preview, evaluate_i485_answers, get_i485_state
 from app.services.intake import derive_case_facts, get_merged_case_intake, normalize_country
+from app.services.prescreen import get_prescreen_state
 from app.services.rules.qa import QARuleContext, QARuleDependencies, QARuleEngine
 from app.services.upload_links import satisfied_checklist_codes_for_upload
 
@@ -533,7 +534,7 @@ def _readiness_summary(
         label = "Not ready"
     elif issue_counts["important"] > 1 or required_pct < 90:
         label = "Almost ready"
-    elif issue_counts["recommended"] > 0:
+    elif issue_counts["important"] > 0 or issue_counts["recommended"] > 0:
         label = "Ready for final review"
     else:
         label = "Ready to print and assemble"
@@ -589,6 +590,21 @@ def _i485_ingestion_issues(session: Session, case_id: UUID) -> list[QAIssue]:
             )
         )
     return issues
+
+
+def _prescreen_critical_issues(session: Session, case_id: UUID) -> list[QAIssue]:
+    evaluation = get_prescreen_state(session, case_id)["evaluation"]
+    return [
+        _build_issue(
+            case_id,
+            "blocking",
+            f"prescreen_{flag['code']}",
+            flag["title"],
+            f"{flag['description']} Review the prescreen page before relying on this case as packet-ready.",
+        )
+        for flag in evaluation["flags"]
+        if flag["severity"] == "critical"
+    ]
 
 
 def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, Any]]:
@@ -649,6 +665,7 @@ def run_qa(session: Session, case_id: UUID) -> tuple[list[QAIssue], dict[str, An
             intake_to_document_issues=_intake_to_document_issues,
             intake_address_history_issues=_intake_address_history_issues,
             i485_ingestion_issues=_i485_ingestion_issues,
+            prescreen_critical_issues=_prescreen_critical_issues,
         ),
     )
     issues = QARuleEngine().evaluate(qa_context)

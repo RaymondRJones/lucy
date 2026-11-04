@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 import hashlib
 from pathlib import Path
@@ -41,6 +42,8 @@ from app.models.entities import UploadedDocument
 from app.services.case_facts import value_is_answered
 from app.services.form_ingestion import get_form_case_intake
 from app.services.intake import get_merged_case_intake
+from app.services.pdf_fields import US_STATE_CODES, is_us_country, normalize_us_state
+from app.services.prescreen import get_prescreen_state
 
 BLANK_DOCUMENTS_DIR = Path("blank-immigration-documents")
 DEFAULT_TEMPLATE_PATHS = {
@@ -344,6 +347,71 @@ def append_cross_form_mismatch_issues(
                 field_key=field_key,
                 expected=other_value,
                 actual=current_value,
+            )
+        )
+
+
+def append_prescreen_critical_issues(
+    *,
+    session: Session,
+    case_id: UUID,
+    issues: list[dict[str, Any]],
+    form_code: str,
+) -> None:
+    """Adds a blocking issue for each critical prescreen flag."""
+    for flag in get_prescreen_state(session, case_id)["evaluation"]["flags"]:
+        if flag["severity"] == "critical":
+            issues.append(
+                build_issue(
+                    form_code=form_code,
+                    severity="blocking",
+                    code=f"{form_code}_prescreen_{flag['code']}",
+                    title=flag["title"],
+                    description=f"{flag['description']} Review the prescreen page before relying on this form.",
+                    source="record_consistency",
+                    question_id=flag.get("question_id"),
+                )
+            )
+
+
+def _state_country_pairs(answers: dict[str, Any]) -> Iterator[tuple[str, Any, Any]]:
+    for key, value in answers.items():
+        if key.endswith("_country"):
+            yield key, answers.get(f"{key.removesuffix('_country')}_state"), value
+        for entry in value if isinstance(value, list) else [value]:
+            if isinstance(entry, dict):
+                yield key, entry.get("state"), entry.get("country")
+
+
+def append_state_country_mismatch_issues(
+    *,
+    issues: list[dict[str, Any]],
+    form_code: str,
+    answers: dict[str, Any],
+) -> None:
+    """Adds an issue for each answer that pairs a U.S. state with a foreign country."""
+    mismatched = {
+        key: (state, country)
+        for key, state, country in _state_country_pairs(answers)
+        if value_is_answered(state)
+        and value_is_answered(country)
+        and normalize_us_state(state) in US_STATE_CODES
+        and not is_us_country(country)
+    }
+    for key, (state, country) in mismatched.items():
+        issues.append(
+            build_issue(
+                form_code=form_code,
+                severity="important",
+                code=f"{form_code}_{key}_state_country_mismatch",
+                title="Address pairs a U.S. state with a foreign country",
+                description=(
+                    f"{key} has state {state} and country {country}. "
+                    "Confirm the address before treating the packet as ready."
+                ),
+                source="record_consistency",
+                field_key=key,
+                actual=f"{state}, {country}",
             )
         )
 

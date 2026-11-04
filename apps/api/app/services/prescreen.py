@@ -13,6 +13,7 @@ from app.services.intake import get_merged_case_intake, upsert_intake_step
 from app.services.rules.prescreen import (
     I130_ALREADY_FILED_STATUSES,
     PrescreenRuleEngine,
+    PrescreenStatusPolicy,
     value_is_answered,
 )
 
@@ -124,6 +125,17 @@ def _normalize_current_status(value: Any) -> Any:
     return aliases.get(normalized, value)
 
 
+def _clear_resolved_address_flag(evaluation: dict[str, Any], merged: dict[str, Any]) -> dict[str, Any]:
+    if not value_is_answered(merged.get("beneficiary_prior_address_history")):
+        return evaluation
+    flags = [flag for flag in evaluation["flags"] if flag["code"] != "address_history_needed"]
+    return {
+        **evaluation,
+        "flags": flags,
+        "status": PrescreenStatusPolicy().evaluate(flags, evaluation["completion_pct"]),
+    }
+
+
 def get_prescreen_state(session: Session, case_id: UUID) -> dict[str, Any]:
     """Returns a case's prescreen answers and result."""
     merged = get_merged_case_intake(session, case_id)
@@ -166,7 +178,7 @@ def get_prescreen_state(session: Session, case_id: UUID) -> dict[str, Any]:
         "case_id": str(case_id),
         "answers": {key: value for key, value in answers.items() if value_is_answered(value)},
         "answer_sources": answer_sources,
-        "evaluation": evaluate_prescreen(answers),
+        "evaluation": _clear_resolved_address_flag(evaluate_prescreen(answers), merged),
     }
 
 

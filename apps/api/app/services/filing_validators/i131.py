@@ -13,6 +13,7 @@ from app.models.entities import UploadedDocument
 from app.services.case_facts import value_is_answered
 from app.services.filing_validators.shared import (
     append_cross_form_mismatch_issues,
+    append_state_country_mismatch_issues,
     append_uploaded_document_mismatch_issues,
     build_issue,
     confirmed_uploads,
@@ -248,6 +249,7 @@ def _check_i131_cross_form_mismatches(
     uploads: list[UploadedDocument],
     values: dict[str, Any],
 ) -> None:
+    append_state_country_mismatch_issues(issues=issues, form_code="form_i131", answers=values)
     i485_answers = get_i485_state(session, case_id)["answers"]
     append_cross_form_mismatch_issues(
         issues=issues,

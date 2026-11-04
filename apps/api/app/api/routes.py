@@ -335,6 +335,8 @@ def save_case_prescreen(
 ):
     _get_case_or_404(session, case_id)
     state = save_prescreen_answers(session, case_id, payload.answers)
+    if state["evaluation"]["status"] == "blocked_needs_review":
+        run_qa(session, case_id)
     log_action(session, case_id, "prescreen.saved", {"answered": len(payload.answers)})
     session.commit()
     return PrescreenStateRead(**state)

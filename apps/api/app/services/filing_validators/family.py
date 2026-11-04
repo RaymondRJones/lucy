@@ -29,6 +29,8 @@ from app.services.filing_validators.shared import (
     I130_QUESTION_BY_ID,
     append_cross_form_mismatch_issues,
     append_missing_required_question_issues,
+    append_prescreen_critical_issues,
+    append_state_country_mismatch_issues,
     append_uploaded_document_mismatch_issues,
     build_issue,
     confirmed_uploads,
@@ -230,6 +232,8 @@ def _check_i130_cross_form_mismatches(
     merged: dict[str, Any],
     uploads: list[UploadedDocument],
 ) -> None:
+    append_state_country_mismatch_issues(issues=issues, form_code="form_i130", answers=merged)
+    append_prescreen_critical_issues(session=session, case_id=case_id, issues=issues, form_code="form_i130")
     i485_answers = get_i485_state(session, case_id)["answers"]
     append_cross_form_mismatch_issues(
         issues=issues,
@@ -434,6 +438,7 @@ def _check_i130a_cross_form_mismatches(
     merged: dict[str, Any],
     uploads: list[UploadedDocument],
 ) -> None:
+    append_state_country_mismatch_issues(issues=issues, form_code="form_i130a", answers=merged)
     i485_answers = get_i485_state(session, case_id)["answers"]
     append_cross_form_mismatch_issues(
         issues=issues,
