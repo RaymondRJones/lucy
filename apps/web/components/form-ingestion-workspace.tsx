@@ -627,7 +627,7 @@ export function FormIngestionWorkspace({
       return false;
     }
     const pageMissingCount = missingRequiredItems.filter((item) => item.page_id === page.id).length;
-    return pageMissingCount === 0 && requiredQuestions.every((question) => hasMeaningfulValue(answers[question.id]));
+    return pageMissingCount === 0 && requiredQuestions.every((question) => answers[question.id] === false || hasMeaningfulValue(answers[question.id]));
   }
 
   function pageAnswersForSave(page: FormQuestionnairePage) {
