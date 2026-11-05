@@ -283,7 +283,7 @@ def test_i485_generation_normalizes_reported_foreign_address_and_visitor_status(
     assert payload.text_values["P4Line7_City[0]"] == "Manizales"
     assert payload.text_values["P4Line7_Province[0]"] == "Caldas"
     assert "P4Line7_State[0]" not in payload.text_values
-    assert "Province: Caldas" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
+    assert "Manizales, Caldas, 170004, Colombia" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
     assert "State or province" not in payload.text_values["P14_Line2_AdditionalInfo[0]"]
     assert_pdf_field_values(
         output_path,

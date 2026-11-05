@@ -126,6 +126,34 @@ def _address_value(value: Any, key: str) -> Any:
     return value.get(key)
 
 
+ADDRESS_PART_SUFFIXES = ("_address_line2", "_city", "_state", "_zip", "_province", "_postal_code", "_country")
+
+
+def _address_prefix(question_id: str) -> str | None:
+    for suffix in ADDRESS_PART_SUFFIXES:
+        if question_id.endswith(suffix):
+            return question_id.removesuffix(suffix)
+    return None
+
+
+def proposals_for_blank_answers(proposals: list[dict[str, Any]], answers: dict[str, Any]) -> list[dict[str, Any]]:
+    """Proposals for unanswered questions, minus the rest of an address the form already has a street for.
+
+    Case facts can merge two addresses under one name, such as the I-485's physical address and the I-130's
+    mailing address, so a saved PO Box would otherwise take the apartment number of the physical address.
+    """
+    kept = []
+    for proposal in proposals:
+        question_id = proposal["question_id"]
+        if value_is_answered(answers.get(question_id)):
+            continue
+        prefix = _address_prefix(question_id)
+        if prefix and value_is_answered(answers.get(f"{prefix}_address_line1")):
+            continue
+        kept.append(proposal)
+    return kept
+
+
 def _proposal_from_case_data(
     *,
     form_key: str,
@@ -705,11 +733,13 @@ def import_form_answers_from_case_data(
     imported_question_ids: set[str] = set()
     skipped_question_ids: set[str] = set()
 
-    for proposal in proposals:
+    applicable = proposals if overwrite else proposals_for_blank_answers(proposals, answers)
+    applicable_ids = {proposal["question_id"] for proposal in applicable}
+    skipped_question_ids.update(
+        proposal["question_id"] for proposal in proposals if proposal["question_id"] not in applicable_ids
+    )
+    for proposal in applicable:
         question_id = proposal["question_id"]
-        if not overwrite and value_is_answered(answers.get(question_id)):
-            skipped_question_ids.add(question_id)
-            continue
         answers[question_id] = proposal["value"]
         imported_question_ids.add(question_id)
         answer_sources[question_id] = {

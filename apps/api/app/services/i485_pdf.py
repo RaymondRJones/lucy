@@ -46,7 +46,8 @@ from app.services.pdf_fields import (
 DEFAULT_I485_TEMPLATE_PATH = Path("blank-immigration-documents/i-485.pdf")
 DEFAULT_I485_OUTPUT_DIR = settings.generated_dir
 PART14_ADDITIONAL_INFO_WRAP_WIDTH = 92
-PART14_ADDITIONAL_INFO_MAX_LINES = 10
+# A 90-point Part 14 box draws 7-point text at 13.5-point leading, so an eighth line prints below the box.
+PART14_ADDITIONAL_INFO_MAX_LINES = 7
 FAMILY_STATUS_FIELD = "Pt9Line57_HouseholdSize[0]"
 # Character limits come from rendering the 09/18/26 template; longer text clips, so it moves to Part 14.
 FAMILY_STATUS_MAX_CHARS = 38
@@ -791,39 +792,16 @@ def _list_entries(value: Any) -> list[dict[str, Any]]:
 
 
 def _address_continuation_text(entry: dict[str, Any], entry_index: int) -> str:
+    # One run of text per address: a field per line would fill a whole Part 14 box with one address.
     entry = normalized_address_for_pdf(entry)
-    lines = [f"Prior address {entry_index}:"]
-    region_label = None
-    region_keys: tuple[str, ...] = ()
-    if value_is_answered(entry.get("state")):
-        region_label = "State"
-        region_keys = ("state",)
-    elif value_is_answered(entry.get("province")):
-        region_label = "Province"
-        region_keys = ("province",)
-
-    fields: list[tuple[str, tuple[str, ...]]] = [
-        ("Street", ("line1",)),
-        ("Apartment/Suite/Floor", ("line2",)),
-        ("City or town", ("city",)),
+    address_keys = ("line1", "line2", "city", "state", "province", "zip", "postal_code", "country")
+    address = ", ".join(str(entry[key]).strip() for key in address_keys if value_is_answered(entry.get(key)))
+    dates = [
+        f"{label} {as_pdf_date(entry[key])}"
+        for label, key in (("from", "from"), ("to", "to"))
+        if value_is_answered(entry.get(key))
     ]
-    if region_label:
-        fields.append((region_label, region_keys))
-    fields.extend(
-        [
-            ("ZIP or postal code", ("zip", "postal_code")),
-            ("Country", ("country",)),
-            ("From", ("from",)),
-            ("To", ("to",)),
-        ]
-    )
-    for label, keys in fields:
-        value = next((entry.get(key) for key in keys if value_is_answered(entry.get(key))), None)
-        if value_is_answered(value):
-            if label in {"From", "To"}:
-                value = as_pdf_date(value)
-            lines.append(f"{label}: {value}")
-    return "\n".join(lines)
+    return f"Prior address {entry_index}: {address}" + (f"; {' '.join(dates)}" if dates else "")
 
 
 def _add_part14_continuation(
@@ -1079,7 +1057,13 @@ def _add_employment_history_fields(
 
 
 def _split_name(value: Any) -> tuple[str, str, str]:
-    parts = [part for part in str(value or "").strip().split() if part]
+    text = str(value or "").strip()
+    # "Family, Given Middle" keeps multi-word family names, such as "Gil Ochoa, Luz Marina", together.
+    if "," in text:
+        family_name, _, rest = text.partition(",")
+        given_parts = rest.split()
+        return " ".join(family_name.split()), given_parts[0] if given_parts else "", " ".join(given_parts[1:])
+    parts = text.split()
     if not parts:
         return "", "", ""
     if len(parts) == 1:
@@ -1929,8 +1913,15 @@ def _template_button_choices(reader: PdfReader) -> dict[str, dict[str, str]]:
                 appearance = keys[0] if keys else ""
             if not appearance:
                 continue
-            tooltip = str(annotation.get("/TU") or "").lower()
             field_choices = choices.setdefault(str(field_name), {})
+            # The on-state is authoritative: the template labels the No box of Part 1, Item 3 "Select Yes."
+            if appearance == "/Y":
+                field_choices["yes"] = appearance
+                continue
+            if appearance == "/N":
+                field_choices["no"] = appearance
+                continue
+            tooltip = str(annotation.get("/TU") or "").lower()
             if "select yes" in tooltip:
                 field_choices["yes"] = appearance
             if "select no" in tooltip:

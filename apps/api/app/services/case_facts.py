@@ -80,9 +80,20 @@ def _copy_physical_to_mailing(values: dict[str, Any]) -> None:
         _copy_first(values, target, *sources)
 
 
+def same_street(first: Any, second: Any) -> bool:
+    """Whether two street lines name the same street, ignoring case and spacing."""
+    return " ".join(str(first or "").lower().split()) == " ".join(str(second or "").lower().split())
+
+
 def _copy_address_object(values: dict[str, Any], source: str, prefix: str) -> None:
     address = values.get(source)
     if not isinstance(address, dict):
+        return
+    # A different street means a different address, such as a mailing PO Box beside a physical address:
+    # filling its blank unit or ZIP from this object would mix the two.
+    street = next((address.get(key) for key in ("line1", "street", "street_number_name") if value_is_answered(address.get(key))), None)
+    flat_street = values.get(f"{prefix}_address_line1")
+    if value_is_answered(flat_street) and value_is_answered(street) and not same_street(flat_street, street):
         return
     for target_suffix, source_keys in {
         "address_line1": ("line1", "street", "street_number_name"),

@@ -46,6 +46,7 @@ I130_DATE_FIELD_KEYS = {
     "petitioner_prior_address_to",
     "marriage_date",
     "petitioner_spouse1_marriage_ended",
+    "petitioner_spouse2_marriage_ended",
     "petitioner_parent1_date_of_birth",
     "petitioner_parent2_date_of_birth",
     "petitioner_naturalization_certificate_date",
@@ -128,6 +129,10 @@ I130_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "petitioner_spouse1_first_name": ("Pt2Line20b_GivenName[0]",),
     "petitioner_spouse1_middle_name": ("Pt2Line20c_MiddleName[0]",),
     "petitioner_spouse1_marriage_ended": ("Pt2Line21_DateMarriageEnded[0]",),
+    "petitioner_spouse2_last_name": ("Pt2Line22a_FamilyName[0]",),
+    "petitioner_spouse2_first_name": ("Pt2Line22b_GivenName[0]",),
+    "petitioner_spouse2_middle_name": ("Pt2Line22c_MiddleName[0]",),
+    "petitioner_spouse2_marriage_ended": ("Pt2Line23_DateMarriageEnded[0]",),
     "marriage_place_city": ("Pt2Line19a_CityTown[0]", "Pt4Line20a_CityTown[0]"),
     "marriage_place_state": ("Pt2Line19b_State[0]", "Pt4Line20b_State[0]"),
     "marriage_place_province": ("Pt2Line19c_Province[0]", "Pt4Line20c_Province[0]"),
@@ -470,6 +475,8 @@ I130_UNIT_FIELD_MAP: dict[str, tuple[str, str, str, str]] = {
 
 I130A_TEXT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "beneficiary_a_number": ("Pt1Line1_AlienNumber[0]",),
+    # USCIS numbers this field "Pt2Line3" although it is Part 1, Item 2.
+    "beneficiary_uscis_online_account_number": ("Pt2Line3_USCISELISActNumber[0]",),
     "beneficiary_last_name": ("Pt1Line3a_FamilyName[0]",),
     "beneficiary_first_name": ("Pt1Line3b_GivenName[0]",),
     "beneficiary_middle_name": ("Pt1Line3c_MiddleName[0]",),
@@ -864,6 +871,12 @@ I130A_PART7_SLOTS = tuple(
 # 10pt Courier in a 234 x 180 point box.
 I130A_PART7_WRAP_WIDTH = 38
 I130A_PART7_MAX_LINES = 14
+I130A_PART7_HEADER_FIELDS = {
+    "Pt1Line3a_FamilyName[0]": "Pt1Line3a_FamilyName[1]",
+    "Pt1Line3b_GivenName[0]": "Pt1Line3b_GivenName[1]",
+    "Pt1Line3c_MiddleName[0]": "Pt1Line3c_MiddleName[1]",
+    "Pt1Line1_AlienNumber[0]": "Pt1Line1_AlienNumber[1]",
+}
 
 
 I130A_FOREIGN_EMPLOYER_ROW = {
@@ -901,8 +914,17 @@ def _add_i130a_foreign_employer(
         mapped_fields.append({"field_key": "beneficiary_foreign_employer_or_school", "pdf_fields": used_fields})
 
 
+# The form asks for "Unemployed" in the employer name when there is no employer.
+NAMELESS_ACTIVITY_NAMES = {"unemployment": "Unemployed", "retirement": "Retired"}
+
+
+def _employer_name(entry: dict[str, Any]) -> str:
+    name = str(entry.get("name") or "").strip()
+    return name or NAMELESS_ACTIVITY_NAMES.get(str(entry.get("activity_type") or ""), "")
+
+
 def _same_employer(entry: dict[str, Any], name: str) -> bool:
-    return str(entry.get("name") or "").strip().casefold() == name.strip().casefold()
+    return _employer_name(entry).casefold() == name.strip().casefold()
 
 
 def _add_i130a_employment_history(
@@ -949,7 +971,7 @@ def _add_i130a_employment_history(
     used_fields = list(continuation_fields)
     for entry, row, unit_row in zip(entries, I130A_EMPLOYER_ROWS, I130A_EMPLOYER_UNIT_ROWS, strict=False):
         for source_key, field_name in row.items():
-            value = entry.get(source_key)
+            value = _employer_name(entry) if source_key == "name" else entry.get(source_key)
             if not value_is_answered(value) or field_name in text_values:
                 continue
             if source_key in {"from", "to"}:
@@ -1093,6 +1115,11 @@ def build_i130a_pdf_field_payload(
         mapped_fields=mapped_fields,
     )
     _add_i130a_foreign_employer(values=values, text_values=text_values, mapped_fields=mapped_fields)
+    # Part 7 asks for the name and A-Number at the top of the page; the template does not copy them from Part 1.
+    if any(slot[3] in text_values for slot in I130A_PART7_SLOTS):
+        for source_field, header_field in I130A_PART7_HEADER_FIELDS.items():
+            if source_field in text_values:
+                text_values[header_field] = text_values[source_field]
 
     return FamilyPdfFieldPayload(
         form_code="form_i130a",

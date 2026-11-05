@@ -254,7 +254,33 @@ def build_i485_intake_projection(answers: dict[str, Any]) -> dict[str, Any]:
         projection["first_marriage_for_both"] = True
     elif marriage_count not in (None, "", [], {}) and marriage_count != 1:
         projection["first_marriage_for_both"] = False
+    _project_spouses(answers, projection)
     return enrich_case_fact_aliases(projection)
+
+
+def _project_spouses(answers: dict[str, Any], projection: dict[str, Any]) -> None:
+    """Lists each spouse on the I-130 the way its spouse items expect: the current spouse first."""
+    names = ("last_name", "first_name", "middle_name")
+    if answers.get("beneficiary_current_marital_status") == "married":
+        # The I-485 records the current spouse under the petitioner's name, so each is the other's spouse 1.
+        for key in names:
+            for target, source in (("beneficiary_spouse1", "petitioner"), ("petitioner_spouse1", "beneficiary")):
+                value = answers.get(f"{source}_{key}")
+                if value not in (None, ""):
+                    projection[f"{target}_{key}"] = value
+    prior = [entry for entry in answers.get("beneficiary_prior_marriages") or [] if isinstance(entry, dict)]
+    # The I-130 has one prior-spouse row; more prior marriages are left for the user to place.
+    if len(prior) != 1:
+        return
+    for target, source in (
+        ("last_name", "family_name"),
+        ("first_name", "given_name"),
+        ("middle_name", "middle_name"),
+        ("marriage_ended", "end_date"),
+    ):
+        value = prior[0].get(source)
+        if value not in (None, ""):
+            projection[f"beneficiary_spouse2_{target}"] = value
 
 
 US_COUNTRY_NAMES = {

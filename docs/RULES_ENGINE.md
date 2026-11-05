@@ -160,6 +160,11 @@ The QA pass currently flags:
 - Smart defaults use the backend intake projection plus direct field aliases for repeated facts across I-130,
   I-130A, I-485, I-765, and I-131, such as current address variants, last-arrival place versus city/state,
   SSN wording, and reusable biographic fields
+- The I-485 projection lists the current spouse (recorded under the petitioner's name) as each person's I-130
+  Spouse 1, and the beneficiary's prior spouse as I-130 Spouse 2 when there is exactly one prior marriage
+- A form that already has its own street for an address keeps the rest of that address as saved: blank unit,
+  city, state, ZIP, and country answers are not filled from case facts, so a mailing PO Box never takes the
+  apartment number of a physical address
 - fallback name mismatches when upload metadata conflicts with intake data and no stronger uploaded source of truth is available
 - unsigned-form flags when upload metadata marks a form as unsigned
 - missing user confirmation for current fee and form-edition review
