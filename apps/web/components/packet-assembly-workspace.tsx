@@ -28,13 +28,14 @@ import {
   getCase,
   getChecklist,
   getG1450PaymentOptions,
+  getPrescreenState,
   listCases,
   listUploads,
   requestUpload,
   uploadBinary,
 } from "@/lib/api";
 import { getSavedCaseId, rememberCaseId } from "@/lib/case-storage";
-import { GENERATED_ONLY_UPLOAD_CODES, NOT_EVIDENCE_CODES, getSatisfiedChecklistCodes } from "@/lib/evidence";
+import { DONE_STATUSES, GENERATED_ONLY_UPLOAD_CODES, NOT_EVIDENCE_CODES, getSatisfiedChecklistCodes } from "@/lib/evidence";
 import { formatFieldList, getG1450PaymentFieldIssues, getG1650PaymentFieldIssues } from "@/lib/g1450-validation";
 import type {
   CaseSummary,
@@ -64,7 +65,7 @@ const MAX_PACKET_UPLOAD_SIZE_MB = 100;
 
 const DEFAULT_PAYMENT_FORM = {
   cardholder_name: "",
-  credit_card_type: "Visa",
+  credit_card_type: "",
   credit_card_number: "",
   expiration_month: "",
   expiration_year: "",
@@ -332,6 +333,12 @@ export function PacketAssemblyWorkspace() {
   const [includeSupportingEvidence, setIncludeSupportingEvidence] = useState(true);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("generate");
   const [paymentOptions, setPaymentOptions] = useState<G1450PaymentOptions | null>(null);
+  // The fee list follows the checklist, which follows the prescreen, so fees are provisional until it is finished.
+  const [prescreenPct, setPrescreenPct] = useState<number | null>(null);
+  const [paperCopiesConfirmed, setPaperCopiesConfirmed] = useState(false);
+  const [paymentDetailsRequested, setPaymentDetailsRequested] = useState(false);
+  const [paymentSkipConfirmed, setPaymentSkipConfirmed] = useState(false);
+  const [onlyMissing, setOnlyMissing] = useState(false);
   const [selectedPaymentCodes, setSelectedPaymentCodes] = useState<string[]>([]);
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>(DEFAULT_PAYMENT_FORM);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
@@ -342,11 +349,13 @@ export function PacketAssemblyWorkspace() {
   const [isPending, startTransition] = useTransition();
 
   const loadCaseArtifacts = useCallback(async (caseId: string) => {
-    const [loadedChecklist, loadedUploads, loadedPaymentOptions] = await Promise.all([
+    const [loadedChecklist, loadedUploads, loadedPaymentOptions, loadedPrescreen] = await Promise.all([
       generateChecklist(caseId).catch(() => getChecklist(caseId)),
       listUploads(caseId).catch(() => []),
       getG1450PaymentOptions(caseId).catch(() => null),
+      getPrescreenState(caseId).catch(() => null),
     ]);
+    setPrescreenPct(loadedPrescreen ? loadedPrescreen.evaluation.completion_pct : null);
     return { loadedChecklist, loadedUploads, loadedPaymentOptions };
   }, []);
 
@@ -501,6 +510,11 @@ export function PacketAssemblyWorkspace() {
       ) ?? [],
     [paymentOptions],
   );
+  const feesProvisional = prescreenPct !== null && prescreenPct < 100;
+  // Unticking a fee drops it from the generated payment forms, which is easy to miss in a total.
+  const unpaidFeeForms = packetPaymentOptions
+    .filter((option) => !selectedPaymentCodes.includes(option.checklist_code))
+    .map((option) => option.form_code);
   const selectedPaymentTotal = useMemo(() => {
     const selected = new Set(selectedPaymentCodes);
     return packetPaymentOptions.reduce((total, option) => {
@@ -751,6 +765,19 @@ export function PacketAssemblyWorkspace() {
       ).length,
     0,
   );
+  const requiredEvidenceMissing = groupedItems.flatMap((group) =>
+    group.items.filter(
+      (item) =>
+        (item.applicability === "required" || DONE_STATUSES.has(item.completion_status)) &&
+        !GENERATED_ONLY_UPLOAD_CODES.has(item.code) &&
+        !NOT_EVIDENCE_CODES.has(item.code) &&
+        !(uploadsByCode.get(item.code) ?? []).length,
+    ),
+  );
+  // A full packet missing required documents is a rejection risk, so assembling it takes an explicit confirmation.
+  const needsPaperCopyConfirmation = includeSupportingEvidence && requiredEvidenceMissing.length > 0;
+  // Card and bank fields stay folded away until asked for, so the page leads with fees rather than a CVV box.
+  const paymentDetailsOpen = paymentDetailsRequested || paymentFormHasUserInput(paymentForm) || bankFormHasUserInput(bankForm);
   const paymentFormName = paymentMethod === "ach" ? "G-1650" : "G-1450";
   const resultHasPayment = Boolean(
     result?.included_documents.some(
@@ -763,6 +790,8 @@ export function PacketAssemblyWorkspace() {
       : paymentMethod === "ach"
         ? bankFormHasUserInput(bankForm)
         : paymentFormHasUserInput(paymentForm);
+  // Assembling with fees due but no payment form is a likely rejection, so it takes an explicit confirmation.
+  const needsPaymentConfirmation = (!paymentReady || unpaidFeeForms.length > 0) && packetPaymentOptions.length > 0;
 
   function segmented<T extends string>(
     label: string,
@@ -852,6 +881,20 @@ export function PacketAssemblyWorkspace() {
       />
 
       <StatusMessage message={message} />
+
+      {caseSummary && caseSummary.counts.qa_issues && !result ? (
+        <Notice
+          tone="warning"
+          title={`Review has ${caseSummary.counts.qa_issues} open ${caseSummary.counts.qa_issues === 1 ? "issue" : "issues"}`}
+          actions={
+            <a href={`/review?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("secondary", "sm")}>
+              Open Review
+            </a>
+          }
+        >
+          Some answers may mean this case is outside what Lucy is built for. Read them on the Review step before you print and mail.
+        </Notice>
+      ) : null}
 
       {result ? (
         <section aria-labelledby="result-heading" className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
@@ -989,7 +1032,19 @@ export function PacketAssemblyWorkspace() {
               id="payment-heading"
               eyebrow="Part 1"
               title="Payment"
-              description={paymentOptions?.payment_note ? <LinkedText text={paymentOptions.payment_note} /> : null}
+              description={
+                <>
+                  <span className="block font-medium text-ink">
+                    Lucy fills in the payment form for each fee. It never charges your card or bank account; the signed form is
+                    what lets USCIS collect the fee.
+                  </span>
+                  {paymentOptions?.payment_note ? (
+                    <span className="mt-1.5 block text-xs leading-5">
+                      <LinkedText text={paymentOptions.payment_note} />
+                    </span>
+                  ) : null}
+                </>
+              }
               actions={segmented<PaymentMode>(
                 "Payment source",
                 [
@@ -1003,6 +1058,22 @@ export function PacketAssemblyWorkspace() {
             {paymentOptions && !paymentOptions.template_exists ? (
               <Notice tone="warning" className="mt-4">
                 Local template missing at {paymentOptions.template_pdf}
+              </Notice>
+            ) : null}
+
+            {feesProvisional && caseSummary ? (
+              <Notice
+                tone="warning"
+                className="mt-4"
+                title="Fees are not final yet"
+                actions={
+                  <a href={`/prescreen?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("secondary", "sm")}>
+                    Finish prescreen
+                  </a>
+                }
+              >
+                Lucy decides which forms are in your packet, and so which fees apply, from your prescreen answers. The prescreen is{" "}
+                {prescreenPct}% done, so forms such as I-485 may be missing from the total below.
               </Notice>
             ) : null}
 
@@ -1042,6 +1113,12 @@ export function PacketAssemblyWorkspace() {
                       </p>
                     )}
                   </div>
+                  {unpaidFeeForms.length ? (
+                    <p role="status" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950">
+                      <span className="font-semibold">Not paying for {unpaidFeeForms.join(", ")} here.</span> Include your own signed payment
+                      form for {unpaidFeeForms.length === 1 ? "it" : "them"}, or USCIS may reject the packet for a missing fee.
+                    </p>
+                  ) : null}
                 </fieldset>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1056,132 +1133,148 @@ export function PacketAssemblyWorkspace() {
                     "w-full sm:w-auto",
                   )}
                   <p className="text-sm text-muted">
-                    Total <span className="text-lg font-semibold tabular-nums text-ink">{formatCurrency(selectedPaymentTotal.toFixed(2))}</span>
+                    {feesProvisional ? "Total so far" : "Total"} <span className="text-lg font-semibold tabular-nums text-ink">{formatCurrency(selectedPaymentTotal.toFixed(2))}</span>
                   </p>
                 </div>
 
-                {paymentMethod === "card" ? (
-                  <fieldset className="grid gap-4">
-                    <legend className="sr-only">Card and billing details</legend>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {textInput("Cardholder name", paymentForm.cardholder_name, (value) => updatePaymentField("cardholder_name", value), {
-                        autoComplete: "cc-name",
-                      })}
-                      <label className="grid gap-1.5">
-                        <span className={labelClass}>Card type</span>
-                        <select
-                          value={paymentForm.credit_card_type}
-                          onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
-                          className={inputClass}
-                        >
-                          {CARD_TYPES.map((type) => (
-                            <option key={type} value={type}>
-                              {type}
+                {paymentDetailsOpen ? (
+                  paymentMethod === "card" ? (
+                    <fieldset className="grid gap-4">
+                      <legend className="sr-only">Card and billing details</legend>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {textInput("Cardholder name", paymentForm.cardholder_name, (value) => updatePaymentField("cardholder_name", value), {
+                          autoComplete: "cc-name",
+                        })}
+                        <label className="grid gap-1.5">
+                          <span className={labelClass}>Card type</span>
+                          <select
+                            value={paymentForm.credit_card_type}
+                            onChange={(event) => updatePaymentField("credit_card_type", event.target.value)}
+                            className={inputClass}
+                          >
+                            <option value="" disabled>
+                              Choose card type
                             </option>
-                          ))}
-                        </select>
-                      </label>
-                      {textInput("Card number", paymentForm.credit_card_number, (value) => updatePaymentField("credit_card_number", value), {
-                        autoComplete: "cc-number",
-                        inputMode: "numeric",
-                      })}
-                      <div className="grid grid-cols-3 gap-3">
-                        {textInput("Month", paymentForm.expiration_month, (value) => updatePaymentField("expiration_month", value), {
-                          autoComplete: "cc-exp-month",
+                            {CARD_TYPES.map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {textInput("Card number", paymentForm.credit_card_number, (value) => updatePaymentField("credit_card_number", value), {
+                          autoComplete: "cc-number",
                           inputMode: "numeric",
                         })}
-                        {textInput("Year", paymentForm.expiration_year, (value) => updatePaymentField("expiration_year", value), {
-                          autoComplete: "cc-exp-year",
+                        <div className="grid grid-cols-3 gap-3">
+                          {textInput("Month", paymentForm.expiration_month, (value) => updatePaymentField("expiration_month", value), {
+                            autoComplete: "cc-exp-month",
+                            inputMode: "numeric",
+                          })}
+                          {textInput("Year", paymentForm.expiration_year, (value) => updatePaymentField("expiration_year", value), {
+                            autoComplete: "cc-exp-year",
+                            inputMode: "numeric",
+                          })}
+                          {textInput("CVV", paymentForm.security_code, (value) => updatePaymentField("security_code", value), {
+                            autoComplete: "cc-csc",
+                            inputMode: "numeric",
+                          })}
+                        </div>
+                        {textInput("Daytime phone", paymentForm.daytime_phone_number, (value) => updatePaymentField("daytime_phone_number", value), {
+                          autoComplete: "tel",
+                          inputMode: "tel",
+                        })}
+                        {textInput("Email", paymentForm.email, (value) => updatePaymentField("email", value), {
+                          autoComplete: "email",
+                          inputMode: "email",
+                        })}
+                      </div>
+                      <p className="pt-2 text-sm font-semibold text-ink">Billing address</p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {textInput("Street address", paymentForm.billing_address.street_1, (value) => updateBillingField("street_1", value), {
+                          autoComplete: "billing address-line1",
+                        })}
+                        {textInput("Apt, suite, or floor", paymentForm.billing_address.street_2, (value) => updateBillingField("street_2", value), {
+                          autoComplete: "billing address-line2",
+                        })}
+                        {textInput("City", paymentForm.billing_address.city, (value) => updateBillingField("city", value), {
+                          autoComplete: "billing address-level2",
+                        })}
+                        <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)] gap-3">
+                          {textInput("State", paymentForm.billing_address.state, (value) => updateBillingField("state", value), {
+                            autoComplete: "billing address-level1",
+                          })}
+                          {textInput("ZIP code", paymentForm.billing_address.postal_code, (value) => updateBillingField("postal_code", value), {
+                            autoComplete: "billing postal-code",
+                            inputMode: "numeric",
+                          })}
+                        </div>
+                      </div>
+                      <p className={hintClass}>
+                        These details only fill in Form G-1450 on this computer. Lucy does not charge your card. Leave them blank to
+                        assemble the packet without a payment form.
+                      </p>
+                    </fieldset>
+                  ) : (
+                    <fieldset className="grid gap-4">
+                      <legend className="sr-only">Bank account details</legend>
+                      <Notice tone="info">
+                        The account must be with a U.S. bank, and the account holder signs each printed Form G-1650. Ask the bank to
+                        remove any ACH debit block for the Department of Homeland Security. Lucy keeps these details out of case records,
+                        but they are printed on the generated PDFs in local storage.
+                      </Notice>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="grid gap-1.5">
+                          <span className={labelClass}>Account ownership</span>
+                          <select
+                            value={bankForm.account_ownership}
+                            onChange={(event) => updateBankField("account_ownership", event.target.value)}
+                            className={inputClass}
+                          >
+                            <option value="personal">Personal</option>
+                            <option value="business">Business</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className={labelClass}>Account type</span>
+                          <select
+                            value={bankForm.account_type}
+                            onChange={(event) => updateBankField("account_type", event.target.value)}
+                            className={inputClass}
+                          >
+                            <option value="checking">Checking</option>
+                            <option value="savings">Savings</option>
+                          </select>
+                        </label>
+                        {textInput("Account holder name, as on the account", bankForm.account_holder_name, (value) => updateBankField("account_holder_name", value), {
+                          autoComplete: "off",
+                        })}
+                        {bankForm.account_ownership === "business"
+                          ? textInput("Business name", bankForm.business_name, (value) => updateBankField("business_name", value), { autoComplete: "off" })
+                          : null}
+                        {textInput("Bank name", bankForm.bank_name, (value) => updateBankField("bank_name", value), { autoComplete: "off" })}
+                        {textInput("Routing number", bankForm.routing_number, (value) => updateBankField("routing_number", value), {
+                          autoComplete: "off",
                           inputMode: "numeric",
                         })}
-                        {textInput("CVV", paymentForm.security_code, (value) => updatePaymentField("security_code", value), {
-                          autoComplete: "cc-csc",
+                        {textInput("Account number", bankForm.account_number, (value) => updateBankField("account_number", value), {
+                          autoComplete: "off",
                           inputMode: "numeric",
                         })}
                       </div>
-                      {textInput("Daytime phone", paymentForm.daytime_phone_number, (value) => updatePaymentField("daytime_phone_number", value), {
-                        autoComplete: "tel",
-                        inputMode: "tel",
-                      })}
-                      {textInput("Email", paymentForm.email, (value) => updatePaymentField("email", value), {
-                        autoComplete: "email",
-                        inputMode: "email",
-                      })}
-                    </div>
-                    <p className="pt-2 text-sm font-semibold text-ink">Billing address</p>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {textInput("Street address", paymentForm.billing_address.street_1, (value) => updateBillingField("street_1", value), {
-                        autoComplete: "billing address-line1",
-                      })}
-                      {textInput("Apt, suite, or floor", paymentForm.billing_address.street_2, (value) => updateBillingField("street_2", value), {
-                        autoComplete: "billing address-line2",
-                      })}
-                      {textInput("City", paymentForm.billing_address.city, (value) => updateBillingField("city", value), {
-                        autoComplete: "billing address-level2",
-                      })}
-                      <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)] gap-3">
-                        {textInput("State", paymentForm.billing_address.state, (value) => updateBillingField("state", value), {
-                          autoComplete: "billing address-level1",
-                        })}
-                        {textInput("ZIP code", paymentForm.billing_address.postal_code, (value) => updateBillingField("postal_code", value), {
-                          autoComplete: "billing postal-code",
-                          inputMode: "numeric",
-                        })}
-                      </div>
-                    </div>
-                    <p className={hintClass}>
-                      These details only fill in Form G-1450 on this computer. Lucy does not charge your card. Leave them blank to
-                      assemble the packet without a payment form.
-                    </p>
-                  </fieldset>
+                    </fieldset>
+                  )
                 ) : (
-                  <fieldset className="grid gap-4">
-                    <legend className="sr-only">Bank account details</legend>
-                    <Notice tone="info">
-                      The account must be with a U.S. bank, and the account holder signs each printed Form G-1650. Ask the bank to
-                      remove any ACH debit block for the Department of Homeland Security. Lucy keeps these details out of case records,
-                      but they are printed on the generated PDFs in local storage.
-                    </Notice>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <label className="grid gap-1.5">
-                        <span className={labelClass}>Account ownership</span>
-                        <select
-                          value={bankForm.account_ownership}
-                          onChange={(event) => updateBankField("account_ownership", event.target.value)}
-                          className={inputClass}
-                        >
-                          <option value="personal">Personal</option>
-                          <option value="business">Business</option>
-                        </select>
-                      </label>
-                      <label className="grid gap-1.5">
-                        <span className={labelClass}>Account type</span>
-                        <select
-                          value={bankForm.account_type}
-                          onChange={(event) => updateBankField("account_type", event.target.value)}
-                          className={inputClass}
-                        >
-                          <option value="checking">Checking</option>
-                          <option value="savings">Savings</option>
-                        </select>
-                      </label>
-                      {textInput("Account holder name, as on the account", bankForm.account_holder_name, (value) => updateBankField("account_holder_name", value), {
-                        autoComplete: "off",
-                      })}
-                      {bankForm.account_ownership === "business"
-                        ? textInput("Business name", bankForm.business_name, (value) => updateBankField("business_name", value), { autoComplete: "off" })
-                        : null}
-                      {textInput("Bank name", bankForm.bank_name, (value) => updateBankField("bank_name", value), { autoComplete: "off" })}
-                      {textInput("Routing number", bankForm.routing_number, (value) => updateBankField("routing_number", value), {
-                        autoComplete: "off",
-                        inputMode: "numeric",
-                      })}
-                      {textInput("Account number", bankForm.account_number, (value) => updateBankField("account_number", value), {
-                        autoComplete: "off",
-                        inputMode: "numeric",
-                      })}
-                    </div>
-                  </fieldset>
+                  <div className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm leading-6 text-muted">
+                      {paymentMethod === "card"
+                        ? "Add the card details to fill in Form G-1450, or leave this empty and include your own signed payment form."
+                        : "Add the bank details to fill in Form G-1650, or leave this empty and include your own signed payment form."}
+                    </p>
+                    <button type="button" onClick={() => setPaymentDetailsRequested(true)} className={buttonClass("secondary", "sm", "shrink-0")}>
+                      {paymentMethod === "card" ? "Add card details" : "Add bank details"}
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -1218,9 +1311,17 @@ export function PacketAssemblyWorkspace() {
               title="Evidence"
               description="Attach a PDF for each item. Lucy generates the USCIS forms itself, so those rows need no upload."
               actions={
-                <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
-                  {evidenceItemsWithFiles} of {totalManualUploadItems} evidence files attached
-                </Badge>
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  <Badge tone={evidenceItemsWithFiles === totalManualUploadItems && totalManualUploadItems ? "success" : "neutral"}>
+                    {evidenceItemsWithFiles} of {totalManualUploadItems} evidence files attached
+                  </Badge>
+                  {evidenceItemsWithFiles < totalManualUploadItems ? (
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink">
+                      <input type="checkbox" checked={onlyMissing} onChange={(event) => setOnlyMissing(event.target.checked)} className="h-4 w-4" />
+                      Show only items without a file
+                    </label>
+                  ) : null}
+                </div>
               }
             />
             <p className="mt-2 text-xs text-muted">
@@ -1234,10 +1335,24 @@ export function PacketAssemblyWorkspace() {
             <div className="mt-5 grid gap-3">
               {groupedItems
                 .filter((group) => group.items.some((item) => !NOT_EVIDENCE_CODES.has(item.code)))
+                .filter(
+                  (group) =>
+                    !onlyMissing ||
+                    group.items.some(
+                      (item) =>
+                        !GENERATED_ONLY_UPLOAD_CODES.has(item.code) &&
+                        !NOT_EVIDENCE_CODES.has(item.code) &&
+                        !(uploadsByCode.get(item.code) ?? []).length,
+                    ),
+                )
                 .map((group) => {
                   const generatedItems = group.items.filter((item) => GENERATED_ONLY_UPLOAD_CODES.has(item.code));
-                  const uploadItems = group.items.filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code) && !NOT_EVIDENCE_CODES.has(item.code));
+                  // Rows without a file come first, so what is left to do is at the top of each group.
+                  const uploadItems = group.items
+                    .filter((item) => !GENERATED_ONLY_UPLOAD_CODES.has(item.code) && !NOT_EVIDENCE_CODES.has(item.code))
+                    .sort((left, right) => Number((uploadsByCode.get(left.code) ?? []).length > 0) - Number((uploadsByCode.get(right.code) ?? []).length > 0));
                   const evidenceItems = uploadItems.filter((item) => !NOT_EVIDENCE_CODES.has(item.code));
+                  const shownUploadItems = onlyMissing ? uploadItems.filter((item) => !(uploadsByCode.get(item.code) ?? []).length) : uploadItems;
                   const attachedCount = evidenceItems.filter((item) => (uploadsByCode.get(item.code) ?? []).length).length;
                   const missingNames = evidenceItems
                     .filter((item) => !(uploadsByCode.get(item.code) ?? []).length)
@@ -1280,7 +1395,7 @@ export function PacketAssemblyWorkspace() {
                         </p>
                       ) : null}
                       <div className="border-t border-line px-4">
-                        {generatedItems.length ? (
+                        {generatedItems.length && !onlyMissing ? (
                           <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-3 text-sm">
                             <Badge tone="success">Generated by Lucy</Badge>
                             <span className="min-w-0 flex-1 text-muted">
@@ -1302,19 +1417,32 @@ export function PacketAssemblyWorkspace() {
                           </div>
                         ) : null}
                         <ul className="divide-y divide-line border-line [&:not(:first-child)]:border-t">
-                          {uploadItems.map((item) => {
+                          {shownUploadItems.map((item) => {
                             const itemUploads = uploadsByCode.get(item.code) ?? [];
                             const draft = uploadDrafts[item.code] ?? defaultUploadDraft();
                             const fileInputId = `upload-${item.code}`;
                             return (
-                              <li key={item.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-6">
+                              <li key={item.id} className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-3 gap-y-3 py-4 lg:grid-cols-[1.25rem_minmax(0,1fr)_minmax(0,20rem)] lg:gap-x-5">
+                                <span
+                                  aria-hidden="true"
+                                  className={classNames(
+                                    "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold",
+                                    itemUploads.length
+                                      ? "bg-pine text-white"
+                                      : item.applicability === "required"
+                                        ? "border-2 border-amber-500"
+                                        : "border border-line-strong",
+                                  )}
+                                >
+                                  {itemUploads.length ? "\u2713" : null}
+                                </span>
                                 <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                     <h4 className="font-semibold text-ink">{item.label}</h4>
                                     <Badge tone={item.applicability === "required" ? "strong" : "neutral"} className="capitalize">
                                       {formatStatus(item.applicability)}
                                     </Badge>
-                                    {itemUploads.length ? <Badge tone="success">Attached</Badge> : null}
+                                    <span className="sr-only">{itemUploads.length ? ", attached" : ", no file yet"}</span>
                                   </div>
                                   {itemUploads.length && !replacingCodes.has(item.code) ? null : (
                                     <p className="mt-1 text-sm leading-6 text-muted">{item.what_to_save_now || item.description}</p>
@@ -1324,7 +1452,7 @@ export function PacketAssemblyWorkspace() {
                                   ) : null}
                                 </div>
                                 {item.code === "payment_g1450" ? (
-                                  <p className="self-center text-sm leading-6 text-muted">
+                                  <p className="col-start-2 self-center text-sm leading-6 text-muted lg:col-start-3">
                                     Add payment in the{" "}
                                     <a href="#payment-heading" className="font-semibold text-pine underline-offset-4 hover:underline">
                                       Payment
@@ -1332,17 +1460,17 @@ export function PacketAssemblyWorkspace() {
                                     section above.
                                   </p>
                                 ) : itemUploads.length && !replacingCodes.has(item.code) ? (
-                                  <div className="self-center">
+                                  <div className="col-start-2 self-start lg:col-start-3 lg:justify-self-end">
                                     <button
                                       type="button"
                                       onClick={() => setReplacingCodes((current) => new Set(current).add(item.code))}
-                                      className={buttonClass("secondary", "sm")}
+                                      className={buttonClass("ghost", "sm")}
                                     >
-                                      Replace or add
+                                      Replace or add<span className="sr-only"> a file for {item.label}</span>
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="grid content-start gap-2">
+                                  <div className="col-start-2 grid content-start gap-2 lg:col-start-3">
                                     <div className="flex items-center gap-2">
                                       <input
                                         id={fileInputId}
@@ -1373,30 +1501,32 @@ export function PacketAssemblyWorkspace() {
                                         Upload
                                       </button>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
-                                        Language
-                                        <select
-                                          value={draft.documentLanguage}
-                                          onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
-                                          className="h-8 rounded-md border border-line-strong bg-white px-2 text-xs"
-                                        >
-                                          <option value="english">English</option>
-                                          <option value="spanish">Spanish</option>
-                                          <option value="other">Other</option>
-                                          <option value="unknown">Unknown</option>
-                                        </select>
-                                      </label>
-                                      <label className="flex items-center gap-2 text-xs font-medium text-ink">
-                                        <input
-                                          type="checkbox"
-                                          checked={draft.hasTranslation}
-                                          onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
-                                          className="h-4 w-4"
-                                        />
-                                        Includes certified English translation
-                                      </label>
-                                    </div>
+                                    {draft.file ? (
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                        <label className="flex items-center gap-2 text-xs font-medium text-ink">
+                                          Language
+                                          <select
+                                            value={draft.documentLanguage}
+                                            onChange={(event) => updateDraft(item.code, { documentLanguage: event.target.value })}
+                                            className="h-8 rounded-md border border-line-strong bg-white px-2 text-xs"
+                                          >
+                                            <option value="english">English</option>
+                                            <option value="spanish">Spanish</option>
+                                            <option value="other">Other</option>
+                                            <option value="unknown">Unknown</option>
+                                          </select>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-ink">
+                                          <input
+                                            type="checkbox"
+                                            checked={draft.hasTranslation}
+                                            onChange={(event) => updateDraft(item.code, { hasTranslation: event.target.checked })}
+                                            className="h-4 w-4"
+                                          />
+                                          Includes certified English translation
+                                        </label>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 )}
                               </li>
@@ -1413,128 +1543,215 @@ export function PacketAssemblyWorkspace() {
         </div>
 
         <aside id="assemble" aria-labelledby="assemble-heading" className="scroll-mt-24 xl:sticky xl:top-20 xl:h-fit">
-          <Card className="border-pine/30">
-            <SectionHeader
-              id="assemble-heading"
-              eyebrow="Last step"
-              title="Mail and assemble"
-              description="Lucy uses where the filer lives to pick the USCIS lockbox."
-              level={2}
-            />
-            <div className="mt-4 grid gap-4">
-              <label className="grid gap-1.5">
-                <span className={labelClass}>Where the filer lives</span>
-                <select id="filer-state" value={stateCode} onChange={(event) => setStateCode(event.target.value)} className={inputClass}>
-                  <option value="">Choose a state or territory</option>
-                  {US_LOCATIONS.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid gap-1.5">
-                <span className={labelClass} id="carrier-label">
-                  Delivery method
-                </span>
-                {segmented<"usps" | "private">(
-                  "Delivery method",
-                  [
-                    ["usps", "USPS"],
-                    ["private", "FedEx, UPS, DHL"],
-                  ],
-                  carrier,
-                  setCarrier,
-                  "w-full",
-                )}
-              </div>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-paper p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={includeSupportingEvidence}
-                  onChange={(event) => setIncludeSupportingEvidence(event.target.checked)}
-                  className="mt-0.5 h-4 w-4"
-                />
-                <span>
-                  <span className="block font-semibold text-ink">Include evidence PDFs</span>
-                  <span className="block text-xs leading-5 text-muted">Turn off to print only the forms and payment pages.</span>
-                </span>
-              </label>
-              <ul className="divide-y divide-line rounded-lg border border-line text-sm" aria-label="Before you assemble">
-                {[
-                  {
-                    label: "Filer's state",
-                    value: stateCode ? US_LOCATIONS.find(([value]) => value === stateCode)?.[1] ?? stateCode : "Not chosen",
-                    ok: Boolean(stateCode),
-                    href: "#filer-state",
-                  },
-                  { label: "Delivery", value: carrier === "usps" ? "USPS" : "FedEx, UPS, or DHL", ok: true, href: null },
-                  {
-                    label: "Payment",
-                    value: paymentReady
-                      ? paymentMode === "existing"
-                        ? "Uploaded PDF"
-                        : `${paymentFormName}, ${formatCurrency(selectedPaymentTotal.toFixed(2))}`
-                      : "Not added",
-                    ok: paymentReady,
-                    href: "#payment-heading",
-                  },
-                  {
-                    label: "Evidence",
-                    value: `${evidenceItemsWithFiles} of ${totalManualUploadItems} attached`,
-                    ok: evidenceItemsWithFiles === totalManualUploadItems,
-                    href: "#evidence-heading",
-                  },
-                ].map((row) => (
-                  <li key={row.label} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <span className="flex items-center gap-2 text-muted">
-                      <span
-                        aria-hidden="true"
-                        className={cx(
-                          "flex h-4 w-4 items-center justify-center rounded-full text-[0.625rem] font-bold",
-                          row.ok ? "bg-pine text-white" : "border border-amber-500 text-amber-700",
-                        )}
-                      >
-                        {row.ok ? "\u2713" : "!"}
+          {/* On desktop the panel never grows past the window, so the gates and the Assemble button stay in view. */}
+          <section className={cx(cardClass, "flex flex-col border-pine/30 xl:max-h-[calc(100vh-6rem)]")}>
+            <div className="min-h-0 overflow-y-auto p-5 md:p-6">
+              <SectionHeader
+                id="assemble-heading"
+                eyebrow="Last step"
+                title="Mail and assemble"
+                description="Lucy uses where the filer lives to pick the USCIS lockbox."
+                level={2}
+              />
+              <div className="mt-4 grid gap-4">
+                <label className="grid gap-1.5">
+                  <span className={labelClass}>Where the filer lives</span>
+                  <select id="filer-state" value={stateCode} onChange={(event) => setStateCode(event.target.value)} className={inputClass}>
+                    <option value="">Choose a state or territory</option>
+                    {US_LOCATIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid gap-1.5">
+                  <span className={labelClass} id="carrier-label">
+                    Delivery method
+                  </span>
+                  {segmented<"usps" | "private">(
+                    "Delivery method",
+                    [
+                      ["usps", "USPS"],
+                      ["private", "FedEx, UPS, DHL"],
+                    ],
+                    carrier,
+                    setCarrier,
+                    "w-full",
+                  )}
+                </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-paper p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={includeSupportingEvidence}
+                    onChange={(event) => setIncludeSupportingEvidence(event.target.checked)}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <span>
+                    <span className="block font-semibold text-ink">Include evidence PDFs</span>
+                    <span className="block text-xs leading-5 text-muted">Turn off to print only the forms and payment pages.</span>
+                  </span>
+                </label>
+                <ul className="divide-y divide-line rounded-lg border border-line text-sm" aria-label="Before you assemble">
+                  {[
+                    {
+                      label: "Filer's state",
+                      value: stateCode ? US_LOCATIONS.find(([value]) => value === stateCode)?.[1] ?? stateCode : "Not chosen",
+                      ok: Boolean(stateCode),
+                      href: "#filer-state",
+                    },
+                    { label: "Delivery", value: carrier === "usps" ? "USPS" : "FedEx, UPS, or DHL", ok: true, href: null },
+                    {
+                      label: "Payment form",
+                      value: feesProvisional
+                        ? "Fees not final"
+                        : paymentReady && unpaidFeeForms.length
+                          ? `${unpaidFeeForms.length} ${unpaidFeeForms.length === 1 ? "fee" : "fees"} left out`
+                        : paymentReady
+                        ? paymentMode === "existing"
+                          ? "Uploaded PDF"
+                          : `${paymentFormName}, ${formatCurrency(selectedPaymentTotal.toFixed(2))}`
+                        : paymentMode === "existing"
+                          ? "Signed PDF needed"
+                          : paymentMethod === "ach"
+                            ? "Bank details needed"
+                            : "Card details needed",
+                      ok: paymentReady && !feesProvisional && !unpaidFeeForms.length,
+                      href: "#payment-heading",
+                    },
+                    {
+                      label: "Evidence",
+                      value: requiredEvidenceMissing.length
+                        ? `${requiredEvidenceMissing.length} still missing`
+                        : `${evidenceItemsWithFiles} of ${totalManualUploadItems} attached`,
+                      ok: evidenceItemsWithFiles === totalManualUploadItems,
+                      href: "#evidence-heading",
+                    },
+                  ].map((row) => (
+                    <li key={row.label} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <span className="flex items-center gap-2 text-muted">
+                        <span
+                          aria-hidden="true"
+                          className={cx(
+                            "flex h-4 w-4 items-center justify-center rounded-full text-[0.625rem] font-bold",
+                            row.ok ? "bg-pine text-white" : "border border-amber-500 text-amber-700",
+                          )}
+                        >
+                          {row.ok ? "\u2713" : "!"}
+                        </span>
+                        {row.label}
                       </span>
-                      {row.label}
+                      {row.href && !row.ok ? (
+                        <a href={row.href} className="text-right font-semibold text-amber-900 underline-offset-4 hover:underline">
+                          {row.value}
+                        </a>
+                      ) : (
+                        <span className="text-right font-semibold text-ink">{row.value}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="grid shrink-0 gap-3 rounded-b-xl border-t border-line bg-white p-5 md:px-6">
+              {feesProvisional && caseSummary ? (
+                <p className="text-sm leading-6 text-ink">
+                  The prescreen decides which forms and fees go in the packet, so Lucy assembles it once the prescreen is finished.{" "}
+                  <a href={`/prescreen?caseId=${encodeURIComponent(caseSummary.id)}`} className="font-semibold text-pine underline-offset-4 hover:underline">
+                    Open the prescreen
+                  </a>
+                </p>
+              ) : null}
+              {needsPaperCopyConfirmation && stateCode && !feesProvisional ? (
+                <div
+                  className={classNames(
+                    "grid gap-1.5 rounded-lg border p-3 text-sm leading-5",
+                    requiredEvidenceMissing.some((item) => item.applicability === "required")
+                      ? "border-red-200 bg-red-50 text-red-950"
+                      : "border-amber-300 bg-amber-50 text-amber-950",
+                  )}
+                >
+                  <p>
+                    <span className="font-semibold">
+                      {requiredEvidenceMissing.length} {requiredEvidenceMissing.length === 1 ? "document has" : "documents have"} no file
+                    </span>{" "}
+                    {requiredEvidenceMissing.some((item) => item.applicability === "required")
+                      ? "and will be left out. USCIS can reject a packet missing required evidence."
+                      : "and will be left out, though you ticked them on the checklist."}
+                  </p>
+                  <p className="text-xs leading-5">{requiredEvidenceMissing.map((item) => item.label).join(" \u00b7 ")}</p>
+                  <label className="flex cursor-pointer items-start gap-2.5 text-ink">
+                    <input
+                      type="checkbox"
+                      checked={paperCopiesConfirmed}
+                      onChange={(event) => setPaperCopiesConfirmed(event.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0"
+                    />
+                    <span>I will add paper copies before mailing.</span>
+                  </label>
+                </div>
+              ) : null}
+              {needsPaymentConfirmation && stateCode && !feesProvisional ? (
+                <div className="grid gap-1.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-5 text-amber-950">
+                  <p>
+                    <span className="font-semibold">
+                      {paymentReady ? `No payment form for ${unpaidFeeForms.join(", ")}.` : "No payment form yet."}
+                    </span>{" "}
+                    <a href="#payment-heading" className="underline underline-offset-4">
+                      {paymentReady ? "Tick the fee" : "Add payment details"}
+                    </a>{" "}
+                    or confirm your own.
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-2.5 text-ink">
+                    <input
+                      type="checkbox"
+                      checked={paymentSkipConfirmed}
+                      onChange={(event) => setPaymentSkipConfirmed(event.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0"
+                    />
+                    <span>
+                      I will include my own signed payment for{" "}
+                      {paymentReady
+                        ? `the ${unpaidFeeForms.join(", ")} ${unpaidFeeForms.length === 1 ? "fee" : "fees"}`
+                        : `${formatCurrency(selectedPaymentTotal.toFixed(2))}${unpaidFeeForms.length ? ` and the ${unpaidFeeForms.join(", ")} ${unpaidFeeForms.length === 1 ? "fee" : "fees"}` : ""}`}
+                      .
                     </span>
-                    {row.href && !row.ok ? (
-                      <a href={row.href} className="text-right font-semibold text-amber-900 underline-offset-4 hover:underline">
-                        {row.value}
-                      </a>
-                    ) : (
-                      <span className="text-right font-semibold text-ink">{row.value}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                  </label>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={generateFullPacket}
-                disabled={!caseSummary || !stateCode || isPending}
+                disabled={
+                  !caseSummary ||
+                  !stateCode ||
+                  isPending ||
+                  feesProvisional ||
+                  (needsPaperCopyConfirmation && !paperCopiesConfirmed) ||
+                  (needsPaymentConfirmation && !paymentSkipConfirmed)
+                }
                 className={buttonClass("primary", "lg", "w-full")}
               >
                 {isPending ? (
                   <>
                     <Spinner /> Working...
                   </>
+                ) : feesProvisional ? (
+                  "Finish the prescreen first"
                 ) : !stateCode ? (
                   "Choose the filer's state first"
+                ) : needsPaperCopyConfirmation && !paperCopiesConfirmed ? (
+                  "Confirm the items above"
+                ) : needsPaymentConfirmation && !paymentSkipConfirmed ? (
+                  "Confirm the items above"
                 ) : includeSupportingEvidence ? (
                   "Assemble full packet"
                 ) : (
                   "Assemble forms only"
                 )}
               </button>
-              {stateCode && caseSummary && !paymentReady ? (
-                <p className="text-xs leading-5 text-amber-900">
-                  No payment is added yet, so the packet will have no payment form. Add it in Payment, or include your own signed
-                  payment form before mailing.
-                </p>
-              ) : null}
             </div>
-          </Card>
+          </section>
         </aside>
       </div>
 
