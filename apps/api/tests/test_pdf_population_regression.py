@@ -804,6 +804,8 @@ CONDITIONAL_QUESTIONS_NOT_ON_THE_STANDARD_PATH: dict[str, set[str]] = {
         "i131_processing_city",
         "i131_processing_country",
     },
+    # Only a petitioner who was once a permanent resident has an A-Number.
+    "i864": {"petitioner_a_number"},
     "i130": _FOREIGN_POSTAL_QUESTIONS
     | {
         "beneficiary_consular_city",
@@ -831,6 +833,10 @@ CONDITIONAL_QUESTIONS_NOT_ON_THE_STANDARD_PATH: dict[str, set[str]] = {
         "petitioner_naturalization_certificate_place",
         "petitioner_other_middle_name",
         "petitioner_spouse1_marriage_ended",
+        "petitioner_spouse2_first_name",
+        "petitioner_spouse2_last_name",
+        "petitioner_spouse2_marriage_ended",
+        "petitioner_spouse2_middle_name",
         "prior_i130_city",
         "prior_i130_date_filed",
         "prior_i130_first_name",

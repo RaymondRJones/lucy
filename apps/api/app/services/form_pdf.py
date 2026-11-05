@@ -22,6 +22,7 @@ from app.services.form_ingestion import (
     get_form_case_intake,
     get_form_state,
     normalize_form_key,
+    proposals_for_blank_answers,
 )
 from app.services.pdf_fields import (
     OVERLONG_WARNING,
@@ -143,6 +144,7 @@ STATE_QUESTION_IDS = {
     "beneficiary_mailing_state",
     "beneficiary_physical_state",
     "petitioner_current_state",
+    "petitioner_physical_state",
 }
 
 PHONE_QUESTION_IDS = {
@@ -201,6 +203,13 @@ TEXT_FIELD_MAP: dict[str, dict[str, tuple[str, ...]]] = {
         # The template names this field CityofBirth, but edition 08/24/26 prints Item 7 as Country of Birth.
         "petitioner_country_of_birth": ("P4_Line7_CityofBirth[0]",),
         "petitioner_social_security_number": ("P4_Line10_SocialSecurityNumber[0]",),
+        # The Part 11 header repeats the sponsor's A-Number, like the sponsor's name.
+        "petitioner_a_number": ("P4_Line12_AlienNumber[0]", "P4_Line12_AlienNumber[1]"),
+        "petitioner_uscis_online_account_number": ("P4_Line13_AcctIdentifier[0]",),
+        "petitioner_physical_address_line1": ("P4_Line4a_StreetNumberName[0]",),
+        "petitioner_physical_city": ("P4_Line4d_CityOrTown[0]",),
+        "petitioner_physical_state": ("P4_Line4e_State[0]",),
+        "petitioner_physical_zip": ("P4_Line4f_ZipCode[0]",),
         "beneficiary_last_name": ("P2_Line1a_FamilyName[0]",),
         "beneficiary_first_name": ("P2_Line1b_GivenName[0]",),
         "beneficiary_middle_name": ("P2_Line1c_MiddleName[0]",),
@@ -210,7 +219,10 @@ TEXT_FIELD_MAP: dict[str, dict[str, tuple[str, ...]]] = {
         "beneficiary_mailing_zip": ("P2_Line2_ZipCode[0]",),
         "beneficiary_country_of_citizenship": ("P2_Line3_CountryCitizenship[0]",),
         "beneficiary_date_of_birth": ("P2_Line4_DateOfBirth[0]",),
-        "beneficiary_a_number": ("P2_Line5_AlienNumber[0]", "P2_Line5_AlienNumber[1]", "P4_Line12_AlienNumber[1]"),
+        # P2_Line5_AlienNumber[1] is Part 4's Family Member 1, not a copy of the principal immigrant's number.
+        "beneficiary_a_number": ("P2_Line5_AlienNumber[0]",),
+        "beneficiary_mailing_in_care_of": ("P2_Line2_InCareOf[0]",),
+        "beneficiary_uscis_online_account_number": ("Pt2_Line6_USCISOnlineAcctNumber[0]",),
         "beneficiary_phone": ("P2_Line7_DaytimePhoneNumber[0]",),
         "i864_total_immigrants": ("P3_Line28_TotalNumberofImmigrants[0]",),
         "household_size": ("Override[0]",),
@@ -423,6 +435,9 @@ I130A_FOREIGN_EMPLOYER_KEY = "beneficiary_foreign_employer_or_school"
 
 # Part 4, Item 7.b applies only when a travel document is collected overseas.
 I131_OVERSEAS_PROCESSING_QUESTIONS = {"i131_processing_city", "i131_processing_country"}
+# Edition 01/20/25 says "If you are applying for an Advance Parole Document, SKIP to Part 7" before Item 7,
+# so delivery of a reentry permit or refugee travel document stays blank on an advance parole request.
+I131_TRAVEL_DOCUMENT_DELIVERY_QUESTIONS = {"i131_processing_location", *I131_OVERSEAS_PROCESSING_QUESTIONS}
 
 UNIT_FIELD_MAP: dict[str, dict[str, tuple[str, str, str, str]]] = {
     "i765": {
@@ -445,6 +460,12 @@ UNIT_FIELD_MAP: dict[str, dict[str, tuple[str, str, str, str]]] = {
             "P4_Line2c_Unit[1]",
             "P4_Line2c_Unit[2]",
             "P4_Line2d_AptSteFlrNumber[0]",
+        ),
+        "petitioner_physical_address_line2": (
+            "P4_Line4b_Unit[0]",
+            "P4_Line4b_Unit[1]",
+            "P4_Line4b_Unit[2]",
+            "P4_Line4c_AptSteFlrNumber[0]",
         ),
         "beneficiary_mailing_address_line2": (
             "P2_Line2_Unit[0]",
@@ -813,7 +834,9 @@ def build_form_pdf_field_payload(
     """Returns the PDF field values and mapping report for a supplemental form."""
     normalized_form_key = normalize_form_key(form_key)
     question_by_id = {question["id"]: question for question in all_supplemental_form_questions(normalized_form_key)}
-    if normalized_form_key == "i131" and answers.get("i131_processing_location") == "domestic_address":
+    if normalized_form_key == "i131" and answers.get("i131_application_type") == "advanced_parole_i485_pending":
+        answers = {key: value for key, value in answers.items() if key not in I131_TRAVEL_DOCUMENT_DELIVERY_QUESTIONS}
+    elif normalized_form_key == "i131" and answers.get("i131_processing_location") == "domestic_address":
         answers = {key: value for key, value in answers.items() if key not in I131_OVERSEAS_PROCESSING_QUESTIONS}
     if normalized_form_key in {"i130", "i130a"}:
         family_payload = (
@@ -1023,9 +1046,8 @@ def generate_form_pdf(
     state = get_form_state(session, case_id, form_key)
     answers = dict(state["answers"])
     case_intake = get_form_case_intake(session, case_id, form_key)
-    for proposal in build_form_answer_proposals_from_case_data(form_key, case_intake):
-        if not value_is_answered(answers.get(proposal["question_id"])):
-            answers[proposal["question_id"]] = proposal["value"]
+    for proposal in proposals_for_blank_answers(build_form_answer_proposals_from_case_data(form_key, case_intake), answers):
+        answers[proposal["question_id"]] = proposal["value"]
     # I-130A Part 3 has no question of its own: it repeats the I-485's foreign employer or school.
     if normalize_form_key(form_key) == "i130a" and value_is_answered(case_intake.get(I130A_FOREIGN_EMPLOYER_KEY)):
         answers[I130A_FOREIGN_EMPLOYER_KEY] = case_intake[I130A_FOREIGN_EMPLOYER_KEY]

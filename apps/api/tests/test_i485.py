@@ -328,10 +328,9 @@ def test_i485_pdf_payload_maps_known_questionnaire_answers():
     assert payload.text_values["Pt9Line3b_PartNumber[0]"] == "1"
     assert payload.text_values["Pt9Line3c_ItemNumber[0]"] == "18"
     assert "Prior address 2:" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
-    assert "Street: 101 Older Street" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
-    assert "State: CA" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
+    assert "Prior address 2: 101 Older Street, San Jose, CA" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
     assert "State or province" not in payload.text_values["P14_Line2_AdditionalInfo[0]"]
-    assert "From: 03/15/2023" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
+    assert "from 03/15/2023 to 03/14/2025" in payload.text_values["P14_Line2_AdditionalInfo[0]"]
     assert payload.text_values["Pt1Line18_RecentStreetName[0]"] == "789 Calle Falsa"
     assert payload.text_values["Pt1Line18_RecentDateTo[0]"] == "12/31/2022"
     assert payload.text_values["Pt1Line19_SSN[0]"] == "000000000"
