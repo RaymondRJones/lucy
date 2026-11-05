@@ -274,6 +274,21 @@ The score is intentionally conservative and non-legal:
 - maps to `Not ready`, `Almost ready`, `Ready for final review`, or `Ready to print and assemble`
 - reaches `Ready to print and assemble` only with no open issues; one `important` issue caps it at `Ready for final review`
 
+### Review and print gates in the web UI
+
+The web app adds gates on top of the score. They read existing backend data (checklist statuses, uploads, QA issues,
+prescreen completion, and each form's `missing_required_count` from its fill preview) and do not change the score.
+
+- Review lists one row per task: blocking QA issues, prescreen flags, empty required form answers, unticked required
+  checklist items, required evidence with no file, and items ticked done with no file. Blocking rows (QA blocking issues,
+  empty required answers, unticked required items) lock the way to Print packet. Important rows need an
+  acknowledgement. With no checklist yet, Review says there is nothing to review instead of reporting all clear.
+- Print packet will not assemble until the prescreen is finished, because the fee list follows the checklist, which
+  follows the prescreen. A full packet with required or ticked evidence missing needs a "paper copies" confirmation.
+  Fees due with no payment form, or a payable fee unticked, need a confirmation that the user will include their own
+  signed payment.
+- Print packet repeats the case's open QA issue count, since the step bar can reach it without passing through Review.
+
 ## Production follow-ups
 
 - move rules into YAML or DB-managed content

@@ -38,8 +38,8 @@ export function PublicPage({ eyebrow, title, description, children }: PublicPage
         </nav>
       </header>
 
-      <main id="main" className="mx-auto flex max-w-shell flex-col gap-8 px-4 pb-16 pt-10 md:px-8 md:pt-14">
-        <section className="max-w-3xl">
+      <main id="main" className="mx-auto flex max-w-3xl flex-col gap-8 px-4 pb-16 pt-10 md:px-8 md:pt-14">
+        <section>
           <p className={eyebrowClass}>{eyebrow}</p>
           <h1 className="mt-3 font-display text-4xl leading-tight text-ink md:text-5xl">{title}</h1>
           <p className="mt-4 text-lg leading-8 text-muted">{description}</p>

@@ -11,7 +11,6 @@ import {
   Card,
   LoadingState,
   PageHeader,
-  ProgressBar,
   SectionHeader,
   StatusMessage,
   YesNoControl,
@@ -40,7 +39,7 @@ const DEFAULT_CASE_FORM = {
   case_name: "Lucy marriage packet",
   petitioner_email: "",
   beneficiary_email: "",
-  country_of_focus: "Colombia",
+  country_of_focus: "",
 };
 
 const FORM_ACTIONS: Record<string, { label: string; href: string; detail: string; phase: string }> = {
@@ -598,7 +597,7 @@ export function PrescreenWorkspace() {
         items={pages.map((page) => ({
           id: page.id,
           title: page.title,
-          subtitle: `${page.answered} of ${page.total} answered`,
+          subtitle: `${page.total} ${page.total === 1 ? "question" : "questions"}`,
           missingCount: page.total - page.answered,
           complete: page.answered === page.total,
           flagCount: flags.filter((flag) => page.questions.some((question) => question.id === flag.question_id)).length,
@@ -643,6 +642,7 @@ export function PrescreenWorkspace() {
               isDirty={isDirty}
               hasNext={hasNextPage}
               disabled={!caseSummary}
+              nothingEntered={visibleQuestions.length > 0 && missingQuestions.length === visibleQuestions.length}
             />
           </>
         ) : (
@@ -714,6 +714,7 @@ export function PrescreenWorkspace() {
                 <span className={labelClass}>Beneficiary&apos;s country</span>
                 <input
                   value={caseForm.country_of_focus}
+                  placeholder="For example, Colombia"
                   onChange={(event) => setCaseForm((current) => ({ ...current, country_of_focus: event.target.value }))}
                   className={inputClass}
                 />
@@ -735,45 +736,42 @@ export function PrescreenWorkspace() {
         </div>
       ) : (
         <>
-          <Card className="p-4 md:p-5">
-            {prescreen ? (
-              <div className="grid gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
-                  <span className="text-sm text-muted">
-                    {visibleQuestions.length - missingQuestions.length} of {visibleQuestions.length} answered
-                    {flags.length ? ` \u00b7 ${flags.length} ${flags.length === 1 ? "flag" : "flags"}` : ""}
-                  </span>
-                </div>
-                <ProgressBar value={prescreen.evaluation.completion_pct} label="Prescreen answered" />
-                {includedForms.length ? (
-                  <p className="text-sm leading-6 text-muted">
-                    <span className="font-semibold text-ink">Forms in your packet: </span>
-                    {includedForms
-                      .map((code) => FORM_ACTIONS[code]?.label)
-                      .filter(Boolean)
-                      .join(", ")}
-                    {includedForms.includes("form_g1145") ? ". Form G-1145 needs no answers; Lucy fills it in from your case." : ""}
-                  </p>
-                ) : null}
+          {prescreen && !prescreenComplete ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-line bg-white px-5 py-3.5 shadow-card sm:flex-row sm:items-center sm:gap-4">
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+                <span className="text-sm tabular-nums text-muted">
+                  {visibleQuestions.length - missingQuestions.length} of {visibleQuestions.length} answered
+                  {flags.length ? ` \u00b7 ${flags.length} ${flags.length === 1 ? "flag" : "flags"}` : ""}
+                </span>
               </div>
-            ) : null}
-          </Card>
+              {includedForms.length ? (
+                <p className="min-w-0 text-sm leading-6 text-muted sm:border-l sm:border-line sm:pl-4">
+                  <span className="font-semibold text-ink">{prescreenComplete ? "Forms in your packet: " : "Forms in your packet so far: "}</span>
+                  {includedForms
+                    .map((code) => FORM_ACTIONS[code]?.label)
+                    .filter(Boolean)
+                    .join(", ")}
+                  {includedForms.includes("form_g1145") ? ". Form G-1145 needs no answers; Lucy fills it in from your case." : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {prescreenComplete ? (
             <Card aria-labelledby="next-form-heading" className="border-pine/30">
               <SectionHeader
                 id="next-form-heading"
                 eyebrow="Prescreen complete"
-                title={allFormsDone ? "Every form has its required answers" : "Choose a form to fill in next"}
+                title={`Your packet needs ${nextFormOptions.length} ${nextFormOptions.length === 1 ? "form" : "forms"}`}
                 description={
                   allFormsDone
-                    ? "You can still open any form to check or change answers. Next, tick off the checklist."
+                    ? "Each one has its required answers. You can still open any form to check or change answers. Next, tick off the checklist."
                     : "Start with the suggested form. Each one opens with the answers you have already given."
                 }
                 actions={
                   allFormsDone ? (
-                    <Link href={`/manage-tasks?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "sm")}>
+                    <Link href={`/manage-tasks?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "md")}>
                       Continue to checklist <span aria-hidden="true">{"\u2192"}</span>
                     </Link>
                   ) : (
@@ -788,6 +786,12 @@ export function PrescreenWorkspace() {
                   )
                 }
               />
+              {flags.length || statusInfo.tone !== "success" ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted">
+                  <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+                  {flags.length ? `${flags.length} ${flags.length === 1 ? "answer" : "answers"} outside the standard path` : null}
+                </div>
+              ) : null}
               <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {nextFormOptions.map((option) => {
                   const status = formStatuses[option.formKey];
@@ -848,7 +852,8 @@ export function PrescreenWorkspace() {
             questionnaireGrid
           )}
 
-          {skipItems.length ? (
+          {/* What can be skipped depends on answers, so it is not shown before the first one. */}
+          {skipItems.length && missingQuestions.length < visibleQuestions.length ? (
             <details className={classNames(cardClass, "group")}>
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm hover:bg-paper [&::-webkit-details-marker]:hidden">
                 <span>

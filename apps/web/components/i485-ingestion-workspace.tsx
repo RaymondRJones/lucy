@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import {
   CaseBar,
   ComeBackList,
+  FieldLegend,
   ComeBackToggle,
   FormCompleteNotice,
   FormTabs,
@@ -891,7 +892,12 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
 
       {!caseId ? <CaseBar caseId="" onSelect={selectCase} disabled={isPending} /> : null}
 
-      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
+      <MissingAnswers
+        items={visibleMissingRequiredItems}
+        hiddenCount={hiddenMissingRequiredCount}
+        onSelect={goToPage}
+        notStarted={fillPreview?.field_count === 0}
+      />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <PageNav
@@ -930,6 +936,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 <h2 id="form-page-heading" className="mt-1 font-display text-2xl text-ink">
                   {selectedPage.title}
                 </h2>
+                <FieldLegend />
               </div>
 
               {pageFlags.length ? (
@@ -996,6 +1003,7 @@ export function I485IngestionWorkspace({ initialCaseId }: { initialCaseId?: stri
                 isPending={isPending}
                 isDirty={isDirty}
                 hasNext={hasNextPage}
+                nothingEntered={fillPreview?.field_count === 0}
               />
             </>
           ) : null}

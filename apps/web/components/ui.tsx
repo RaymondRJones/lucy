@@ -103,10 +103,10 @@ export function PageHeader({
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
         {eyebrow ? <p className={eyebrowClass}>{eyebrow}</p> : null}
-        <h1 className="mt-1 font-display text-3xl leading-tight text-ink md:text-4xl">{title}</h1>
-        {description ? <p className="mt-2 max-w-3xl text-[15px] leading-7 text-muted">{description}</p> : null}
+        <h1 className="mt-1 font-display text-[2rem] leading-[1.15] tracking-[-0.01em] text-ink md:text-[2.5rem]">{title}</h1>
+        {description ? <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-muted">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-nowrap">{actions}</div> : null}
     </header>
   );
 }

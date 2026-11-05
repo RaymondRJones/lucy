@@ -154,6 +154,7 @@ export function ManageTasksWorkspace() {
   const requiredItems = checklist.filter((item) => item.applicability === "required");
   const totalRequired = requiredItems.length;
   const totalDone = requiredItems.filter((item) => isDone(item)).length;
+  const tickedWithoutFile = checklist.filter((item) => isDone(item) && isEvidenceItem(item) && !attachedCodes.has(item.code)).length;
 
   return (
     <AppShell step="checklist" caseId={caseSummary?.id} caseName={caseSummary?.case_name} readinessLabel={caseSummary?.readiness_label}>
@@ -204,7 +205,7 @@ export function ManageTasksWorkspace() {
           <Card as="aside" className="h-fit p-3 md:p-3">
             <div className="px-2 pb-3 pt-1">
               <div className="flex items-center justify-between text-xs font-semibold text-muted">
-                <span>Required items marked done</span>
+                <span>Required items done</span>
                 <span className="whitespace-nowrap tabular-nums">
                   {totalDone} of {totalRequired}
                 </span>
@@ -328,8 +329,11 @@ export function ManageTasksWorkspace() {
       {caseSummary && checklist.length ? (
         <div className="flex flex-col items-start justify-between gap-3 border-t border-line pt-6 sm:flex-row sm:items-center">
           <p className="text-sm text-muted">
-            {totalDone === totalRequired ? "Every required item is ticked." : `${totalRequired - totalDone} required items left to tick.`} Next, review
-            the packet for issues.
+            {totalDone === totalRequired ? "Every required item is ticked." : `${totalRequired - totalDone} required items left to tick.`}
+            {tickedWithoutFile
+              ? ` ${tickedWithoutFile} ticked ${tickedWithoutFile === 1 ? "item has" : "items have"} no file yet; attach ${tickedWithoutFile === 1 ? "it" : "them"} on the Print packet step.`
+              : ""}{" "}
+            Next, review the packet for issues.
           </p>
           <Link href={`/review?caseId=${encodeURIComponent(caseSummary.id)}`} className={buttonClass("primary", "md")}>
             Continue to review <span aria-hidden="true">{"\u2192"}</span>

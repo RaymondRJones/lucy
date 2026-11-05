@@ -1,5 +1,6 @@
 type G1450CardValidationPayload = {
   cardholder_name: string;
+  credit_card_type?: string;
   credit_card_number: string;
   expiration_month: string;
   expiration_year: string;
@@ -27,6 +28,7 @@ export function getG1450PaymentFieldIssues(form: G1450CardValidationPayload) {
   const cardDigits = form.credit_card_number.replace(/\D/g, "");
   return [
     fieldIssue("cardholder name", form.cardholder_name, 1),
+    form.credit_card_type === "" ? "card type" : null,
     !cardDigits ? "card number" : cardDigits.length < 12 ? "card number (12+ digits)" : null,
     fieldIssue("expiration month", form.expiration_month, 1),
     fieldIssue("expiration year", form.expiration_year, 2),

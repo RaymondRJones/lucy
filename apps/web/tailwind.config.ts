@@ -38,6 +38,10 @@ const config: Config = {
         display: ["Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Georgia", "serif"],
         body: ["Avenir Next", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
       },
+      // Captions carry fee dates, form references, and file names, so the smallest size stays at 13px.
+      fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }],
+      },
       maxWidth: {
         shell: "80rem",
       },
