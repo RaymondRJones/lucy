@@ -231,6 +231,29 @@ and `PLACEHOLDER` text so final packet previews do not contain visually blank ev
 npm run seed:packet-scenarios -- --no-generate-packets
 ```
 
+## Seed A Full PDF Coverage Case
+
+Create one fictional case whose answers reach every mapped PDF field, generate all nine forms, and audit them:
+
+```bash
+npm run seed:full-coverage
+npm run seed:full-coverage -- --render
+npm run seed:full-coverage -- --render --output-dir /tmp/lucy-full-coverage
+```
+
+The persona, in `apps/api/app/content/full_coverage_sample.py`, takes the data-bearing branch everywhere it
+can: other names and dates of birth, other A-Numbers, a separate mailing address, three prior addresses, a
+prior marriage, two children, two organizations, a means-tested benefit table, a naturalized petitioner with
+a prior spouse and a prior I-130, and a PO Box mailing address beside a physical address. Prior marriages and
+children are outside the standard niche, so the forms are review drafts. Where a form item has branches that
+exclude each other, it takes one, and `apps/api/tests/test_full_coverage_seed.py` lists the mappings left blank.
+
+The command writes `coverage-report.json` beside the PDFs (default `storage/generated/full-coverage-<case-id>/`).
+For each form it lists filled text fields, checked boxes, answers without a PDF mapping, and every blank text
+field to review with its page and USCIS tooltip. Attorney, interpreter, preparer, and signature fields are
+counted separately because the applicant does not fill them. `--render` also writes each page to
+`pages/<form>-pNN.png` with the saved appearances a printer uses, for visual review.
+
 ## PDF Population Regression Tests
 
 `apps/api/tests/test_pdf_population_regression.py` runs as part of `npm run test:api`. It seeds 8 fictional

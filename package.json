@@ -12,6 +12,7 @@
     "inspect:case": "./.venv313/bin/python -m app.cli.inspect_case",
     "seed:happy-path": "./.venv313/bin/python -m app.cli.seed_happy_path",
     "seed:packet-scenarios": "./.venv313/bin/python -m app.cli.seed_packet_scenarios",
+    "seed:full-coverage": "./.venv313/bin/python -m app.cli.seed_full_coverage",
     "generate:g1450": "./.venv313/bin/python -m app.cli.generate_g1450",
     "generate:i485": "./.venv313/bin/python -m app.cli.generate_i485",
     "seed:i485-sample": "./.venv313/bin/python -m app.cli.seed_i485_sample",
