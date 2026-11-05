@@ -24,3 +24,10 @@ sticky elements, so `state-packet-scrolled-desktop-after.jpg` shows the Print pa
 After-only states: `state-packet-scrolled-desktop-after.jpg` (assemble panel with its confirmations, scrolled),
 `state-packet-fee-unticked-desktop-after.jpg` (I-485 fee unticked), `state-packet-fees-not-final-desktop-after.jpg`
 (prescreen unfinished), `state-packet-only-missing-desktop-after.jpg` (evidence filtered to items without a file).
+
+## Annotated screenshots
+
+`annotated/` holds after shots of the live app with numbered outlines on what changed and a note for each number:
+empty-case Review (01), unfinished-case Review (02), out-of-scope Review (03), I-485 form (04), new I-485 form (05),
+Print packet with an unfinished prescreen (06), the assemble panel while scrolling (07), an unticked fee with the
+evidence filter on (08), and the I-485 form on a phone (09).
