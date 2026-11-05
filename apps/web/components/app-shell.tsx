@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CaseSelector } from "@/components/case-selector";
 import { Badge, cx } from "@/components/ui";
 import { getCase, getChecklist, getPrescreenState, listUploads } from "@/lib/api";
-import { evidenceAttachment } from "@/lib/evidence";
+import { DONE_STATUSES, evidenceAttachment } from "@/lib/evidence";
 import { loadFormStatuses } from "@/lib/form-status";
 import { clearSavedCaseId, rememberCaseId } from "@/lib/case-storage";
 import type { CaseSummary } from "@/lib/types";
@@ -15,7 +15,6 @@ export type WorkflowStep = "prescreen" | "forms" | "checklist" | "review" | "pac
 type StepStatus = { state: "done" | "attention" | "progress"; note: string };
 type StepStatuses = Partial<Record<WorkflowStep, StepStatus>>;
 
-const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
 
 const STEPS: Array<{ id: WorkflowStep; label: string; href: string }> = [
   { id: "prescreen", label: "Prescreen", href: "/prescreen" },
@@ -101,11 +100,14 @@ export function AppShell({
         if (required.length && required.every((item) => DONE_STATUSES.has(item.completion_status))) {
           value.checklist = { state: "done", note: "all required items done" };
         }
-        const missingFiles = evidenceAttachment(checklist?.items ?? [], uploads).missing.filter((item) => item.applicability === "required").length;
+        // Required files, and items ticked done without a file, are both missing from the printed packet.
+        const missingFiles = evidenceAttachment(checklist?.items ?? [], uploads).missing.filter(
+          (item) => item.applicability === "required" || DONE_STATUSES.has(item.completion_status),
+        ).length;
         if (loaded.counts.qa_issues) {
           value.review = { state: "attention", note: `${loaded.counts.qa_issues} open ${loaded.counts.qa_issues === 1 ? "issue" : "issues"}` };
         } else if (missingFiles) {
-          value.review = { state: "attention", note: `${missingFiles} required ${missingFiles === 1 ? "file" : "files"} missing` };
+          value.review = { state: "attention", note: `${missingFiles} ${missingFiles === 1 ? "file" : "files"} not attached` };
         } else if (loaded.readiness_label.startsWith("Ready to print")) {
           value.review = { state: "done", note: "no open issues" };
         }
@@ -172,7 +174,9 @@ function StepMarker({ index, isActive, isPast, status }: { index: number; isActi
         {status?.state === "done" && !isActive ? "\u2713" : index + 1}
       </span>
       {status?.state === "attention" ? (
-        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500" />
+        <span className="absolute -right-1.5 -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white bg-amber-500 text-[0.5rem] font-bold leading-none text-white">
+          !
+        </span>
       ) : null}
     </span>
   );
@@ -277,7 +281,7 @@ function MobileSteps({ activeIndex, caseId, statuses }: { activeIndex: number; c
             ))}
           </ol>
         </details>
-        {next ? (
+        {next && caseId ? (
           <Link href={withCase(next.href, caseId)} className="rounded-lg px-2 py-1.5 text-sm font-semibold text-pine hover:bg-pine-soft">
             Next: {next.label} <span aria-hidden="true">{"\u2192"}</span>
           </Link>
@@ -299,6 +303,7 @@ function StepList({ activeIndex, caseId, statuses }: { activeIndex: number; case
             <Link
               href={withCase(entry.href, caseId)}
               aria-current={isActive ? "step" : undefined}
+              title={statuses[entry.id]?.note ? `${entry.label}: ${statuses[entry.id]?.note}` : undefined}
               className={cx(
                 "flex items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-colors",
                 isActive ? "bg-pine-soft text-pine-strong" : "text-muted hover:bg-paper hover:text-ink",

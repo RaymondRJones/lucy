@@ -11,6 +11,9 @@ export const GENERATED_ONLY_UPLOAD_CODES = new Set([
   "form_i131",
 ]);
 
+// Checklist statuses that mean the user has marked an item done.
+export const DONE_STATUSES = new Set(["uploaded", "almost_done", "approved", "complete"]);
+
 // The payment row is filled from the Payment section, so it is not counted as evidence.
 export const NOT_EVIDENCE_CODES = new Set(["payment_g1450"]);
 

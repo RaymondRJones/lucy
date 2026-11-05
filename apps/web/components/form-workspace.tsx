@@ -96,9 +96,9 @@ function FormStatusMark({ status }: { status?: { missing: number } }) {
   }
   if (status.missing) {
     return (
-      <span className="rounded-full bg-amber-100 px-1.5 text-[0.6875rem] font-bold tabular-nums text-amber-900">
-        {status.missing}
-        <span className="sr-only"> required answers left</span>
+      <span className="whitespace-nowrap rounded-full bg-paper px-1.5 text-[0.6875rem] font-semibold tabular-nums text-muted ring-1 ring-line">
+        {status.missing} left
+        <span className="sr-only"> required answers</span>
       </span>
     );
   }
@@ -115,12 +115,18 @@ export function HelpPopover({ label, title, children }: { label: string; title: 
     <details className="group/help relative">
       <summary
         aria-label={label}
-        className="flex h-7 cursor-pointer list-none items-center gap-1 rounded-full border border-line-strong bg-white px-2.5 text-xs font-semibold text-pine transition-colors hover:border-pine group-open/help:border-pine group-open/help:bg-pine-soft [&::-webkit-details-marker]:hidden"
+        title="Help with this question"
+        className="flex h-10 min-w-10 cursor-pointer list-none sm:h-8 sm:min-w-8 items-center justify-center gap-1.5 rounded-md px-1.5 text-xs font-semibold text-pine transition-colors hover:bg-pine-soft group-open/help:bg-pine-soft [&::-webkit-details-marker]:hidden"
       >
-        <span aria-hidden="true" className="font-bold">
+        <span
+          aria-hidden="true"
+          className="flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full border-[1.5px] border-current text-[0.6875rem] font-bold leading-none"
+        >
           ?
         </span>
-        Help
+        <span aria-hidden="true" className="hidden pr-0.5 lg:inline">
+          Help
+        </span>
       </summary>
       <div className="absolute right-0 top-9 z-20 w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-line bg-white p-3 text-left text-sm font-normal leading-6 text-ink shadow-pop">
         <p className="font-semibold text-ink">{title}</p>
@@ -145,22 +151,34 @@ export function ComeBackToggle({
     <button
       type="button"
       aria-pressed={flagged}
+      aria-label={flagged ? "Marked to come back to. Clear the mark" : "Mark to come back to later"}
       onClick={onToggle}
       disabled={disabled}
-      title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question so it shows in your list to come back to."}
+      title={flagged ? "You marked this to come back to. Select to clear the mark." : "Mark this question to come back to later"}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors disabled:opacity-50",
-        compact ? "min-h-7 px-2 py-0.5 text-xs" : "min-h-8 px-2.5 py-1 text-xs",
-        flagged ? "border-amber-300 bg-amber-50 text-amber-900" : "border-line bg-white text-muted hover:border-line-strong hover:text-ink",
+        "inline-flex items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors disabled:opacity-50",
+        compact ? "h-7" : "h-10 sm:h-8",
+        flagged ? "bg-amber-100 px-2 text-amber-900 ring-1 ring-amber-300 hover:bg-amber-50" : "min-w-10 px-1.5 text-muted hover:bg-paper hover:text-ink sm:min-w-8",
       )}
     >
-      <span aria-hidden="true">{flagged ? "\u2691" : "\u2690"}</span>
-      {flagged ? "Marked for later" : (
-        <>
-          Flag<span className="sr-only"> for later</span>
-        </>
+      <FlagIcon filled={flagged} />
+      {flagged ? (
+        <span aria-hidden="true">Marked</span>
+      ) : (
+        <span aria-hidden="true" className="hidden pr-0.5 lg:inline">
+          Come back
+        </span>
       )}
     </button>
+  );
+}
+
+function FlagIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5">
+      <path d="M3.5 14.5V2.5" strokeLinecap="round" />
+      <path d="M3.5 2.75h8.25l-1.75 3 1.75 3H3.5" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -195,7 +213,7 @@ export function QuestionCard({
   return (
     <div
       className={cx(
-        "grid gap-3 bg-white transition-colors",
+        "group/q grid gap-3 bg-white transition-colors",
         missing
           ? "my-3 rounded-lg border border-clay/40 p-4 shadow-[inset_3px_0_0_0_#a8522f]"
           : flagged
@@ -204,34 +222,48 @@ export function QuestionCard({
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-        <div className="min-w-0 flex-1 basis-64">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-6 text-ink">
             {label}
             {required ? (
               <span className="text-clay" aria-label="required">
-                {" "}
-                *
+                {"\u00a0*"}
               </span>
             ) : null}
+            {meta ? (
+              <span className="block whitespace-nowrap text-xs font-normal tabular-nums text-muted sm:ml-2 sm:inline">{meta}</span>
+            ) : null}
           </p>
-          {plainLanguage && addsInformation(plainLanguage) ? <p className="mt-0.5 text-sm leading-6 text-muted">{plainLanguage}</p> : null}
+          {plainLanguage && addsInformation(plainLanguage) ? <p className="mt-0.5 max-w-2xl text-sm leading-6 text-muted">{plainLanguage}</p> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {missing ? <Badge tone="danger">Missing</Badge> : null}
-          <div className="hidden items-center gap-2 sm:flex">{actions}</div>
+        <div className="-mr-1.5 -mt-1 flex shrink-0 items-center gap-0.5">
+          {missing ? <Badge tone="danger" className="mr-1">Missing</Badge> : null}
+          {actions}
         </div>
       </div>
-      {children}
-      {/* On phones the controls follow the input so the label stays next to its field. */}
-      {actions ? <div className="flex items-center gap-2 sm:hidden">{actions}</div> : null}
-      {meta || source ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          {meta ? <span>{meta}</span> : null}
-          {source ? <span className="font-semibold text-pine">{source}</span> : null}
-        </div>
-      ) : null}
+      {/* Controls stay at a readable measure instead of stretching across the card. */}
+      <div className="max-w-2xl">{children}</div>
+      {source ? <p className="text-xs font-semibold text-pine">{source}</p> : null}
     </div>
+  );
+}
+
+export function FieldLegend({ flag = true }: { flag?: boolean }) {
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+      <span>
+        <span className="font-semibold text-clay">*</span> Required
+      </span>
+      {flag ? (
+        <span className="inline-flex items-center gap-1">
+          <FlagIcon filled={false} /> Mark a question to come back to
+        </span>
+      ) : null}
+      <span>
+        <span aria-hidden="true" className="font-semibold text-pine">?</span> Help with a question
+      </span>
+    </p>
   );
 }
 
@@ -327,7 +359,9 @@ export function PageNav({
                     className={cx(
                       "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[0.6875rem] font-bold tabular-nums",
                       item.missingCount
-                        ? "border border-clay/50 text-clay"
+                        ? isSelected
+                          ? "border border-pine text-pine"
+                          : "border border-line-strong text-muted"
                         : item.complete
                           ? "bg-pine text-white"
                           : isSelected
@@ -346,7 +380,7 @@ export function PageNav({
                   </span>
                   <span className="flex flex-col items-end gap-1">
                     {item.missingCount ? (
-                      <span className="text-xs font-semibold tabular-nums text-clay" aria-hidden="true">
+                      <span className="text-xs font-medium tabular-nums text-muted" aria-hidden="true">
                         {item.missingCount} left
                       </span>
                     ) : null}
@@ -413,13 +447,25 @@ export function MissingAnswers({
   items,
   hiddenCount,
   onSelect,
+  notStarted = false,
 }: {
   items: Array<{ question_id: string; page_id: string; label: string }>;
   hiddenCount: number;
   onSelect: (pageId: string) => void;
+  notStarted?: boolean;
 }) {
   if (!items.length) {
     return null;
+  }
+  // Before the first answer, a list of everything outstanding reads as debt; point at where to begin instead.
+  if (notStarted) {
+    const total = items.length + hiddenCount;
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-pine" />
+        Start with the first page. {total} required {total === 1 ? "answer" : "answers"} in all; Lucy saves each page as you go.
+      </p>
+    );
   }
   return (
     <Notice tone="warning" title={`${items.length + hiddenCount} required ${items.length + hiddenCount === 1 ? "answer" : "answers"} left`}>
@@ -582,6 +628,7 @@ export function PageFooterActions({
   isDirty = false,
   hasNext,
   disabled,
+  nothingEntered = false,
 }: {
   onSave: () => void;
   onSaveAndNext: () => void;
@@ -590,6 +637,7 @@ export function PageFooterActions({
   isDirty?: boolean;
   hasNext: boolean;
   disabled?: boolean;
+  nothingEntered?: boolean;
 }) {
   return (
     <div className="-mx-5 -mb-5 mt-6 flex items-center justify-end gap-2 shadow-[0_-6px_16px_-12px_rgba(31,48,45,0.35)] sm:sticky sm:bottom-0 sm:z-10 rounded-b-xl border-t border-line bg-white/95 px-5 py-3 backdrop-blur md:-mx-6 md:-mb-6 md:px-6">
@@ -602,6 +650,8 @@ export function PageFooterActions({
               <>
                 Unsaved changes<span className="hidden sm:inline">. Lucy also saves them when you switch pages.</span>
               </>
+            ) : nothingEntered ? (
+              "Nothing entered yet"
             ) : (
               <>
                 <span aria-hidden="true" className="text-pine">

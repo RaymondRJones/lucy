@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import {
   CaseBar,
   ComeBackList,
+  FieldLegend,
   ComeBackToggle,
   FormCompleteNotice,
   FormTabs,
@@ -847,7 +848,7 @@ export function FormIngestionWorkspace({
       <PageHeader
         eyebrow={`Step 2 \u00b7 ${questionnaire.form_code}`}
         title={questionnaire.title}
-        description="Answers save when you move to another page or select Save. Answers you gave on other forms are filled in for you to confirm."
+        description="Answers save as you move between pages. Answers you gave on other forms are filled in for you to confirm."
         actions={
           <>
             <details className="relative">
@@ -893,7 +894,12 @@ export function FormIngestionWorkspace({
 
       {!caseId ? <CaseBar caseId="" onSelect={selectCase} disabled={isPending} /> : null}
 
-      <MissingAnswers items={visibleMissingRequiredItems} hiddenCount={hiddenMissingRequiredCount} onSelect={goToPage} />
+      <MissingAnswers
+        items={visibleMissingRequiredItems}
+        hiddenCount={hiddenMissingRequiredCount}
+        onSelect={goToPage}
+        notStarted={fillPreview?.field_count === 0}
+      />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <PageNav
@@ -932,6 +938,7 @@ export function FormIngestionWorkspace({
                 <h2 id="form-page-heading" className="mt-1 font-display text-2xl text-ink">
                   {selectedPage.title}
                 </h2>
+                <FieldLegend />
               </div>
 
               {pageFlags.length ? (
@@ -960,6 +967,7 @@ export function FormIngestionWorkspace({
                 isPending={isPending}
                 isDirty={isDirty}
                 hasNext={hasNextPage}
+                nothingEntered={fillPreview?.field_count === 0}
               />
             </>
           ) : null}
